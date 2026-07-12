@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat \"$HOME/.claude/core-rules.md\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
