@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "f=\"$HOME/.copilot/.core-rules-last\"; now=$(date +%s); last=$(cat \"$f\" 2>/dev/null || echo 0); if [ $((now - last)) -gt 600 ]; then echo \"$now\" > \"$f\"; printf '{\"additionalContext\": %s}' \"$(jq -Rs . < \"$HOME/.copilot/core-rules.md\")\"; fi",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}
