@@ -7,6 +7,10 @@ plan non-trivial work in `tasks/todo.md`, capture corrections in
 
 ## Why this exists
 
+Best for iterative work in a real repo — features, bug fixes, refactors — where
+a durable plan, an enforced gate, and a growing lessons file pay off across a
+session.
+
 Global instruction files (`CLAUDE.md`, `AGENTS.md`, `copilot-instructions.md`)
 sit at the very top of the context window, and in a long chat the model's
 attention to them drifts — it starts "forgetting" your rules. The fix is to
@@ -46,10 +50,6 @@ Stop event, so it gets gateguard but not delivery-gate; its gateguard wiring
 follows the CLI docs but wasn't testable locally. A harness that lacks the
 underlying event still gets the rule as a skill. Tuning knobs for both hooks
 live in their script headers under `hooks/`.
-
-Best for iterative work in a real repo — features, bug fixes, refactors — where
-a durable plan, an enforced gate, and a growing lessons file pay off across a
-session.
 
 ## Meta-maintenance skills
 
