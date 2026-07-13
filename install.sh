@@ -102,6 +102,9 @@ install_claude() {
   # delivery-gate pre-finish Stop hook (Claude-only): script + Stop hook.
   cp "$REPO_DIR/hooks/claude/delivery-gate.js" "$HOME/.claude/scripts/delivery-gate.js"
   echo "  delivery script -> ~/.claude/scripts/delivery-gate.js"
+  # gateguard fact-forcing edit gate (Claude-only): script + PreToolUse hook.
+  cp "$REPO_DIR/hooks/claude/gateguard.js" "$HOME/.claude/scripts/gateguard.js"
+  echo "  gateguard script-> ~/.claude/scripts/gateguard.js"
   need_jq
   local settings="$HOME/.claude/settings.json" tmp
   mkdir -p "$HOME/.claude"
@@ -132,6 +135,15 @@ install_claude() {
       '.hooks.Stop = ((.hooks.Stop // []) + $h[0].hooks.Stop)' \
       "$settings" > "$tmp" && mv "$tmp" "$settings"
     echo "  delivery hook   -> merged into $settings (Stop; warn-only, DELIVERY_GATE_BLOCK=1 to enforce)"
+  fi
+  if grep -q 'gateguard' "$settings"; then
+    echo "  gateguard hook  -- already present in settings.json"
+  else
+    tmp="$(mktemp)"
+    jq --slurpfile h "$REPO_DIR/hooks/claude/pretooluse-gateguard.json" \
+      '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
+      "$settings" > "$tmp" && mv "$tmp" "$settings"
+    echo "  gateguard hook  -> merged into $settings (PreToolUse on edits; GATEGUARD_DISABLED=1 to turn off)"
   fi
   echo "  done. New Claude Code sessions pick this up automatically."
 }
