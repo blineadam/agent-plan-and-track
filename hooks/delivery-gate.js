@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 /**
- * Delivery Gate (Claude Code only)
+ * Delivery Gate (Claude Code + Codex)
  *
  * A Stop hook that runs deterministic pre-finish checks at the harness layer —
  * the "verify before done" + "capture-lesson" + "checkpoint state" standing
- * rules, enforced where the model can't skip them. It is the Claude-native
- * counterpart to those rules; Copilot/Codex have no "block finish" event, so
- * they rely on the guidance in the rules digest instead.
+ * rules, enforced where the model can't skip them. Both Claude Code and Codex
+ * expose a Stop event with a Claude-shaped payload (`stop_hook_active`,
+ * `transcript_path`, `last_assistant_message`) and accept the same output
+ * contract, so one script serves both. Copilot has no soft-warn Stop channel
+ * (only block/allow) and an undocumented transcript format, so it relies on the
+ * rules-digest guidance instead — no Copilot delivery-gate.
  *
  * DEFAULT: WARN-ONLY. It surfaces a `systemMessage` and always allows the stop.
  * A Stop hook that traps the user in a loop is worse than the problem it solves,
@@ -20,15 +23,17 @@
  *    work", "didn't run", ...) → nudge to actually verify.
  *  - Low free disk on the working directory.
  *
- * Self-contained: Node core only (Claude Code ships Node). Two transcript reads,
- * each matched to what the signal needs — Stop fires once per turn-end, so both
- * are affordable:
- *  - Edit count + tasks/todo.md checkpoint: a full streaming pass over the whole
- *    JSONL. These are session-wide facts; a bounded tail would miss edits (or a
- *    real checkpoint) that scrolled past it in a long session and misjudge the
- *    session as simple / un-checkpointed.
- *  - Rationalization: a bounded tail only — we deliberately want *recent* text,
- *    so an early phrase later resolved doesn't trip the gate at finish time.
+ * Two transcript formats are read in one pass, keyed off record shape:
+ *  - Claude JSONL: `{message:{role:"assistant",content:[{type:"tool_use",
+ *    name:"Edit"|"Write"|...}]}}` — count edit tool_use blocks.
+ *  - Codex rollout: `{payload:{type:"patch_apply_end",success,changes:{<abs
+ *    path>:{type:"add"|"update"|...}}}}` — count changed files per applied
+ *    patch. (Verified against a live ~/.codex/sessions rollout.)
+ *  Rationalization is scanned on a bounded transcript tail (recent Claude text)
+ *  AND on the Stop payload's `last_assistant_message` (Codex's recent text,
+ *  which isn't in Claude JSONL shape).
+ *
+ * Self-contained: Node core only (both harnesses ship Node).
  *
  * Config (env):
  *   DELIVERY_GATE_BLOCK        "1" to block (opt-in). Default: warn-only.
@@ -40,7 +45,6 @@
 'use strict';
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { StringDecoder } = require('string_decoder');
 
@@ -146,10 +150,13 @@ const RATIONALIZATION = [
   /\bcan'?t (?:verify|test)\b/i,
   /\bassuming (?:it|this|that) works\b/i,
 ];
+const TODO_RE = /tasks\/todo\.md$/;
 
 // Full streaming pass over the whole transcript: session-wide edit count and
-// whether tasks/todo.md was ever checkpointed. Must see the entire session, so
-// it can't rely on a bounded tail.
+// whether tasks/todo.md was ever checkpointed. Handles both the Claude JSONL
+// and the Codex rollout shapes; the two record forms are disjoint, so one pass
+// covers either transcript. Must see the entire session, so it can't rely on a
+// bounded tail.
 function scanEditsAndCheckpoint(transcriptPath) {
   let edits = 0;
   let touchedTodo = false;
@@ -163,14 +170,25 @@ function scanEditsAndCheckpoint(transcriptPath) {
     } catch {
       return;
     }
+    // Claude: assistant message with tool_use blocks.
     const msg = obj && obj.message;
-    if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) return;
-    for (const block of msg.content) {
-      if (!block || block.type !== 'tool_use' || !EDIT_TOOLS.has(block.name)) continue;
-      edits++;
-      const fp =
-        (block.input && (block.input.file_path || block.input.notebook_path)) || '';
-      if (typeof fp === 'string' && /tasks\/todo\.md$/.test(fp)) touchedTodo = true;
+    if (msg && msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const block of msg.content) {
+        if (!block || block.type !== 'tool_use' || !EDIT_TOOLS.has(block.name)) continue;
+        edits++;
+        const fp = (block.input && (block.input.file_path || block.input.notebook_path)) || '';
+        if (typeof fp === 'string' && TODO_RE.test(fp)) touchedTodo = true;
+      }
+      return;
+    }
+    // Codex: an applied patch. Each changed file counts as an edit.
+    const payload = obj && obj.payload;
+    if (payload && payload.type === 'patch_apply_end' && payload.success !== false) {
+      const changes = payload.changes && typeof payload.changes === 'object' ? payload.changes : {};
+      for (const fp of Object.keys(changes)) {
+        edits++;
+        if (TODO_RE.test(fp)) touchedTodo = true;
+      }
     }
   });
   return { edits, touchedTodo };
@@ -223,9 +241,14 @@ function main() {
   const tailBytes = intEnv('DELIVERY_GATE_TAIL_BYTES', 2 * 1024 * 1024) || 2 * 1024 * 1024;
   const minDiskMB = intEnv('DELIVERY_GATE_MIN_DISK_MB', 500);
 
-  // Session-wide facts from the full transcript; recent text from a bounded tail.
+  // Session-wide facts from the full transcript; recent text from a bounded tail
+  // (Claude) plus the Stop payload's last_assistant_message (Codex).
   const { edits, touchedTodo } = scanEditsAndCheckpoint(transcriptPath);
-  const rationalized = scanRationalization(readTranscriptTail(transcriptPath, tailBytes));
+  const lastMsg =
+    input && typeof input.last_assistant_message === 'string' ? input.last_assistant_message : '';
+  const rationalized =
+    scanRationalization(readTranscriptTail(transcriptPath, tailBytes)) ||
+    (!!lastMsg && RATIONALIZATION.some((re) => re.test(lastMsg)));
 
   const warnings = [];
   if (edits >= editThreshold && !touchedTodo) {

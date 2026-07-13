@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.codex/scripts/delivery-gate.js\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

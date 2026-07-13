@@ -44,20 +44,22 @@ Claude-only where the mechanism is genuinely Claude-native.
 | **`gateguard`** | Before the first edit to a file, demand the facts — callers, blast radius, schemas — instead of guessing. | All 3 |
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
 
-On Claude, three of these are backed by **hooks** that enforce the rule rather
-than just suggest it — installed idempotently, each with an off switch:
+Where a harness exposes the right event, these are backed by **enforcing hooks**
+(not just suggestions) — installed idempotently, each with an off switch:
 
-- **compact suggester** — nudges you toward `/compact` when the context gets
-  large. Never blocks.
-- **delivery-gate** — a warn-only pre-finish check ("did you verify? did you
-  checkpoint?"). `DELIVERY_GATE_BLOCK=1` makes it actually block.
-- **gateguard** — denies the first edit to each file until you've presented the
-  facts; the retry always passes. `GATEGUARD_DISABLED=1` / `GATEGUARD_WARN=1`
-  to soften it.
+- **gateguard** (Claude, Codex, Copilot) — denies the first edit to each file
+  until you've presented the facts; the retry always passes. One script sniffs
+  each harness's payload dialect (Claude `Edit`/`Write`, Codex `apply_patch`,
+  Copilot `create`/`edit`). `GATEGUARD_DISABLED=1` / `GATEGUARD_WARN=1` soften it.
+- **delivery-gate** (Claude, Codex) — a warn-only pre-finish Stop check ("did
+  you verify? did you checkpoint?"). `DELIVERY_GATE_BLOCK=1` makes it block.
+- **compact suggester** (Claude) — nudges you toward `/compact` when the context
+  gets large. Never blocks.
 
-Each hook's tuning knobs live in its script header under `hooks/claude/`.
-Copilot and Codex get the guidance as skills but not the enforcement — those
-events are Claude-only.
+Tuning knobs live in each script's header under `hooks/`. Copilot has no
+soft-warn Stop event, so it gets gateguard but not delivery-gate; its gateguard
+wiring follows the CLI docs but wasn't testable locally. A harness that lacks the
+event still gets the rule as a skill.
 
 ## Model defaults
 
@@ -123,9 +125,11 @@ skills/skill-comply/         measure whether a rule/skill is actually followed (
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
 agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku)
-hooks/claude/                Claude hooks: digest + compact suggester + delivery-gate + gateguard
-hooks/copilot/               Copilot hook (post-tool-use injection, throttled)
-hooks/codex/                 Codex hook (re-inject on resume/compact)
+hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
+hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
+hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate
+hooks/copilot/               Copilot wiring: throttled digest + gateguard
+hooks/codex/                 Codex wiring: digest + gateguard + delivery-gate
 install.sh                   per-tool installer
 ```
 

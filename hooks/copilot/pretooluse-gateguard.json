@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "p=$(cat); if printf '%s' \"$p\" | grep -qE '\"toolName\"[[:space:]]*:[[:space:]]*\"(create|edit)\"'; then printf '%s' \"$p\" | node \"$HOME/.copilot/scripts/gateguard.js\" 2>/dev/null || echo '{\"permissionDecision\":\"allow\"}'; else echo '{\"permissionDecision\":\"allow\"}'; fi",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}
