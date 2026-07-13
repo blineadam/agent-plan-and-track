@@ -100,7 +100,7 @@ install_claude() {
     jq --slurpfile h "$REPO_DIR/hooks/claude/pretooluse-compact.json" \
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
       "$settings" > "$tmp" && mv "$tmp" "$settings"
-    echo "  compact hook    -> merged into $settings (PreToolUse Edit/Write)"
+    echo "  compact hook    -> merged into $settings (PreToolUse, all tools)"
   fi
   echo "  done. New Claude Code sessions pick this up automatically."
 }

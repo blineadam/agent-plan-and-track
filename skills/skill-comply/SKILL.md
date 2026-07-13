@@ -57,13 +57,20 @@ stops supporting it? Write 1–2 user prompts per level:
 
 ### 3. Run each scenario in a fresh agent
 
-Run every scenario in a throwaway working dir, capturing the full trace. Use the
-session scratchpad, never the real project:
+Run every scenario in its own fresh process, capturing the trace. **Isolate it.**
+A competing or prompt-injected scenario *will* execute tool calls, so run inside
+a container/VM with restricted mounts and no network egress. A `mktemp -d` is a
+working directory, not a sandbox — and never pass `--dangerously-skip-permissions`
+here: it would let an injected scenario reach your home dir, credentials, and
+network unattended. If you can't containerize, keep normal permission prompts or
+an explicit tool allowlist. Keep stdout (the stream-json trace) and stderr
+(`--verbose` diagnostics) in **separate** files, or the diagnostics corrupt the
+trace and later lines won't parse as JSON:
 
 ```bash
-cd "$(mktemp -d)"
-claude -p "<scenario prompt>" --output-format stream-json --verbose --dangerously-skip-permissions \
-  > trace.jsonl 2>&1
+# inside an isolated container/VM working dir
+claude -p "<scenario prompt>" --output-format stream-json --verbose \
+  > trace.jsonl 2> trace.err
 ```
 
 `--dry-run` mode stops here after printing the spec and scenarios — no `claude -p`

@@ -55,11 +55,11 @@ compact — nothing important should live only in the conversation.
 
 ## Claude Code auto-suggest hook (Claude-only)
 
-Manual installs (`./install.sh claude`) also register a `PreToolUse` (Edit/Write)
-hook, `~/.claude/scripts/suggest-compact.js`, that reads the session transcript's
-latest context size and nudges you toward `/compact` at a window-scaled
-threshold — plus a tool-call-count fallback. It only ever adds a one-line
-suggestion; it never blocks a tool call.
+Manual installs (`./install.sh claude`) also register a `PreToolUse` hook (on all
+tools), `~/.claude/scripts/suggest-compact.js`, that reads the session
+transcript's latest context size (a bounded tail read) and nudges you toward
+`/compact` at a window-scaled threshold — plus an all-tools count fallback. It
+only ever adds a one-line suggestion; it never blocks a tool call.
 
 Tune via environment variables:
 

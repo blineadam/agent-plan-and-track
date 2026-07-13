@@ -49,10 +49,11 @@ where the mechanism is genuinely Claude-native:
 | **`skill-comply`** | Measures whether a rule/skill is actually followed by a *fresh* agent — generates a behavioral spec + scenarios at 3 strictness levels, runs each in its own `claude -p`, and reports compliance. Turns "the model forgets your rules" into a number. | **Claude-only** (built on `claude -p` + `stream-json` traces) |
 
 The `strategic-compact` **auto-suggest hook** (`~/.claude/scripts/suggest-compact.js`,
-a `PreToolUse` Edit/Write hook) reads the session transcript's real context size
-and nudges you toward `/compact` at a window-scaled threshold (160k on a 200k
-window, 250k on 1M), with a tool-call-count fallback. It only ever adds a
-one-line suggestion; it never blocks a tool call. Tune with `COMPACT_THRESHOLD`,
+a `PreToolUse` hook on all tools) reads the session transcript's real context size
+(a bounded tail read, so it stays cheap even in long sessions) and nudges you
+toward `/compact` at a window-scaled threshold (160k on a 200k window, 250k on
+1M), with an all-tools count fallback. It only ever adds a one-line suggestion;
+it never blocks a tool call. Tune with `COMPACT_THRESHOLD`,
 `COMPACT_CONTEXT_THRESHOLD` (`0` disables the size signal), and
 `COMPACT_CONTEXT_INTERVAL`. Copilot/Codex get the guidance skill but not the
 hook — neither exposes the same transcript/`/compact` mechanics.
@@ -130,7 +131,7 @@ Two customization points survive every update:
 - Hook: `UserPromptSubmit` in `~/.claude/settings.json` — `cat`s the digest, so
   its stdout is injected as context **every turn**. Editing
   `~/.claude/core-rules.md` takes effect immediately; no restart needed.
-- Compact hook (Claude-only): a `PreToolUse` (Edit/Write) entry running
+- Compact hook (Claude-only): a `PreToolUse` (all tools) entry running
   `~/.claude/scripts/suggest-compact.js` — the `strategic-compact` auto-suggester.
   Merged idempotently and independently of the digest hook; see
   [Meta-maintenance skills](#meta-maintenance-skills) for the config knobs.
