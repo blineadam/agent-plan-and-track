@@ -44,12 +44,40 @@ The installer is idempotent and non-destructive:
 - **Skills** are copied into the tool's user skills dir (this repo is the source of truth).
 - **`core-rules.md`** is copied next to the tool's config; a differing existing copy is backed up to `*.bak`.
 - **Instruction files** (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
-  `~/.copilot/copilot-instructions.md`) are **never modified if they already
-  exist** — merge `rules/agent-guidelines.md` into yours manually.
-- **Hooks** are merged (Claude/Codex, via `jq`) or copied (Copilot) only when
-  not already installed.
+  `~/.copilot/copilot-instructions.md`) get the repo content inside a
+  marker-delimited **managed block** (`<!-- agent-plan-and-track:begin -->` …
+  `<!-- agent-plan-and-track:end -->`). Re-installs update only that block;
+  anything you add outside the markers is never touched. An existing file
+  *without* markers is left alone entirely.
+- **Hooks** are merged via `jq` (Claude/Codex) only when not already installed;
+  the Copilot hook file is repo-owned and kept in sync (differing copy backed
+  up to `*.bak`).
 
 Requires `jq` (install-time for Claude/Codex, runtime for the Copilot hook).
+
+## Updating
+
+```sh
+cd agent-plan-and-track
+git pull
+./install.sh all
+```
+
+That propagates skills, the digest, instruction managed blocks, and the Copilot
+hook. The one thing it won't rewrite is a hook already merged into
+`~/.claude/settings.json` or `~/.codex/hooks.json` — if a repo update ever
+changes those hook *commands*, delete the old entry and re-run the installer.
+
+## Machine-specific rules
+
+Two customization points survive every update:
+
+- **`core-rules.local.md`** next to each tool's `core-rules.md` (e.g.
+  `~/.claude/core-rules.local.md`) — extra digest lines for this machine
+  (Python venvs, local paths). The hooks concatenate it after the shared
+  digest; the installer never touches it.
+- **Anything outside the managed block** in the instruction files — e.g. a
+  `## Python Environment` section below the end marker.
 
 ## Per-tool details
 
@@ -94,7 +122,8 @@ This repo is the source of truth. To change a rule:
 
 1. Edit `rules/core-rules.md` (the digest) and/or `rules/agent-guidelines.md`.
 2. Re-run `./install.sh all`.
-3. Copilot/Codex: restart sessions. Claude Code: takes effect next turn.
+3. Copilot/Codex instructions: restart sessions. Digest changes (Claude, Codex,
+   Copilot hooks read the file at fire time): take effect immediately.
 
 To add a new skill: create `skills/<name>/SKILL.md` with `name:` and
 `description:` frontmatter (the description tells the agent *when* to use it),

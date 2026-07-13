@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat \"$HOME/.claude/core-rules.md\" 2>/dev/null || true"
+            "command": "cat \"$HOME/.claude/core-rules.md\" \"$HOME/.claude/core-rules.local.md\" 2>/dev/null || true"
           }
         ]
       }
