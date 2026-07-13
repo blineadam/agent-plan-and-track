@@ -37,7 +37,7 @@ file pay off across a session or across resumed sessions.
 
 ## Meta-maintenance skills
 
-Three skills that operate on the rules and skills themselves (adapted from
+Skills that operate on the rules and skills themselves (adapted from
 [affaan-m/ecc](https://github.com/affaan-m/ecc)). Portability follows the same
 discipline as everything else here — tool-agnostic where it's safe, Claude-only
 where the mechanism is genuinely Claude-native:
@@ -46,6 +46,7 @@ where the mechanism is genuinely Claude-native:
 | --- | --- | --- |
 | **`rules-distill`** | Scans installed skills across every harness + this repo's rule files, finds principles recurring in 2+ skills that aren't yet rules, and proposes `Append`/`Revise`/`New` edits for your approval. Mechanizes the manual `lessons.md` → `core-rules.md` promotion. | **All 3** (portable) |
 | **`strategic-compact`** | A decision guide for compacting at *logical* boundaries (research → plan → implement) instead of arbitrary mid-task auto-compaction. Companion to the Checkpoint & Compact rule. | **All 3** (portable guidance); Claude installs also get an auto-suggest hook |
+| **`context-budget`** | Audits the *always-on* context cost — instruction files, the rules digest, and every skill's frontmatter — via a scan script (words × 1.3), flags oversized components, and sorts each into keep / lazy-load / remove. Separates the always-on frontmatter cost from the on-demand skill body. | **All 3** (portable); Claude-only addendum for MCP tools + `agents/*.md` |
 | **`skill-comply`** | Measures whether a rule/skill is actually followed by a *fresh* agent — generates a behavioral spec + scenarios at 3 strictness levels, runs each in its own `claude -p`, and reports compliance. Turns "the model forgets your rules" into a number. | **Claude-only** (built on `claude -p` + `stream-json` traces) |
 
 The `strategic-compact` **auto-suggest hook** (`~/.claude/scripts/suggest-compact.js`,
@@ -57,6 +58,20 @@ it never blocks a tool call. Tune with `COMPACT_THRESHOLD`,
 `COMPACT_CONTEXT_THRESHOLD` (`0` disables the size signal), and
 `COMPACT_CONTEXT_INTERVAL`. Copilot/Codex get the guidance skill but not the
 hook — neither exposes the same transcript/`/compact` mechanics.
+
+The **`delivery-gate`** hook (`~/.claude/scripts/delivery-gate.js`, a `Stop`
+hook — **Claude-only**) runs deterministic pre-finish checks at the harness
+layer: the *verify-before-done* and *checkpoint-state* rules enforced where the
+model can't quietly skip them. It's **warn-only by default** — it surfaces a
+`systemMessage` and always lets the session stop; a Stop hook that traps you in
+a loop is worse than the problem. It warns when a complex session (≥ 3 edits)
+never checkpointed to `tasks/todo.md`, when recent text reads like an unverified
+claim ("good enough" / "should work" / "didn't test"), or when disk is low. Set
+`DELIVERY_GATE_BLOCK=1` to opt into actually blocking the stop once (it honors
+`stop_hook_active`, so stopping again always overrides — no trap). Tune with
+`DELIVERY_GATE_EDIT_THRESHOLD` and `DELIVERY_GATE_MIN_DISK_MB` (`0` disables the
+disk check). Copilot/Codex have no "block finish" event, so they rely on the
+same intent expressed in the rules digest.
 
 ## Install
 
@@ -91,8 +106,9 @@ skills/plan-and-track/       plan → track → verify workflow (tasks/todo.md)
 skills/capture-lesson/       turn every user correction into a rule (tasks/lessons.md)
 skills/rules-distill/        distill cross-cutting skill principles into rules (portable)
 skills/strategic-compact/    when to /compact at logical boundaries (portable)
+skills/context-budget/       audit always-on context cost, flag bloat (portable)
 skills/skill-comply/         measure whether a rule/skill is actually followed (Claude-only)
-hooks/claude/                Claude Code hooks: per-turn digest + compact suggester script
+hooks/claude/                Claude Code hooks: per-turn digest + compact suggester + delivery-gate scripts
 hooks/copilot/               Copilot hook (post-tool-use injection, throttled)
 hooks/codex/                 Codex hook (re-inject on resume/compact)
 install.sh                   per-tool installer
@@ -135,6 +151,10 @@ Two customization points survive every update:
   `~/.claude/scripts/suggest-compact.js` — the `strategic-compact` auto-suggester.
   Merged idempotently and independently of the digest hook; see
   [Meta-maintenance skills](#meta-maintenance-skills) for the config knobs.
+- Delivery-gate hook (Claude-only): a `Stop` hook running
+  `~/.claude/scripts/delivery-gate.js` — warn-only pre-finish checks (verify /
+  checkpoint / disk). Merged idempotently; `DELIVERY_GATE_BLOCK=1` opts into
+  enforcement. See [Meta-maintenance skills](#meta-maintenance-skills).
 - Verify: start a session, send a few messages, then ask *"what are your
   standing rules?"*
 - Attribution: set `"includeCoAuthoredBy": false` in `~/.claude/settings.json`

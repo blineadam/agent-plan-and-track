@@ -35,8 +35,9 @@ copy_skills() {
   local dest="$1"
   mkdir -p "$dest"
   cp -R "$REPO_DIR/skills/plan-and-track" "$REPO_DIR/skills/capture-lesson" \
-        "$REPO_DIR/skills/rules-distill" "$REPO_DIR/skills/strategic-compact" "$dest/"
-  echo "  skills          -> $dest/{plan-and-track,capture-lesson,rules-distill,strategic-compact}"
+        "$REPO_DIR/skills/rules-distill" "$REPO_DIR/skills/strategic-compact" \
+        "$REPO_DIR/skills/context-budget" "$dest/"
+  echo "  skills          -> $dest/{plan-and-track,capture-lesson,rules-distill,strategic-compact,context-budget}"
 }
 
 install_digest() {
@@ -80,6 +81,9 @@ install_claude() {
   mkdir -p "$HOME/.claude/scripts"
   cp "$REPO_DIR/hooks/claude/suggest-compact.js" "$HOME/.claude/scripts/suggest-compact.js"
   echo "  compact script  -> ~/.claude/scripts/suggest-compact.js"
+  # delivery-gate pre-finish Stop hook (Claude-only): script + Stop hook.
+  cp "$REPO_DIR/hooks/claude/delivery-gate.js" "$HOME/.claude/scripts/delivery-gate.js"
+  echo "  delivery script -> ~/.claude/scripts/delivery-gate.js"
   need_jq
   local settings="$HOME/.claude/settings.json" tmp
   mkdir -p "$HOME/.claude"
@@ -101,6 +105,15 @@ install_claude() {
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
       "$settings" > "$tmp" && mv "$tmp" "$settings"
     echo "  compact hook    -> merged into $settings (PreToolUse, all tools)"
+  fi
+  if grep -q 'delivery-gate' "$settings"; then
+    echo "  delivery hook   -- already present in settings.json"
+  else
+    tmp="$(mktemp)"
+    jq --slurpfile h "$REPO_DIR/hooks/claude/stop-delivery-gate.json" \
+      '.hooks.Stop = ((.hooks.Stop // []) + $h[0].hooks.Stop)' \
+      "$settings" > "$tmp" && mv "$tmp" "$settings"
+    echo "  delivery hook   -> merged into $settings (Stop; warn-only, DELIVERY_GATE_BLOCK=1 to enforce)"
   fi
   echo "  done. New Claude Code sessions pick this up automatically."
 }
