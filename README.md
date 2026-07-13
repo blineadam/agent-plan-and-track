@@ -91,6 +91,42 @@ the rules digest. ECC's destructive-Bash and routine-Bash gates were
 deliberately not ported — Claude Code's permission system already covers
 destructive commands.
 
+## Model defaults
+
+The installer also sets a **cost-aware model default** for each harness —
+plan/think on a stronger model, execute on a cheaper one — so you don't pay
+top-tier rates for routine work. Each default is written **only if you haven't
+already chosen one**; an existing choice is never clobbered, and re-running the
+installer reports "already set" and moves on.
+
+| Harness | Default set | Effect | Where |
+| --- | --- | --- | --- |
+| **Claude Code** | `"model": "opusplan"` | Opus during Plan mode, Sonnet for execution | `~/.claude/settings.json` |
+| **Codex** | `plan_mode_reasoning_effort = "high"` | Higher reasoning effort in Plan mode only; execution model + effort untouched | `~/.codex/config.toml` |
+| **Copilot** | `"model": "auto"` | Copilot routes each task to the best-fit model | `~/.copilot/settings.json` |
+
+Codex has no plan-mode *model* swap (no `plan_mode_model` key, so no direct
+`opusplan` analog) — reasoning **effort** is the only phase-specific lever, so
+that's what's set. To change any default, edit the value in the file shown
+above (or use the harness's own `/model` picker) — the installer won't
+overwrite it on the next run.
+
+### Tiered subagents (Claude-only)
+
+Two subagent definitions install to `~/.claude/agents/`, each **pinned to a
+cheaper model than a plan-mode session** so delegated work runs cheaply no
+matter what the main session is set to:
+
+| Agent | Model / effort | For |
+| --- | --- | --- |
+| **`researcher`** | Sonnet / medium, read-only tools | Offloaded exploration — map how code works, find where a symbol is used, gather the facts an edit needs (importers, blast radius, schemas). Keeps the main context clean; never writes. |
+| **`mechanic`** | Haiku / low, edit tools | Already-decided mechanical edits — apply a settled rename across files, fix formatting, sync docs to a stated change. Kicks anything needing a judgment call back to you. |
+
+Delegate to them by name (e.g. *"use the researcher agent to find every caller
+of `foo`"*). This tiering is Claude-only: Copilot CLI has fixed built-in agents
+and Codex has no user-definable per-agent model pin — the same Claude-native
+split as the hooks.
+
 ## Install
 
 ```sh
@@ -112,6 +148,8 @@ The installer is idempotent and non-destructive:
 - **Hooks** are merged via `jq` (Claude/Codex) only when not already installed;
   the Copilot hook file is repo-owned and kept in sync (differing copy backed
   up to `*.bak`).
+- **Model defaults** and the Claude-only **tiered subagents** are set only when
+  you haven't already made a choice — see [Model defaults](#model-defaults).
 
 Requires `jq` (install-time for Claude/Codex, runtime for the Copilot hook).
 
@@ -128,6 +166,7 @@ skills/context-budget/       audit always-on context cost, flag bloat (portable)
 skills/skill-comply/         measure whether a rule/skill is actually followed (Claude-only)
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
+agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku)
 hooks/claude/                Claude Code hooks: per-turn digest + compact suggester + delivery-gate + gateguard scripts
 hooks/copilot/               Copilot hook (post-tool-use injection, throttled)
 hooks/codex/                 Codex hook (re-inject on resume/compact)
@@ -164,6 +203,12 @@ Two customization points survive every update:
 
 - Instructions: `~/.claude/CLAUDE.md` (loaded every session, re-injected after compaction).
 - Skills: `~/.claude/skills/<name>/SKILL.md`.
+- Model default: `"model": "opusplan"` in `~/.claude/settings.json` (Opus in
+  Plan mode, Sonnet for execution), set only if you haven't already chosen a
+  model. Change it with `/model` or by editing the file. See
+  [Model defaults](#model-defaults).
+- Subagents: `~/.claude/agents/{researcher,mechanic}.md` — Sonnet/Haiku helpers
+  for offloaded research and already-decided mechanical edits.
 - Hook: `UserPromptSubmit` in `~/.claude/settings.json` — `cat`s the digest, so
   its stdout is injected as context **every turn**. Editing
   `~/.claude/core-rules.md` takes effect immediately; no restart needed.
@@ -192,6 +237,10 @@ Two customization points survive every update:
 - Instructions: `~/.copilot/copilot-instructions.md` (CLI reads it at **session
   start only** — restart sessions after editing).
 - Skills: `~/.copilot/skills/` (Copilot also scans `~/.claude/skills/` and `~/.agents/skills/`).
+- Model default: `"model": "auto"` in `~/.copilot/settings.json` (Copilot
+  auto-routes per task), added only if absent and only when the file parses as
+  plain JSON — a JSONC file with comments is left untouched. See
+  [Model defaults](#model-defaults).
 - Hook: `~/.copilot/hooks/core-rules.json` — Copilot doesn't support context
   injection on prompt-submit, so this rides `postToolUse` (which does support
   `additionalContext`), throttled to once per 10 minutes via a timestamp file
@@ -210,6 +259,10 @@ Two customization points survive every update:
 - Skills: `~/.agents/skills/<name>/SKILL.md` — the documented user-scope
   location (`~/.codex/skills/` is legacy). Copilot scans `~/.agents/skills/`
   too, so Codex-installed skills are visible to both.
+- Model default: `plan_mode_reasoning_effort = "high"` in
+  `~/.codex/config.toml` — raises reasoning effort in Plan mode only; the
+  execution model and effort are left untouched (Codex has no plan-mode model
+  swap). Added only if absent. See [Model defaults](#model-defaults).
 - Hook: merged into `~/.codex/hooks.json` — a `UserPromptSubmit` hook whose
   stdout is injected as context **every turn**, same as Claude Code. Editing
   `~/.codex/core-rules.md` takes effect immediately.
