@@ -35,19 +35,6 @@ sessions with zero corrections never touch it.
 refactors, multi-file changes — where a durable plan and a growing lessons
 file pay off across a session or across resumed sessions.
 
-## Layout
-
-```text
-rules/agent-guidelines.md    the short instructions file (constant constraints)
-rules/core-rules.md          one-paragraph digest the hooks re-inject
-skills/plan-and-track/       plan → track → verify workflow (tasks/todo.md)
-skills/capture-lesson/       turn every user correction into a rule (tasks/lessons.md)
-hooks/claude/                Claude Code hook snippet (per-turn injection)
-hooks/copilot/               Copilot hook (post-tool-use injection, throttled)
-hooks/codex/                 Codex hook (re-inject on resume/compact)
-install.sh                   per-tool installer
-```
-
 ## Install
 
 ```sh
@@ -71,6 +58,19 @@ The installer is idempotent and non-destructive:
   up to `*.bak`).
 
 Requires `jq` (install-time for Claude/Codex, runtime for the Copilot hook).
+
+## Layout
+
+```text
+rules/agent-guidelines.md    the short instructions file (constant constraints)
+rules/core-rules.md          one-paragraph digest the hooks re-inject
+skills/plan-and-track/       plan → track → verify workflow (tasks/todo.md)
+skills/capture-lesson/       turn every user correction into a rule (tasks/lessons.md)
+hooks/claude/                Claude Code hook snippet (per-turn injection)
+hooks/copilot/               Copilot hook (post-tool-use injection, throttled)
+hooks/codex/                 Codex hook (re-inject on resume/compact)
+install.sh                   per-tool installer
+```
 
 ## Updating
 
