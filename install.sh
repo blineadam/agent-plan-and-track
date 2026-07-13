@@ -55,6 +55,55 @@ copy_skills() {
   echo "  skills          -> $dest/{$names}"
 }
 
+# Claude-only subagent definitions (agents/*.md): model-tiered helpers so
+# offloaded work runs on a cheaper model than the main session regardless of
+# what it's set to. These are repo-owned artifacts, exactly like skills — the
+# repo is the source of truth, so each install overwrites them to keep them in
+# sync (customize in the repo, not in ~/.claude/agents). Every agents/*.md is
+# copied, so adding one needs no edit here. No-op if the repo has no agents/ dir.
+copy_agents() {
+  local dest="$1" f name names=""
+  [ -d "$REPO_DIR/agents" ] || return 0
+  mkdir -p "$dest"
+  for f in "$REPO_DIR"/agents/*.md; do
+    [ -e "$f" ] || continue
+    name="$(basename "$f")"
+    cp "$f" "$dest/$name"
+    names="$names${names:+,}${name%.md}"
+  done
+  [ -n "$names" ] && echo "  agents          -> $dest/{$names} (Claude-only)"
+}
+
+# Set a top-level (root-table) TOML `key = "value"` in a config file,
+# idempotently. TOML has no jq, so this stays dependency-free:
+#   - Idempotency check is scoped to the ROOT table (lines before the first
+#     [section]). A same-named key inside a [section] is a *different* key and
+#     must not count — it wouldn't supply the top-level default anyway.
+#   - The write PREPENDS the key as the file's first line. A root key at the
+#     very top is unambiguously a root-table assignment: it can never be
+#     captured by a [section] and can never land inside a multiline ("""...""")
+#     value, so no TOML-structure parsing is needed. (Contrived exception: a
+#     multiline string in the root region whose contents mimic a section header
+#     could fool the check into a false negative — accepted; Codex configs
+#     don't do that.)
+insert_toml_default() {
+  local file="$1" key="$2" val="$3" tmp
+  mkdir -p "$(dirname "$file")"
+  [ -f "$file" ] || : > "$file"
+  if awk -v key="$key" '
+      seen { next }                                  # ignore everything after the first section
+      /^[[:space:]]*\[/ { seen = 1; next }           # first [section] ends the root table
+      $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { found = 1 }
+      END { exit found ? 0 : 1 }
+    ' "$file"; then
+    echo "  plan-mode effort-- $key already set at root in $(basename "$file"); left alone"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  { echo "$key = \"$val\""; cat "$file"; } > "$tmp" && mv "$tmp" "$file"
+  echo "  plan-mode effort-> $key = \"$val\" prepended in $(basename "$file")"
+}
+
 install_digest() {
   local dest="$1"
   mkdir -p "$(dirname "$dest")"
@@ -93,6 +142,7 @@ install_claude() {
     cp -R "$REPO_DIR/skills/$claude_skill" "$HOME/.claude/skills/"
     echo "  skill (claude)  -> ~/.claude/skills/$claude_skill (Claude-only)"
   done
+  copy_agents "$HOME/.claude/agents"
   install_digest "$HOME/.claude/core-rules.md"
   install_instructions "$HOME/.claude/CLAUDE.md"
   # strategic-compact auto-suggest hook (Claude-only): script + PreToolUse hook.
@@ -109,6 +159,16 @@ install_claude() {
   local settings="$HOME/.claude/settings.json" tmp
   mkdir -p "$HOME/.claude"
   [ -f "$settings" ] || echo '{}' > "$settings"
+  # Global model default: opusplan (Opus in Plan mode, Sonnet for execution) —
+  # a cheaper default than pinning Opus for everything. Only set when the user
+  # hasn't already chosen a model; never clobber an existing choice.
+  if jq -e 'has("model")' "$settings" >/dev/null 2>&1; then
+    echo "  model default   -- settings.json already sets model=$(jq -r .model "$settings"); left alone"
+  else
+    tmp="$(mktemp)"
+    jq '.model = "opusplan"' "$settings" > "$tmp" && mv "$tmp" "$settings"
+    echo "  model default   -> settings.json model=opusplan (Opus plan / Sonnet exec)"
+  fi
   if grep -q 'core-rules\.md' "$settings"; then
     echo "  digest hook     -- already present in settings.json"
   else
@@ -153,6 +213,24 @@ install_copilot() {
   copy_skills "$HOME/.copilot/skills"
   install_digest "$HOME/.copilot/core-rules.md"
   install_instructions "$HOME/.copilot/copilot-instructions.md"
+  # Global model default: "auto" lets Copilot route to the best model per task.
+  # Add only if absent, and only when the settings file parses as plain JSON —
+  # a JSONC file with comments jq can't round-trip is left untouched (warn).
+  local csettings="$HOME/.copilot/settings.json" ctmp
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "  model default   -- jq not found; skipping Copilot model default (add \"model\":\"auto\" by hand)"
+  elif [ -f "$csettings" ] && ! jq empty "$csettings" >/dev/null 2>&1; then
+    echo "  model default   -- $csettings isn't plain JSON (JSONC comments?); NOT modified. Add \"model\":\"auto\" by hand."
+  else
+    [ -f "$csettings" ] || echo '{}' > "$csettings"
+    if jq -e 'has("model")' "$csettings" >/dev/null 2>&1; then
+      echo "  model default   -- Copilot settings.json already sets model=$(jq -r .model "$csettings"); left alone"
+    else
+      ctmp="$(mktemp)"
+      jq '.model = "auto"' "$csettings" > "$ctmp" && mv "$ctmp" "$csettings"
+      echo "  model default   -> Copilot settings.json model=auto"
+    fi
+  fi
   mkdir -p "$HOME/.copilot/hooks"
   local chook="$HOME/.copilot/hooks/core-rules.json"
   if [ -f "$chook" ] && ! cmp -s "$REPO_DIR/hooks/copilot/core-rules.json" "$chook"; then
@@ -169,6 +247,10 @@ install_codex() {
   copy_skills "$HOME/.agents/skills"
   install_digest "$HOME/.codex/core-rules.md"
   install_instructions "$HOME/.codex/AGENTS.md"
+  # Plan-mode default: raise reasoning effort in Plan mode only, leaving the
+  # execution model + effort untouched. Codex has no plan-mode *model* swap
+  # (no opusplan analog), so effort is the only phase-specific lever.
+  insert_toml_default "$HOME/.codex/config.toml" "plan_mode_reasoning_effort" "high"
   need_jq
   local hooks="$HOME/.codex/hooks.json" tmp
   mkdir -p "$HOME/.codex"
