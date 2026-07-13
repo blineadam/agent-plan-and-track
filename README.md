@@ -188,7 +188,7 @@ Two customization points survive every update:
 - Hook: merged into `~/.codex/hooks.json` — a `UserPromptSubmit` hook whose
   stdout is injected as context **every turn**, same as Claude Code. Editing
   `~/.codex/core-rules.md` takes effect immediately.
-- Accept: Run `codex` in a terminal and `2` to accpet all new hooks.
+- Accept: Run `codex` in a terminal and press `2` to accept all new hooks.
 - Verify: new codex session, a few messages in, ask for its standing rules.
 - Attribution: nothing to set — current Codex builds add no co-author or
   "generated with" trailer, and the old `commit_attribution` config key was
@@ -206,5 +206,7 @@ This repo is the source of truth. To change a rule:
    Copilot hooks read the file at fire time): take effect immediately.
 
 To add a new skill: create `skills/<name>/SKILL.md` with `name:` and
-`description:` frontmatter (the description tells the agent *when* to use it),
-add a `cp` line for it in `copy_skills()` in `install.sh`, and re-install.
+`description:` frontmatter (the description tells the agent *when* to use it)
+and re-install — `copy_skills()` picks up every `skills/*/` dir automatically.
+If the skill is Claude-only, also add its name to `CLAUDE_ONLY_SKILLS` in
+`install.sh` so the other harnesses skip it.

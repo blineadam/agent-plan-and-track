@@ -17,7 +17,8 @@
 # What counts as "always on": a skill's SKILL.md frontmatter (name + description)
 # is what loads into every session; the body loads only when the skill fires.
 # So we report BOTH — `frontmatter_tokens` (the always-on cost) and `body_tokens`
-# (the on-demand cost) — and size-flag on the body, which is what balloons.
+# (the on-demand cost) — and size-flag on total file lines (in practice the
+# body; frontmatter is only a few lines).
 #
 # Thresholds (override via env): SKILL_LINE_LIMIT (400), RULES_LINE_LIMIT (100),
 # INSTRUCTIONS_LINE_LIMIT (300).
