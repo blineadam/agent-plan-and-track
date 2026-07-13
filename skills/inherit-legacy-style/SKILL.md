@@ -61,8 +61,8 @@ the header, plus three mandatory sections:
 **6. Offer persistence** (the user picks; never default to enforcement):
 
 - **Soft (recommended)** — reference `.ai-style-rules.md` from the project's
-  instructions file (`CLAUDE.md` / `AGENTS.md` / `copilot-instructions.md`)
-  so it loads every session.
+  instructions file (`CLAUDE.md` / `AGENTS.md` /
+  `.github/copilot-instructions.md`) so it loads every session.
 - **Hard (Claude Code only)** — soft, plus a `PreToolUse` hook on
   Edit/Write in `settings.json` for mechanical enforcement.
 - **None** — keep the file; the user references it manually.

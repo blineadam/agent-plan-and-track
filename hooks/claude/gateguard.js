@@ -76,11 +76,19 @@ function isBuiltinExempt(filePath) {
 }
 
 function globToRegex(glob) {
-  const source = glob
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape metachars, keep * and ?
-    .split('**')
-    .map((part) => part.replace(/\*/g, '[^/]*').replace(/\?/g, '.'))
-    .join('.*');
+  // Tokenize on the glob operators so each converts exactly once. `**/` maps
+  // to an OPTIONAL prefix - zero segments included - so `**/generated/**`
+  // also matches a root-level `generated/`.
+  const source = String(glob)
+    .split(/(\*\*\/|\*\*|\*|\?)/)
+    .map((tok) => {
+      if (tok === '**/') return '(?:.*/)?';
+      if (tok === '**') return '.*';
+      if (tok === '*') return '[^/]*';
+      if (tok === '?') return '.';
+      return tok.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    })
+    .join('');
   try {
     return new RegExp(`(^|/)${source}$`);
   } catch {
@@ -126,16 +134,19 @@ function markerPath(dir, filePath) {
   return path.join(dir, crypto.createHash('sha256').update(filePath).digest('hex').slice(0, 32));
 }
 
-// Mark the path checked and return the denial ordinal (1-based), or null on
-// failure — the caller must then ALLOW (fail open).
+// Atomically claim the (session, file) marker with an exclusive create, so
+// even two parallel edits of the SAME file can't both deny. Returns the
+// denial ordinal (1-based) if this call claimed it, 'exists' if it was
+// already claimed (allow — this file was gated before), or null on any other
+// failure (allow — fail open).
 function markChecked(dir, filePath) {
   try {
     fs.mkdirSync(dir, { recursive: true });
     const ordinal = fs.readdirSync(dir).length + 1;
-    fs.writeFileSync(markerPath(dir, filePath), '');
+    fs.writeFileSync(markerPath(dir, filePath), '', { flag: 'wx' });
     return ordinal;
-  } catch {
-    return null;
+  } catch (err) {
+    return err && err.code === 'EEXIST' ? 'exists' : null;
   }
 }
 
@@ -253,12 +264,11 @@ function main() {
 
   pruneStaleState();
 
-  const dir = sessionDir(input);
-  if (fs.existsSync(markerPath(dir, filePath))) process.exit(0); // already gated once
-
   // Mark at deny time so the retry passes — this is what makes the gate
-  // loop-free. Fail open if the mark can't be persisted.
-  const denials = markChecked(dir, filePath);
+  // loop-free. 'exists' means this file was already gated once: allow.
+  // Fail open if the mark can't be persisted.
+  const denials = markChecked(sessionDir(input), filePath);
+  if (denials === 'exists') process.exit(0);
   if (denials === null) {
     process.stderr.write(
       '[GateGuard] state could not be persisted; allowing the edit to avoid a deny loop.\n'
