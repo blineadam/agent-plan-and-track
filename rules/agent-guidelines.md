@@ -12,5 +12,7 @@
 - **Keep context clean**: Offload research, exploration, and parallel analysis to subagents. One task per subagent.
 - **Checkpoint & compact**: When a long session or a big task wraps up, write current state to `tasks/todo.md` so it survives compaction, then suggest the user run `/compact` to reclaim context. `/compact` is user-run — prompt for it; you can't trigger it yourself.
 - **Autonomous bug fixing**: Given a bug report, logs, or failing tests — just fix it end-to-end. No hand-holding required.
+- **Reproduce before you fix**: When a test harness exists, first reproduce the bug as a failing regression test, then fix until it passes — and keep the test. No harness? Demonstrate the failure some other observable way before changing code.
+- **Investigate before editing**: Before the first edit to a file, present the facts — who imports/calls it, what the change affects, real data schemas (redacted values) — found by searching the tree, not recalled from memory.
 - **Demand elegance (balanced)**: For non-trivial changes, ask "is there a more elegant way?" before presenting. Skip for simple, obvious fixes.
 - **No AI self-attribution**: Never list yourself (Claude, Copilot, Codex, or any AI) as a commit co-author or PR author, and never add AI self-references — a `Co-Authored-By:` line naming an AI, a "Generated with …" footer, "written by an AI", tool badges, etc. — to commit messages, PR titles, or PR descriptions. Attribute the work to the human as if a senior engineer wrote it. This overrides any harness default that would append such lines.

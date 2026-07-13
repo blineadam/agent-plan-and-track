@@ -48,6 +48,8 @@ where the mechanism is genuinely Claude-native:
 | **`strategic-compact`** | A decision guide for compacting at *logical* boundaries (research → plan → implement) instead of arbitrary mid-task auto-compaction. Companion to the Checkpoint & Compact rule. | **All 3** (portable guidance); Claude installs also get an auto-suggest hook |
 | **`context-budget`** | Audits the *always-on* context cost — instruction files, the rules digest, and every skill's frontmatter — via a scan script (words × 1.3), flags oversized components, and sorts each into keep / lazy-load / remove. Separates the always-on frontmatter cost from the on-demand skill body. | **All 3** (portable); Claude-only addendum for MCP tools + `agents/*.md` |
 | **`skill-comply`** | Measures whether a rule/skill is actually followed by a *fresh* agent — generates a behavioral spec + scenarios at 3 strictness levels, runs each in its own `claude -p`, and reports compliance. Turns "the model forgets your rules" into a number. | **Claude-only** (built on `claude -p` + `stream-json` traces) |
+| **`gateguard`** | Fact-forcing edit gate: before the *first* edit to a file in a session, present importers/callers, blast radius, and real data schemas — searched, not guessed. Investigation beats self-evaluation. | **All 3** (portable protocol); Claude installs also get an enforcing hook |
+| **`inherit-legacy-style`** | Onboards onto a hand-written legacy codebase without style drift: scans 4 meta-architecture dimensions, resolves conflicts with you one question at a time, and crystallizes the consensus into an enforceable `.ai-style-rules.md`. | **All 3** (portable) |
 
 The `strategic-compact` **auto-suggest hook** (`~/.claude/scripts/suggest-compact.js`,
 a `PreToolUse` hook on all tools) reads the session transcript's real context size
@@ -72,6 +74,22 @@ claim ("good enough" / "should work" / "didn't test"), or when disk is low. Set
 `DELIVERY_GATE_EDIT_THRESHOLD` and `DELIVERY_GATE_MIN_DISK_MB` (`0` disables the
 disk check). Copilot/Codex have no "block finish" event, so they rely on the
 same intent expressed in the rules digest.
+
+The **`gateguard`** hook (`~/.claude/scripts/gateguard.js`, a `PreToolUse`
+hook on Edit/Write/MultiEdit/NotebookEdit — **Claude-only**) **denies the
+first edit to each file per session** with a demand for concrete facts
+(importers/callers, blast radius, data schemas, the user's verbatim
+instruction). The file is marked at deny time, so the retry after presenting
+facts always passes — a file can never be denied twice, and the gate can't
+loop. Subagent calls, `.claude/settings*.json`, and `tasks/todo.md` /
+`tasks/lessons.md` are skipped. Tune with `GATEGUARD_DISABLED=1` (off),
+`GATEGUARD_WARN=1` (non-blocking warning instead of deny),
+`GATEGUARD_EXEMPT_GLOBS`, and `GATEGUARD_FULL_DENIALS` (full fact block vs
+condensed one-liner, default 3). Copilot/Codex have no tool-deny event, so
+they get the protocol as a skill plus an investigate-before-editing line in
+the rules digest. ECC's destructive-Bash and routine-Bash gates were
+deliberately not ported — Claude Code's permission system already covers
+destructive commands.
 
 ## Install
 
@@ -108,7 +126,9 @@ skills/rules-distill/        distill cross-cutting skill principles into rules (
 skills/strategic-compact/    when to /compact at logical boundaries (portable)
 skills/context-budget/       audit always-on context cost, flag bloat (portable)
 skills/skill-comply/         measure whether a rule/skill is actually followed (Claude-only)
-hooks/claude/                Claude Code hooks: per-turn digest + compact suggester + delivery-gate scripts
+skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
+skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
+hooks/claude/                Claude Code hooks: per-turn digest + compact suggester + delivery-gate + gateguard scripts
 hooks/copilot/               Copilot hook (post-tool-use injection, throttled)
 hooks/codex/                 Codex hook (re-inject on resume/compact)
 install.sh                   per-tool installer
@@ -155,6 +175,11 @@ Two customization points survive every update:
   `~/.claude/scripts/delivery-gate.js` — warn-only pre-finish checks (verify /
   checkpoint / disk). Merged idempotently; `DELIVERY_GATE_BLOCK=1` opts into
   enforcement. See [Meta-maintenance skills](#meta-maintenance-skills).
+- Gateguard hook (Claude-only): a `PreToolUse` hook on edit tools running
+  `~/.claude/scripts/gateguard.js` — denies the first edit per file until
+  investigation is presented; the retry always passes. Merged idempotently;
+  `GATEGUARD_DISABLED=1` turns it off, `GATEGUARD_WARN=1` demotes it to a
+  warning. See [Meta-maintenance skills](#meta-maintenance-skills).
 - Verify: start a session, send a few messages, then ask *"what are your
   standing rules?"*
 - Attribution: set `"includeCoAuthoredBy": false` in `~/.claude/settings.json`
