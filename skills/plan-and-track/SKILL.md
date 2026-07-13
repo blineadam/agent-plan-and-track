@@ -9,7 +9,7 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
 
 ## Before implementing
 
-1. Reconcile stale batches first: scan `tasks/todo.md` for any batch still shown at full `## Plan`/`## Review` detail that references a PR number. For each, check `gh pr view <#> --json state,mergedAt -q .state` (skip silently if `gh` is unavailable/unauthenticated, or the batch has no PR link) — if `MERGED`, compress it now per step 13. This catches merges and branch cleanup done outside the agent, not just ones it performed itself. Once a batch is compressed it's a one-liner and this scan skips it on every future run, so the check stays cheap.
+1. Reconcile stale batches first: scan `tasks/todo.md` for any batch whose `## Plan` checklist is fully checked off (`[x]`) but is still shown at full `## Plan`/`## Review` detail. Compress each one down to one line summarizing the outcome (e.g. `Batch N — <title> — done <date>, PR #X` or, if there's no PR, `Batch N — <title> — done <date>. <one-clause summary>`). Leave any batch with an unchecked step at full detail. This needs no external system (no GitHub/PR dependency) — checklist state already in `tasks/todo.md` is the only signal, so it works the same whether or not this project uses PRs. Once a batch is compressed it's a one-liner and this scan skips it on every future run, so the check stays cheap.
 2. Read `tasks/lessons.md` if it exists and apply any relevant lessons to the plan.
 3. Enter plan mode if not already in it. Write a detailed spec upfront to reduce ambiguity.
 4. Write the plan to `tasks/todo.md` as a checklist:
@@ -26,7 +26,7 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
 
 ## During implementation
 
-6. Mark items `[x]` as they complete. Give a high-level, one-line summary of each change as you go.
+6. Mark items `[x]` as they complete. Give a high-level, one-line summary of each change as you go. If a step's real completion depends on something outside the agent's own actions (a PR merge, a deploy, external sign-off), leave it unchecked until that's actually confirmed — not just when the agent's own part (e.g. opening the PR) is done. Step 1's reconciliation scan only compresses batches that are fully checked off, so a premature check mark compresses a batch before it's really finished.
 7. If something goes sideways: STOP immediately, re-plan in `tasks/todo.md`, then continue. Don't keep pushing a failing approach.
 8. Keep changes minimal — impact only the code the plan requires.
 
@@ -36,4 +36,3 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
 10. Add a `## Review` section to `tasks/todo.md` summarizing what changed, why, and how it was verified.
 11. Update `README.md` if the change is critical or important.
 12. If the user corrected anything along the way, record it via the `capture-lesson` skill.
-13. Compress a merged batch's `## Plan`/`## Review` block in `tasks/todo.md` down to one line pointing at the PR (e.g. `Batch N — <title> — merged <sha>, PR #X. <one-clause summary>`) — whether it was caught by step 1's reconciliation check or this session did the merge/cleanup itself. Leave any still-open or in-progress batch at full detail — a merged PR already has the full history on GitHub, so nothing is lost.
