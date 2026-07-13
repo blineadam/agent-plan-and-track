@@ -6,13 +6,19 @@
 #
 # Idempotent and non-destructive:
 #   - skills are copied (this repo is the source of truth)
-#   - the core-rules digest is copied; a differing existing file is backed up to *.bak
-#   - existing instruction files (CLAUDE.md / AGENTS.md / copilot-instructions.md)
-#     are never modified — merge rules/agent-guidelines.md into them manually
-#   - hooks are merged/copied only if not already installed
+#   - the core-rules digest is copied; a differing existing file is backed up to *.bak;
+#     machine-specific rules belong in core-rules.local.md next to it (never touched)
+#   - instruction files (CLAUDE.md / AGENTS.md / copilot-instructions.md): the repo
+#     content lives inside a marker-delimited managed block that installs update in
+#     place; anything outside the markers is yours and is never touched. An existing
+#     file WITHOUT markers is never modified.
+#   - hooks are merged only if not already installed (Claude/Codex); the Copilot hook
+#     file is repo-owned and overwritten, with a *.bak backup if it differed
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MARK_BEGIN="<!-- agent-plan-and-track:begin (managed block — edit in the repo, not here) -->"
+MARK_END="<!-- agent-plan-and-track:end -->"
 
 usage() {
   echo "Usage: $0 {claude|copilot|codex|all}" >&2
@@ -42,14 +48,21 @@ install_digest() {
 }
 
 install_instructions() {
-  local dest="$1"
-  if [ -f "$dest" ]; then
-    echo "  instructions    -- $dest exists; NOT modified." \
-         "Merge rules/agent-guidelines.md into it manually if desired."
-  else
-    mkdir -p "$(dirname "$dest")"
-    cp "$REPO_DIR/rules/agent-guidelines.md" "$dest"
+  local dest="$1" tmp
+  mkdir -p "$(dirname "$dest")"
+  if [ ! -f "$dest" ]; then
+    { echo "$MARK_BEGIN"; cat "$REPO_DIR/rules/agent-guidelines.md"; echo "$MARK_END"; } > "$dest"
     echo "  instructions    -> $dest"
+  elif grep -qF "$MARK_BEGIN" "$dest"; then
+    tmp="$(mktemp)"
+    awk -v begin="$MARK_BEGIN" -v end="$MARK_END" -v src="$REPO_DIR/rules/agent-guidelines.md" '
+      $0 == begin { print; while ((getline line < src) > 0) print line; close(src); skip = 1; next }
+      $0 == end   { skip = 0 }
+      !skip' "$dest" > "$tmp" && mv "$tmp" "$dest"
+    echo "  instructions    -> managed block updated in $dest (content outside markers untouched)"
+  else
+    echo "  instructions    -- $dest exists without managed markers; NOT modified." \
+         "Move the shared section into a '$MARK_BEGIN' ... '$MARK_END' block to make it updatable."
   fi
 }
 
@@ -80,12 +93,13 @@ install_copilot() {
   install_digest "$HOME/.copilot/core-rules.md"
   install_instructions "$HOME/.copilot/copilot-instructions.md"
   mkdir -p "$HOME/.copilot/hooks"
-  if [ -f "$HOME/.copilot/hooks/core-rules.json" ]; then
-    echo "  hook            -- ~/.copilot/hooks/core-rules.json already exists; NOT modified"
-  else
-    cp "$REPO_DIR/hooks/copilot/core-rules.json" "$HOME/.copilot/hooks/core-rules.json"
-    echo "  hook            -> ~/.copilot/hooks/core-rules.json (postToolUse, 10-min throttle)"
+  local chook="$HOME/.copilot/hooks/core-rules.json"
+  if [ -f "$chook" ] && ! cmp -s "$REPO_DIR/hooks/copilot/core-rules.json" "$chook"; then
+    cp "$chook" "$chook.bak"
+    echo "  (existing hook differed; backed up to $chook.bak)"
   fi
+  cp "$REPO_DIR/hooks/copilot/core-rules.json" "$chook"
+  echo "  hook            -> ~/.copilot/hooks/core-rules.json (postToolUse, 10-min throttle)"
   echo "  done. Hook needs jq at runtime. Start a NEW copilot session to load."
 }
 
