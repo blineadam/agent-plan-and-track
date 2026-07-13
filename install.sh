@@ -29,15 +29,30 @@ need_jq() {
   command -v jq >/dev/null 2>&1 || { echo "error: jq is required (brew install jq)" >&2; exit 1; }
 }
 
-# Portable skills — installed for every harness (Claude/Copilot/Codex).
-# The Claude-only skill (skill-comply) is installed separately in install_claude.
+# Claude-only skills — installed by install_claude, skipped for the other
+# harnesses. Everything else under skills/ is portable and installs everywhere.
+CLAUDE_ONLY_SKILLS=("skill-comply")
+
+is_claude_only() {
+  local name="$1" s
+  for s in "${CLAUDE_ONLY_SKILLS[@]}"; do
+    [ "$s" = "$name" ] && return 0
+  done
+  return 1
+}
+
+# Portable skills — every skills/*/ dir except the Claude-only ones, so a new
+# skill is picked up by re-installing with no install.sh edit.
 copy_skills() {
-  local dest="$1"
+  local dest="$1" dir name names=""
   mkdir -p "$dest"
-  cp -R "$REPO_DIR/skills/plan-and-track" "$REPO_DIR/skills/capture-lesson" \
-        "$REPO_DIR/skills/rules-distill" "$REPO_DIR/skills/strategic-compact" \
-        "$REPO_DIR/skills/context-budget" "$dest/"
-  echo "  skills          -> $dest/{plan-and-track,capture-lesson,rules-distill,strategic-compact,context-budget}"
+  for dir in "$REPO_DIR"/skills/*/; do
+    name="$(basename "$dir")"
+    is_claude_only "$name" && continue
+    cp -R "${dir%/}" "$dest/"
+    names="$names${names:+,}$name"
+  done
+  echo "  skills          -> $dest/{$names}"
 }
 
 install_digest() {
@@ -73,8 +88,11 @@ install_instructions() {
 install_claude() {
   echo "Claude Code (user scope: ~/.claude)"
   copy_skills "$HOME/.claude/skills"
-  cp -R "$REPO_DIR/skills/skill-comply" "$HOME/.claude/skills/"
-  echo "  skill (claude)  -> ~/.claude/skills/skill-comply (Claude-only)"
+  local claude_skill
+  for claude_skill in "${CLAUDE_ONLY_SKILLS[@]}"; do
+    cp -R "$REPO_DIR/skills/$claude_skill" "$HOME/.claude/skills/"
+    echo "  skill (claude)  -> ~/.claude/skills/$claude_skill (Claude-only)"
+  done
   install_digest "$HOME/.claude/core-rules.md"
   install_instructions "$HOME/.claude/CLAUDE.md"
   # strategic-compact auto-suggest hook (Claude-only): script + PreToolUse hook.
