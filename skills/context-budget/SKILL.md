@@ -49,16 +49,22 @@ exist) plus any dirs you pass, each harness's instruction file, and the
 `core-rules.md` digest. Token estimate is deliberately crude — **words × 1.3** —
 a relative bloat signal, not a tokenizer. Output JSON fields:
 
-- `always_on_tokens` — the number to drive down (instruction files + digest +
-  all skill frontmatter).
-- `skill_body_tokens_total` — on-demand; informational.
+- `harnesses.{claude,copilot,codex}.always_on_tokens` — **the number to drive
+  down, per harness** (that harness's skill frontmatter + its instruction file +
+  its digest). The three harnesses are mutually exclusive — a session pays *one*
+  column, never the sum — so the report is per-harness, not a single total.
+- `harnesses.*.skill_body_tokens` — on-demand; informational.
+- `repo_inventory` — skills from extra dirs you passed (e.g. the repo's own
+  `./skills`). This is a pre-install *source* listing, **not** a session cost;
+  it's reported separately so it never inflates a harness baseline.
 - `counts.oversized_skills` / `oversized_configs` — components past the line
   limits (skills > 400 lines, rules > 100, instructions > 300; override via
   `SKILL_LINE_LIMIT` / `RULES_LINE_LIMIT` / `INSTRUCTIONS_LINE_LIMIT`).
-- `skills[]` / `configs[]` — per-component `tokens`, `lines`, `over_limit`.
+- `skills[]` / `configs[]` — per-component `tokens`, `lines`, `over_limit`, and
+  the `harness` it was classified into.
 
-Report a one-line summary before analysis, e.g.
-`Always-on: ~5.3k tok | 36 skills | 2 oversized | 6 config files`.
+Report a one-line summary per harness before analysis, e.g.
+`claude: ~1.4k always-on / 6 skills · copilot: ~2.4k / 21 · codex: ~1.2k / 4 — 2 oversized`.
 
 ## Phase 2 — Triage (LLM judgment)
 

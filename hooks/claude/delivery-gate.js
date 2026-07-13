@@ -13,21 +13,28 @@
  * so blocking is strictly opt-in (DELIVERY_GATE_BLOCK=1) and self-limiting: it
  * blocks at most once per turn (honoring `stop_hook_active`), never repeatedly.
  *
- * Checks (heuristic, transcript-tail based — all WARN):
+ * Checks (heuristic — all WARN):
  *  - Complex session (>= EDIT_THRESHOLD edits) that never checkpointed to
  *    tasks/todo.md.
  *  - Rationalization language in recent assistant text ("good enough", "should
  *    work", "didn't run", ...) → nudge to actually verify.
  *  - Low free disk on the working directory.
  *
- * Self-contained: Node core only (Claude Code ships Node). Reads a bounded tail
- * of Claude's transcript JSONL (Stop fires once per turn-end, so a larger tail
- * than the compact hook is affordable).
+ * Self-contained: Node core only (Claude Code ships Node). Two transcript reads,
+ * each matched to what the signal needs — Stop fires once per turn-end, so both
+ * are affordable:
+ *  - Edit count + tasks/todo.md checkpoint: a full streaming pass over the whole
+ *    JSONL. These are session-wide facts; a bounded tail would miss edits (or a
+ *    real checkpoint) that scrolled past it in a long session and misjudge the
+ *    session as simple / un-checkpointed.
+ *  - Rationalization: a bounded tail only — we deliberately want *recent* text,
+ *    so an early phrase later resolved doesn't trip the gate at finish time.
  *
  * Config (env):
  *   DELIVERY_GATE_BLOCK        "1" to block (opt-in). Default: warn-only.
  *   DELIVERY_GATE_EDIT_THRESHOLD   edits before "complex session" (default 3).
- *   DELIVERY_GATE_TAIL_BYTES   transcript tail to scan (default 2097152 = 2MB).
+ *   DELIVERY_GATE_TAIL_BYTES   recent-text tail for rationalization
+ *                              (default 2097152 = 2MB).
  *   DELIVERY_GATE_MIN_DISK_MB  warn under this many MB free (default 500; 0 off).
  */
 'use strict';
@@ -35,6 +42,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { StringDecoder } = require('string_decoder');
 
 function readStdin() {
   try {
@@ -92,6 +100,41 @@ function readTranscriptTail(transcriptPath, maxTail) {
   return out;
 }
 
+// Stream a file line-by-line, synchronously, without loading it all at once.
+// StringDecoder carries partial multibyte UTF-8 sequences across chunk reads.
+function forEachLine(filePath, fn) {
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+  } catch {
+    return;
+  }
+  const decoder = new StringDecoder('utf8');
+  const buf = Buffer.alloc(1 << 20); // 1 MB chunks
+  let leftover = '';
+  try {
+    let bytes;
+    while ((bytes = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+      leftover += decoder.write(buf.subarray(0, bytes));
+      let nl;
+      while ((nl = leftover.indexOf('\n')) >= 0) {
+        fn(leftover.slice(0, nl));
+        leftover = leftover.slice(nl + 1);
+      }
+    }
+    leftover += decoder.end();
+    if (leftover) fn(leftover);
+  } catch {
+    /* partial read — use what we got */
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
 const RATIONALIZATION = [
   /\bgood enough\b/i,
@@ -104,32 +147,50 @@ const RATIONALIZATION = [
   /\bassuming (?:it|this|that) works\b/i,
 ];
 
-// Walk assistant messages in the tail; collect edit count, whether todo.md was
-// touched, and recent assistant text for the rationalization scan.
-function analyze(entries) {
+// Full streaming pass over the whole transcript: session-wide edit count and
+// whether tasks/todo.md was ever checkpointed. Must see the entire session, so
+// it can't rely on a bounded tail.
+function scanEditsAndCheckpoint(transcriptPath) {
   let edits = 0;
   let touchedTodo = false;
+  if (!transcriptPath) return { edits, touchedTodo };
+  forEachLine(transcriptPath, (line) => {
+    const t = line.trim();
+    if (!t) return;
+    let obj;
+    try {
+      obj = JSON.parse(t);
+    } catch {
+      return;
+    }
+    const msg = obj && obj.message;
+    if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) return;
+    for (const block of msg.content) {
+      if (!block || block.type !== 'tool_use' || !EDIT_TOOLS.has(block.name)) continue;
+      edits++;
+      const fp =
+        (block.input && (block.input.file_path || block.input.notebook_path)) || '';
+      if (typeof fp === 'string' && /tasks\/todo\.md$/.test(fp)) touchedTodo = true;
+    }
+  });
+  return { edits, touchedTodo };
+}
+
+// Rationalization scan over recent assistant text only (the bounded tail) — a
+// phrase early in a long session that was later resolved shouldn't trip the gate.
+function scanRationalization(entries) {
   const texts = [];
   for (const obj of entries) {
     const msg = obj && obj.message;
     if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
     for (const block of msg.content) {
-      if (!block || typeof block !== 'object') continue;
-      if (block.type === 'tool_use' && EDIT_TOOLS.has(block.name)) {
-        edits++;
-        const fp =
-          (block.input && (block.input.file_path || block.input.notebook_path)) || '';
-        if (typeof fp === 'string' && /tasks\/todo\.md$/.test(fp)) touchedTodo = true;
-      } else if (block.type === 'text' && typeof block.text === 'string') {
+      if (block && block.type === 'text' && typeof block.text === 'string') {
         texts.push(block.text);
       }
     }
   }
-  // Scan only the last few assistant texts — a rationalization early in a long
-  // session that was later resolved shouldn't trip the gate at finish time.
   const recent = texts.slice(-6).join('\n');
-  const rationalized = RATIONALIZATION.some((re) => re.test(recent));
-  return { edits, touchedTodo, rationalized };
+  return RATIONALIZATION.some((re) => re.test(recent));
 }
 
 function freeDiskMB(dir) {
@@ -162,8 +223,9 @@ function main() {
   const tailBytes = intEnv('DELIVERY_GATE_TAIL_BYTES', 2 * 1024 * 1024) || 2 * 1024 * 1024;
   const minDiskMB = intEnv('DELIVERY_GATE_MIN_DISK_MB', 500);
 
-  const entries = readTranscriptTail(transcriptPath, tailBytes);
-  const { edits, touchedTodo, rationalized } = analyze(entries);
+  // Session-wide facts from the full transcript; recent text from a bounded tail.
+  const { edits, touchedTodo } = scanEditsAndCheckpoint(transcriptPath);
+  const rationalized = scanRationalization(readTranscriptTail(transcriptPath, tailBytes));
 
   const warnings = [];
   if (edits >= editThreshold && !touchedTodo) {

@@ -137,17 +137,51 @@ for dir in "${config_dirs[@]}"; do
 done
 if [[ $j -eq 0 ]]; then configs="[]"; else configs=$(jq -s '.' "$tmpdir"/cfg.*.json); fi
 
+# Report always-on cost PER HARNESS, not as one cross-harness sum: the three
+# harnesses are mutually exclusive — a session runs in exactly one, so summing
+# them (and any repo ./skills copies passed as args) would charge a portable
+# skill up to four times and combine three instruction/digest pairs that never
+# co-load. Each skill/config is classified to its harness; extra dirs (e.g. the
+# repo's own ./skills) land in a separate `repo_inventory` bucket that is a
+# pre-install source listing, never a session cost.
 jq -n --argjson skills "$skills" --argjson configs "$configs" \
       --argjson sl "$SKILL_LINE_LIMIT" --argjson rl "$RULES_LINE_LIMIT" \
       --argjson il "$INSTRUCTIONS_LINE_LIMIT" '
-  {
-    limits: {skill_lines:$sl, rules_lines:$rl, instructions_lines:$il},
-    always_on_tokens: (($skills | map(.frontmatter_tokens) | add) // 0)
-                    + (($configs | map(.tokens) | add) // 0),
-    skill_body_tokens_total: (($skills | map(.body_tokens) | add) // 0),
-    counts: {skills: ($skills | length), configs: ($configs | length),
-             oversized_skills: ($skills | map(select(.over_limit)) | length),
-             oversized_configs: ($configs | map(select(.over_limit)) | length)},
-    skills: $skills,
-    configs: $configs
-  }'
+  def hkey(p):
+    if   (p | test("\\.claude"))          then "claude"
+    elif (p | test("\\.copilot"))         then "copilot"
+    elif (p | test("\\.agents|\\.codex")) then "codex"
+    else "repo" end;
+  def hstats($s; $c):
+    (($s | map(.frontmatter_tokens) | add) // 0) as $fm
+    | (($c | map(.tokens) | add) // 0) as $ct
+    | {
+        skill_count: ($s | length),
+        skill_frontmatter_tokens: $fm,
+        skill_body_tokens: (($s | map(.body_tokens) | add) // 0),
+        config_tokens: $ct,
+        always_on_tokens: ($fm + $ct),
+        oversized: (($s | map(select(.over_limit)) | length)
+                  + ($c | map(select(.over_limit)) | length))
+      };
+  ($skills  | map(. + {harness: hkey(.source)})) as $sk
+  | ($configs | map(. + {harness: hkey(.path)}))  as $cf
+  | {
+      limits: {skill_lines:$sl, rules_lines:$rl, instructions_lines:$il},
+      note: "always_on_tokens is PER harness — a session pays one harness column, never the sum. repo_inventory is source skills from extra dirs passed as args (e.g. ./skills), not a session cost.",
+      harnesses: {
+        claude:  hstats([$sk[]|select(.harness=="claude")];  [$cf[]|select(.harness=="claude")]),
+        copilot: hstats([$sk[]|select(.harness=="copilot")]; [$cf[]|select(.harness=="copilot")]),
+        codex:   hstats([$sk[]|select(.harness=="codex")];   [$cf[]|select(.harness=="codex")])
+      },
+      repo_inventory: {
+        skill_count: ([$sk[]|select(.harness=="repo")] | length),
+        skill_frontmatter_tokens: (([$sk[]|select(.harness=="repo")] | map(.frontmatter_tokens) | add) // 0),
+        skill_body_tokens: (([$sk[]|select(.harness=="repo")] | map(.body_tokens) | add) // 0)
+      },
+      counts: {skills: ($sk | length), configs: ($cf | length),
+               oversized_skills: ($sk | map(select(.over_limit)) | length),
+               oversized_configs: ($cf | map(select(.over_limit)) | length)},
+      skills: $sk,
+      configs: $cf
+    }'
