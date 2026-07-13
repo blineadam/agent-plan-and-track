@@ -140,9 +140,11 @@ Two customization points survive every update:
   `~/.codex/core-rules.md` takes effect immediately.
 - Accept: Run `codex` in a terminal and `2` to accpet all new hooks.
 - Verify: new codex session, a few messages in, ask for its standing rules.
-- Attribution: set `commit_attribution = ""` in `~/.codex/config.toml` to
-  suppress a `Co-authored-by` trailer. (Current builds add none by default; the
-  core rule is the backstop.)
+- Attribution: nothing to set — current Codex builds add no co-author or
+  "generated with" trailer, and the old `commit_attribution` config key was
+  removed upstream (May 2026). The core rule is the backstop; leaving
+  `commit_attribution = ""` in `~/.codex/config.toml` is harmless on older
+  builds that still read it.
 
 ## Managing your rules
 
