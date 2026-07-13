@@ -131,7 +131,7 @@ Two customization points survive every update:
 - Hook: merged into `~/.codex/hooks.json` — a `UserPromptSubmit` hook whose
   stdout is injected as context **every turn**, same as Claude Code. Editing
   `~/.codex/core-rules.md` takes effect immediately.
-- Accept: Run `codex' in a terminal and `2` to accpet all new hooks. 
+- Accept: Run `codex` in a terminal and `2` to accpet all new hooks.
 - Verify: new codex session, a few messages in, ask for its standing rules.
 
 ## Managing your rules
