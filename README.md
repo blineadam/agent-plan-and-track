@@ -41,10 +41,11 @@ done, and turn any correction into a durable rule:
 - **`capture-lesson`** (skill) — kicks in whenever you correct the agent,
   turning the correction into a durable rule in `tasks/lessons.md`.
 
-Copilot has no soft-warn Stop event, so it gets gateguard but not
-delivery-gate; its gateguard wiring follows the CLI docs but wasn't testable
-locally. A harness that lacks the underlying event still gets the rule as a
-skill. Tuning knobs for both hooks live in their script headers under `hooks/`.
+Both hooks install idempotently (see Install below). Copilot has no soft-warn
+Stop event, so it gets gateguard but not delivery-gate; its gateguard wiring
+follows the CLI docs but wasn't testable locally. A harness that lacks the
+underlying event still gets the rule as a skill. Tuning knobs for both hooks
+live in their script headers under `hooks/`.
 
 Best for iterative work in a real repo — features, bug fixes, refactors — where
 a durable plan, an enforced gate, and a growing lessons file pay off across a
@@ -67,7 +68,9 @@ mechanism is genuinely Claude-native.
 
 `strategic-compact` is additionally backed by a Claude-only enforcing hook (the
 **compact suggester**) that nudges you toward `/compact` when context gets
-large — installed idempotently, off switch included, and it never blocks.
+large — installed idempotently, tunable via env vars in the script header
+(`COMPACT_THRESHOLD`, `COMPACT_CONTEXT_THRESHOLD`, `COMPACT_CONTEXT_INTERVAL`),
+and it never blocks.
 
 ## Model defaults
 
