@@ -9,9 +9,10 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
 
 ## Before implementing
 
-1. Read `tasks/lessons.md` if it exists and apply any relevant lessons to the plan.
-2. Enter plan mode if not already in it. Write a detailed spec upfront to reduce ambiguity.
-3. Write the plan to `tasks/todo.md` as a checklist:
+1. Reconcile stale batches first: scan `tasks/todo.md` for any batch still shown at full `## Plan`/`## Review` detail that references a PR number. For each, check `gh pr view <#> --json state,mergedAt -q .state` (skip silently if `gh` is unavailable/unauthenticated, or the batch has no PR link) — if `MERGED`, compress it now per step 13. This catches merges and branch cleanup done outside the agent, not just ones it performed itself. Once a batch is compressed it's a one-liner and this scan skips it on every future run, so the check stays cheap.
+2. Read `tasks/lessons.md` if it exists and apply any relevant lessons to the plan.
+3. Enter plan mode if not already in it. Write a detailed spec upfront to reduce ambiguity.
+4. Write the plan to `tasks/todo.md` as a checklist:
 
    ```markdown
    # <Task name>
@@ -21,18 +22,18 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
    - [ ] Step 2 ...
    ```
 
-4. Check in with the user on the plan before starting implementation (skip only if running autonomously).
+5. Check in with the user on the plan before starting implementation (skip only if running autonomously).
 
 ## During implementation
 
-5. Mark items `[x]` as they complete. Give a high-level, one-line summary of each change as you go.
-6. If something goes sideways: STOP immediately, re-plan in `tasks/todo.md`, then continue. Don't keep pushing a failing approach.
-7. Keep changes minimal — impact only the code the plan requires.
+6. Mark items `[x]` as they complete. Give a high-level, one-line summary of each change as you go.
+7. If something goes sideways: STOP immediately, re-plan in `tasks/todo.md`, then continue. Don't keep pushing a failing approach.
+8. Keep changes minimal — impact only the code the plan requires.
 
 ## When done
 
-8. Verify before marking complete: run tests, check logs, demonstrate correctness. Ask "would a staff engineer approve this?"
-9. Add a `## Review` section to `tasks/todo.md` summarizing what changed, why, and how it was verified.
-10. Update `README.md` if the change is critical or important.
-11. If the user corrected anything along the way, record it via the `capture-lesson` skill.
-12. Once this batch's PR has merged and its branch is cleaned up, compress that batch's `## Plan`/`## Review` block in `tasks/todo.md` down to one line pointing at the PR (e.g. `Batch N — <title> — merged <sha>, PR #X. <one-clause summary>`). Leave any still-open or in-progress batch at full detail — a merged PR already has the full history on GitHub, so nothing is lost.
+9. Verify before marking complete: run tests, check logs, demonstrate correctness. Ask "would a staff engineer approve this?"
+10. Add a `## Review` section to `tasks/todo.md` summarizing what changed, why, and how it was verified.
+11. Update `README.md` if the change is critical or important.
+12. If the user corrected anything along the way, record it via the `capture-lesson` skill.
+13. Compress a merged batch's `## Plan`/`## Review` block in `tasks/todo.md` down to one line pointing at the PR (e.g. `Batch N — <title> — merged <sha>, PR #X. <one-clause summary>`) — whether it was caught by step 1's reconciliation check or this session did the merge/cleanup itself. Leave any still-open or in-progress batch at full detail — a merged PR already has the full history on GitHub, so nothing is lost.
