@@ -107,6 +107,10 @@ Two customization points survive every update:
   `~/.claude/core-rules.md` takes effect immediately; no restart needed.
 - Verify: start a session, send a few messages, then ask *"what are your
   standing rules?"*
+- Attribution: set `"includeCoAuthoredBy": false` in `~/.claude/settings.json`
+  to stop Claude Code appending the `Co-Authored-By: Claude` trailer and the
+  "Generated with Claude Code" footer at the source (default `true`). The core
+  rule stays the cross-tool backstop.
 
 ### GitHub Copilot (`~/.copilot`)
 
@@ -119,6 +123,9 @@ Two customization points survive every update:
   (`~/.copilot/.core-rules-last`). Change the `600` in the hook to re-tune.
 - Verify: new `copilot` session → run something that uses a tool → ask for its
   standing rules.
+- Attribution: set `"includeCoAuthoredBy": false` in `~/.copilot/settings.json`
+  to stop the Copilot CLI adding a `Co-authored-by: Copilot` trailer (default
+  `true`).
 
 ### Codex (`~/.codex`)
 
@@ -133,6 +140,9 @@ Two customization points survive every update:
   `~/.codex/core-rules.md` takes effect immediately.
 - Accept: Run `codex` in a terminal and `2` to accpet all new hooks.
 - Verify: new codex session, a few messages in, ask for its standing rules.
+- Attribution: set `commit_attribution = ""` in `~/.codex/config.toml` to
+  suppress a `Co-authored-by` trailer. (Current builds add none by default; the
+  core rule is the backstop.)
 
 ## Managing your rules
 
