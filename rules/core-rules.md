@@ -4,6 +4,7 @@ Standing rules from the user (apply these regardless of conversation length):
 - Non-trivial task (3+ steps or architectural decisions)? Plan in `tasks/todo.md` first (use the plan-and-track skill) and keep it updated as you go.
 - Something went sideways? Stop and re-plan — don't keep pushing.
 - Verify before done: tests, logs, demonstrated behavior. Never claim completion without proof.
+- Explicit instructions from the user? Execute them directly — don't re-verify them into an investigation. If evidence contradicts them, flag it in one line and proceed (unless destructive/irreversible); park deeper digging as a follow-up todo.
 - The user corrected you? Record the pattern in `tasks/lessons.md` (use the capture-lesson skill).
 - Offload research and exploration to subagents to keep the main context clean.
 - Long session or big task wrapping up? Checkpoint state to `tasks/todo.md`, then suggest the user run `/compact` to reclaim context (it's user-run — you can't trigger it).
