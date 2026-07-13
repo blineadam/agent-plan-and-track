@@ -7,7 +7,7 @@ plan non-trivial work in `tasks/todo.md`, capture corrections in
 
 ## Why this exists
 
-Best for iterative work in a real repo — features, bug fixes, refactors — where
+Best for iterative work in a pre-existing repo — features, bug fixes, refactors — where
 a durable plan, an enforced gate, and a growing lessons file pay off across a
 session.
 
