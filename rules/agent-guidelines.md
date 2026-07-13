@@ -5,6 +5,7 @@
 - **Simplicity first**: Make every change as simple as possible. Touch only the code that's necessary.
 - **Root causes only**: No temporary fixes or workarounds. Senior-engineer standards.
 - **Verify before done**: Never mark a task complete without proving it works — tests, logs, demonstrated behavior.
+- **Execute explicit instructions**: When the user gives exact, actionable values or steps, apply them directly — don't re-verify them into an open-ended investigation. If your own findings contradict them, state the caveat in one line and proceed with what they asked (unless it's destructive or irreversible); park deeper digging as a follow-up todo, not a blocker.
 - **Plan non-trivial work**: For tasks with 3+ steps or architectural decisions, use the `plan-and-track` skill (`tasks/todo.md`) before implementing. If something goes sideways, stop and re-plan.
 - **Learn from corrections**: After any correction from the user, use the `capture-lesson` skill (`tasks/lessons.md`).
 - **Keep context clean**: Offload research, exploration, and parallel analysis to subagents. One task per subagent.
