@@ -4,3 +4,10 @@ graphify-out/
 
 # OS cruft
 .DS_Store
+
+# Local-only agent config and task tracking (never committed)
+/.claude/
+/.codex/
+/AGENTS.md
+/CLAUDE.md
+/tasks/
