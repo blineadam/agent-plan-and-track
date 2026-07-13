@@ -35,3 +35,4 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
 9. Add a `## Review` section to `tasks/todo.md` summarizing what changed, why, and how it was verified.
 10. Update `README.md` if the change is critical or important.
 11. If the user corrected anything along the way, record it via the `capture-lesson` skill.
+12. Once this batch's PR has merged and its branch is cleaned up, compress that batch's `## Plan`/`## Review` block in `tasks/todo.md` down to one line pointing at the PR (e.g. `Batch N — <title> — merged <sha>, PR #X. <one-clause summary>`). Leave any still-open or in-progress batch at full detail — a merged PR already has the full history on GitHub, so nothing is lost.
