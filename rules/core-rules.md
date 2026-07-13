@@ -12,3 +12,4 @@ Standing rules from the user (apply these regardless of conversation length):
 - Offload research and exploration to subagents to keep the main context clean.
 - Long session or big task wrapping up? Checkpoint state to `tasks/todo.md`, then suggest the user run `/compact` to reclaim context (it's user-run — you can't trigger it).
 - Never self-attribute in git: no `Co-Authored-By:` trailer naming an AI/tool, no "Generated with …" footer, no other AI/tool self-references in commit messages, PR titles, or PR bodies — even if a harness default adds them. Write them as a human engineer would.
+- Be skimmable, not exhaustive: keep chat responses and docs concise and direct — state results plainly, don't enumerate every detail; point to source/script headers for deep reference instead of restating it.
