@@ -18,6 +18,23 @@ match each kind of rule to the mechanism that keeps it alive:
 | Episodic procedures (plan, capture lessons) | **Skills** | Loaded just-in-time at the *recent* end of context, exactly when triggered |
 | The core rules themselves | **Hooks** re-injecting a digest | Harness-enforced repetition; immune to attention decay |
 
+## When this actually gets used
+
+**`plan-and-track`** triggers on multi-step engineering work: implementing a
+feature, a refactor, or a fix with 3+ dependent steps or an architectural
+decision, resuming a project that already has a `tasks/todo.md`, work going
+sideways mid-task, or an explicit "plan/scope/spec this out" ask. This is
+common — most non-trivial coding sessions hit it at least once.
+
+**`capture-lesson`** triggers on any user correction: a rejected approach, a
+bug you introduced, a misread requirement, a workflow preference you missed.
+Frequency scales with how often you correct course, not with codebase size —
+sessions with zero corrections never touch it.
+
+**Good for**: iterative engineering work in a repo — features, bug fixes,
+refactors, multi-file changes — where a durable plan and a growing lessons
+file pay off across a session or across resumed sessions.
+
 ## Layout
 
 ```text
@@ -78,35 +95,6 @@ Two customization points survive every update:
   digest; the installer never touches it.
 - **Anything outside the managed block** in the instruction files — e.g. a
   `## Python Environment` section below the end marker.
-
-## When this actually gets used
-
-Only skill **frontmatter** (`name` + `description`, a few lines) loads into
-context at session start — the same progressive-disclosure model all three
-tools use. The full `SKILL.md` body only loads when the agent decides the
-current task matches the description, so neither skill is a fixed context tax.
-
-**`plan-and-track`** triggers on multi-step engineering work: implementing a
-feature, a refactor, or a fix with 3+ dependent steps or an architectural
-decision, resuming a project that already has a `tasks/todo.md`, work going
-sideways mid-task, or an explicit "plan/scope/spec this out" ask. This is
-common — most non-trivial coding sessions hit it at least once.
-
-**`capture-lesson`** triggers on any user correction: a rejected approach, a
-bug you introduced, a misread requirement, a workflow preference you missed.
-Frequency scales with how often you correct course, not with codebase size —
-sessions with zero corrections never touch it.
-
-**Good for**: iterative engineering work in a repo — features, bug fixes,
-refactors, multi-file changes — where a durable plan and a growing lessons
-file pay off across a session or across resumed sessions.
-
-**Not a fit for**: one-off questions, read-only analysis/explanation, trivial
-single-step edits, or work outside a project directory (both skills write to
-`tasks/` in the *active project*, so they're inert in an empty or throwaway
-context). Neither skill re-triggers automatically once loaded — it recurs only
-when a later task in the same or a future session matches its description
-again, same as any other skill.
 
 ## Per-tool details
 
