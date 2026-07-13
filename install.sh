@@ -13,7 +13,7 @@
 #     place; anything outside the markers is yours and is never touched. An existing
 #     file WITHOUT markers is never modified.
 #   - hooks are merged only if not already installed (Claude/Codex); the Copilot hook
-#     file is repo-owned and overwritten, with a *.bak backup if it differed
+#     files are repo-owned and overwritten, with a *.bak backup if one differed
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -149,11 +149,11 @@ install_claude() {
   mkdir -p "$HOME/.claude/scripts"
   cp "$REPO_DIR/hooks/claude/suggest-compact.js" "$HOME/.claude/scripts/suggest-compact.js"
   echo "  compact script  -> ~/.claude/scripts/suggest-compact.js"
-  # delivery-gate pre-finish Stop hook (Claude-only): script + Stop hook.
-  cp "$REPO_DIR/hooks/claude/delivery-gate.js" "$HOME/.claude/scripts/delivery-gate.js"
+  # delivery-gate pre-finish Stop hook (shared Claude+Codex script): + Stop hook.
+  cp "$REPO_DIR/hooks/delivery-gate.js" "$HOME/.claude/scripts/delivery-gate.js"
   echo "  delivery script -> ~/.claude/scripts/delivery-gate.js"
-  # gateguard fact-forcing edit gate (Claude-only): script + PreToolUse hook.
-  cp "$REPO_DIR/hooks/claude/gateguard.js" "$HOME/.claude/scripts/gateguard.js"
+  # gateguard fact-forcing edit gate (shared universal script): + PreToolUse hook.
+  cp "$REPO_DIR/hooks/gateguard.js" "$HOME/.claude/scripts/gateguard.js"
   echo "  gateguard script-> ~/.claude/scripts/gateguard.js"
   need_jq
   local settings="$HOME/.claude/settings.json" tmp
@@ -239,7 +239,20 @@ install_copilot() {
   fi
   cp "$REPO_DIR/hooks/copilot/core-rules.json" "$chook"
   echo "  hook            -> ~/.copilot/hooks/core-rules.json (postToolUse, 10-min throttle)"
-  echo "  done. Hook needs jq at runtime. Start a NEW copilot session to load."
+  # gateguard: universal script + repo-owned preToolUse wiring (like core-rules).
+  # UNVERIFIED: the Copilot CLI wasn't available to test against locally — the
+  # wire format follows the docs + the proven core-rules.json shape.
+  mkdir -p "$HOME/.copilot/scripts"
+  cp "$REPO_DIR/hooks/gateguard.js" "$HOME/.copilot/scripts/gateguard.js"
+  echo "  gateguard script-> ~/.copilot/scripts/gateguard.js"
+  local ghook="$HOME/.copilot/hooks/pretooluse-gateguard.json"
+  if [ -f "$ghook" ] && ! cmp -s "$REPO_DIR/hooks/copilot/pretooluse-gateguard.json" "$ghook"; then
+    cp "$ghook" "$ghook.bak"
+    echo "  (existing gateguard hook differed; backed up to $ghook.bak)"
+  fi
+  cp "$REPO_DIR/hooks/copilot/pretooluse-gateguard.json" "$ghook"
+  echo "  gateguard hook  -> ~/.copilot/hooks/pretooluse-gateguard.json (preToolUse on create|edit)"
+  echo "  done. Hooks need jq + node at runtime. Start a NEW copilot session to load."
 }
 
 install_codex() {
@@ -264,7 +277,32 @@ install_codex() {
       "$hooks" > "$tmp" && mv "$tmp" "$hooks"
     echo "  hook            -> merged into $hooks (UserPromptSubmit, per turn)"
   fi
-  echo "  done. Start a new codex session to load."
+  # gateguard + delivery-gate share the universal scripts with Claude; Codex's
+  # Stop payload and apply_patch PreToolUse are Claude-shaped, so the same code
+  # runs here (dialect sniffed at runtime).
+  mkdir -p "$HOME/.codex/scripts"
+  cp "$REPO_DIR/hooks/gateguard.js" "$HOME/.codex/scripts/gateguard.js"
+  cp "$REPO_DIR/hooks/delivery-gate.js" "$HOME/.codex/scripts/delivery-gate.js"
+  echo "  scripts         -> ~/.codex/scripts/{gateguard,delivery-gate}.js"
+  if grep -q 'gateguard' "$hooks"; then
+    echo "  gateguard hook  -- already present in hooks.json"
+  else
+    tmp="$(mktemp)"
+    jq --slurpfile h "$REPO_DIR/hooks/codex/pretooluse-gateguard.json" \
+      '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
+      "$hooks" > "$tmp" && mv "$tmp" "$hooks"
+    echo "  gateguard hook  -> merged into $hooks (PreToolUse on apply_patch; GATEGUARD_DISABLED=1 to turn off)"
+  fi
+  if grep -q 'delivery-gate' "$hooks"; then
+    echo "  delivery hook   -- already present in hooks.json"
+  else
+    tmp="$(mktemp)"
+    jq --slurpfile h "$REPO_DIR/hooks/codex/stop-delivery-gate.json" \
+      '.hooks.Stop = ((.hooks.Stop // []) + $h[0].hooks.Stop)' \
+      "$hooks" > "$tmp" && mv "$tmp" "$hooks"
+    echo "  delivery hook   -> merged into $hooks (Stop; warn-only, DELIVERY_GATE_BLOCK=1 to enforce)"
+  fi
+  echo "  done. Hooks need node at runtime. Start a new codex session to load."
 }
 
 [ $# -eq 1 ] || usage
