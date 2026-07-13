@@ -9,7 +9,7 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
 
 ## Before implementing
 
-1. Reconcile stale batches first: if `tasks/todo.md` exists, scan it for any batch whose `## Plan` checklist is fully checked off (`[x]`) but is still shown at full `## Plan`/`## Review` detail. Compress each one down to one line summarizing the outcome (e.g. `Batch N — <title> — done <date>, PR #X` or, if there's no PR, `Batch N — <title> — done <date>. <one-clause summary>`). Leave any batch with an unchecked step at full detail. This needs no external system (no GitHub/PR dependency) — checklist state already in `tasks/todo.md` is the only signal, so it works the same whether or not this project uses PRs. Once a batch is compressed it's a one-liner and this scan skips it on every future run, so the check stays cheap.
+1. Reconcile stale batches first: if `tasks/todo.md` exists, scan it for any batch that has BOTH a fully checked-off (`[x]`) `## Plan` checklist AND an existing `## Review` section, but is still shown at full detail. A checked Plan alone only proves implementation (step 6); the Review section is what proves verification/closeout (steps 9-10) actually happened, so both are required before compressing. Compress each matching batch down to one line summarizing the outcome (e.g. `Batch N — <title> — done <date>, PR #X` or, if there's no PR, `Batch N — <title> — done <date>. <one-clause summary>`). Leave any batch missing either signal at full detail — including a fully checked Plan with no Review section yet, since that means implementation finished but verification hasn't. This needs no external system (no GitHub/PR dependency) — checklist and Review state already in `tasks/todo.md` is the only signal, so it works the same whether or not this project uses PRs. Once a batch is compressed it's a one-liner and this scan skips it on every future run, so the check stays cheap.
 2. Read `tasks/lessons.md` if it exists and apply any relevant lessons to the plan.
 3. Enter plan mode if not already in it. Write a detailed spec upfront to reduce ambiguity.
 4. Write the plan to `tasks/todo.md` as a checklist:
@@ -26,7 +26,7 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
 
 ## During implementation
 
-6. Mark items `[x]` as they complete. Give a high-level, one-line summary of each change as you go. If a step's real completion depends on something outside the agent's own actions (a PR merge, a deploy, external sign-off), leave it unchecked until that's actually confirmed — not just when the agent's own part (e.g. opening the PR) is done. Step 1's reconciliation scan only compresses batches that are fully checked off, so a premature check mark compresses a batch before it's really finished.
+6. Mark items `[x]` as they complete. Give a high-level, one-line summary of each change as you go. If a step's real completion depends on something outside the agent's own actions (a PR merge, a deploy, external sign-off), leave it unchecked until that's actually confirmed — not just when the agent's own part (e.g. opening the PR) is done. Step 1's reconciliation scan requires both a fully checked-off Plan and a `## Review` section, so checking off Plan items alone can't trigger a premature compression — but still avoid marking a step done before its real completion is confirmed.
 7. If something goes sideways: STOP immediately, re-plan in `tasks/todo.md`, then continue. Don't keep pushing a failing approach.
 8. Keep changes minimal — impact only the code the plan requires.
 
