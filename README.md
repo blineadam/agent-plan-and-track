@@ -2,130 +2,91 @@
 
 Portable, user-scoped agent rules for Claude Code, GitHub Copilot, and Codex:
 plan non-trivial work in `tasks/todo.md`, capture corrections in
-`tasks/lessons.md`, verify before claiming done — and keep those rules **sticky**
-in long sessions instead of fading as the context grows.
+`tasks/lessons.md`, verify before claiming done — and keep those rules
+**sticky** in long sessions instead of letting them fade as the context grows.
 
 ## Why this exists
 
 Global instruction files (`CLAUDE.md`, `AGENTS.md`, `copilot-instructions.md`)
-sit at the very beginning of the context window. In long chats the model's
-attention to them dilutes and it starts "forgetting" your rules. The fix is to
-match each kind of rule to the mechanism that keeps it alive:
+sit at the very top of the context window, and in a long chat the model's
+attention to them drifts — it starts "forgetting" your rules. The fix is to
+match each kind of rule to a mechanism that keeps it alive:
 
 | Rule type | Mechanism | Why it sticks |
 | --- | --- | --- |
-| Constant constraints (short) | Instructions file | Always loaded; kept tiny so it isn't diluted by its own bulk |
-| Episodic procedures (plan, capture lessons) | **Skills** | Loaded just-in-time at the *recent* end of context, exactly when triggered |
-| The core rules themselves | **Hooks** re-injecting a digest | Harness-enforced repetition; immune to attention decay |
+| Short, constant constraints | Instructions file | Always loaded; kept tiny so it isn't buried by its own bulk |
+| Procedures (plan, capture lessons) | **Skills** | Loaded just-in-time, at the recent end of context, when triggered |
+| The core rules themselves | **Hooks** re-injecting a digest | Harness-enforced repetition, immune to attention decay |
 
-## When this actually gets used
+## The everyday skills
 
-**`plan-and-track`** triggers on multi-step engineering work: implementing a
-feature, a refactor, or a fix with 3+ dependent steps or an architectural
-decision, resuming a project that already has a `tasks/todo.md`, work going
-sideways mid-task, or an explicit "plan/scope/spec this out" ask. This is
-common — most non-trivial coding sessions hit it at least once.
+- **`plan-and-track`** — kicks in on multi-step work (a feature, a refactor, a
+  3+ step fix, or resuming a repo that already has a `tasks/todo.md`). Writes a
+  checklist, tracks it, and verifies before closing out.
+- **`capture-lesson`** — kicks in whenever you correct the agent, turning the
+  correction into a durable rule in `tasks/lessons.md`.
 
-**`capture-lesson`** triggers on any user correction: a rejected approach, a
-bug you introduced, a misread requirement, a workflow preference you missed.
-Frequency scales with how often you correct course, not with codebase size —
-sessions with zero corrections never touch it.
-
-**Good for**: iterative engineering work in a repo — features, bug fixes,
-refactors, multi-file changes — where a durable plan and a growing lessons
-file pay off across a session or across resumed sessions.
+Best for iterative work in a real repo — features, bug fixes, refactors — where
+a durable plan and a growing lessons file pay off across a session.
 
 ## Meta-maintenance skills
 
-Skills that operate on the rules and skills themselves (adapted from
-[affaan-m/ecc](https://github.com/affaan-m/ecc)). Portability follows the same
-discipline as everything else here — tool-agnostic where it's safe, Claude-only
-where the mechanism is genuinely Claude-native:
+Skills that maintain the rules and skills themselves (adapted from
+[affaan-m/ecc](https://github.com/affaan-m/ecc)). Portable where it's safe,
+Claude-only where the mechanism is genuinely Claude-native.
 
-| Skill | What it does | Where it runs |
+| Skill | What it does | Where |
 | --- | --- | --- |
-| **`rules-distill`** | Scans installed skills across every harness + this repo's rule files, finds principles recurring in 2+ skills that aren't yet rules, and proposes `Append`/`Revise`/`New` edits for your approval. Mechanizes the manual `lessons.md` → `core-rules.md` promotion. | **All 3** (portable) |
-| **`strategic-compact`** | A decision guide for compacting at *logical* boundaries (research → plan → implement) instead of arbitrary mid-task auto-compaction. Companion to the Checkpoint & Compact rule. | **All 3** (portable guidance); Claude installs also get an auto-suggest hook |
-| **`context-budget`** | Audits the *always-on* context cost — instruction files, the rules digest, and every skill's frontmatter — via a scan script (words × 1.3), flags oversized components, and sorts each into keep / lazy-load / remove. Separates the always-on frontmatter cost from the on-demand skill body. | **All 3** (portable); Claude-only addendum for MCP tools + `agents/*.md` |
-| **`skill-comply`** | Measures whether a rule/skill is actually followed by a *fresh* agent — generates a behavioral spec + scenarios at 3 strictness levels, runs each in its own `claude -p`, and reports compliance. Turns "the model forgets your rules" into a number. | **Claude-only** (built on `claude -p` + `stream-json` traces) |
-| **`gateguard`** | Fact-forcing edit gate: before the *first* edit to a file in a session, present importers/callers, blast radius, and real data schemas — searched, not guessed. Investigation beats self-evaluation. | **All 3** (portable protocol); Claude installs also get an enforcing hook |
-| **`inherit-legacy-style`** | Onboards onto a hand-written legacy codebase without style drift: scans 4 meta-architecture dimensions, resolves conflicts with you one question at a time, and crystallizes the consensus into an enforceable `.ai-style-rules.md`. | **All 3** (portable) |
+| **`rules-distill`** | Finds principles recurring across your skills that aren't rules yet, and proposes promoting them. | All 3 |
+| **`strategic-compact`** | Guides you to `/compact` at logical boundaries instead of mid-task. | All 3 |
+| **`context-budget`** | Audits always-on context cost and flags what's too big. | All 3 |
+| **`skill-comply`** | Measures whether a fresh agent actually follows a given rule. | Claude only |
+| **`gateguard`** | Before the first edit to a file, demand the facts — callers, blast radius, schemas — instead of guessing. | All 3 |
+| **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
 
-The `strategic-compact` **auto-suggest hook** (`~/.claude/scripts/suggest-compact.js`,
-a `PreToolUse` hook on all tools) reads the session transcript's real context size
-(a bounded tail read, so it stays cheap even in long sessions) and nudges you
-toward `/compact` at a window-scaled threshold (160k on a 200k window, 250k on
-1M), with an all-tools count fallback. It only ever adds a one-line suggestion;
-it never blocks a tool call. Tune with `COMPACT_THRESHOLD`,
-`COMPACT_CONTEXT_THRESHOLD` (`0` disables the size signal), and
-`COMPACT_CONTEXT_INTERVAL`. Copilot/Codex get the guidance skill but not the
-hook — neither exposes the same transcript/`/compact` mechanics.
+On Claude, three of these are backed by **hooks** that enforce the rule rather
+than just suggest it — installed idempotently, each with an off switch:
 
-The **`delivery-gate`** hook (`~/.claude/scripts/delivery-gate.js`, a `Stop`
-hook — **Claude-only**) runs deterministic pre-finish checks at the harness
-layer: the *verify-before-done* and *checkpoint-state* rules enforced where the
-model can't quietly skip them. It's **warn-only by default** — it surfaces a
-`systemMessage` and always lets the session stop; a Stop hook that traps you in
-a loop is worse than the problem. It warns when a complex session (≥ 3 edits)
-never checkpointed to `tasks/todo.md`, when recent text reads like an unverified
-claim ("good enough" / "should work" / "didn't test"), or when disk is low. Set
-`DELIVERY_GATE_BLOCK=1` to opt into actually blocking the stop once (it honors
-`stop_hook_active`, so stopping again always overrides — no trap). Tune with
-`DELIVERY_GATE_EDIT_THRESHOLD` and `DELIVERY_GATE_MIN_DISK_MB` (`0` disables the
-disk check). Copilot/Codex have no "block finish" event, so they rely on the
-same intent expressed in the rules digest.
+- **compact suggester** — nudges you toward `/compact` when the context gets
+  large. Never blocks.
+- **delivery-gate** — a warn-only pre-finish check ("did you verify? did you
+  checkpoint?"). `DELIVERY_GATE_BLOCK=1` makes it actually block.
+- **gateguard** — denies the first edit to each file until you've presented the
+  facts; the retry always passes. `GATEGUARD_DISABLED=1` / `GATEGUARD_WARN=1`
+  to soften it.
 
-The **`gateguard`** hook (`~/.claude/scripts/gateguard.js`, a `PreToolUse`
-hook on Edit/Write/MultiEdit/NotebookEdit — **Claude-only**) **denies the
-first edit to each file per session** with a demand for concrete facts
-(importers/callers, blast radius, data schemas, the user's verbatim
-instruction). The file is marked at deny time, so the retry after presenting
-facts always passes — a file can never be denied twice, and the gate can't
-loop. Subagent calls, `.claude/settings*.json`, and `tasks/todo.md` /
-`tasks/lessons.md` are skipped. Tune with `GATEGUARD_DISABLED=1` (off),
-`GATEGUARD_WARN=1` (non-blocking warning instead of deny),
-`GATEGUARD_EXEMPT_GLOBS`, and `GATEGUARD_FULL_DENIALS` (full fact block vs
-condensed one-liner, default 3). Copilot/Codex have no tool-deny event, so
-they get the protocol as a skill plus an investigate-before-editing line in
-the rules digest. ECC's destructive-Bash and routine-Bash gates were
-deliberately not ported — Claude Code's permission system already covers
-destructive commands.
+Each hook's tuning knobs live in its script header under `hooks/claude/`.
+Copilot and Codex get the guidance as skills but not the enforcement — those
+events are Claude-only.
 
 ## Model defaults
 
-The installer also sets a **cost-aware model default** for each harness —
-plan/think on a stronger model, execute on a cheaper one — so you don't pay
-top-tier rates for routine work. Each default is written **only if you haven't
-already chosen one**; an existing choice is never clobbered, and re-running the
-installer reports "already set" and moves on.
+The installer also sets a sensible model default for each harness so routine
+work doesn't run at top-tier cost — written **only if you haven't already chosen
+one**, so it never clobbers your setting and re-runs are no-ops. What the
+default does differs by harness:
 
-| Harness | Default set | Effect | Where |
-| --- | --- | --- | --- |
-| **Claude Code** | `"model": "opusplan"` | Opus during Plan mode, Sonnet for execution | `~/.claude/settings.json` |
-| **Codex** | `plan_mode_reasoning_effort = "high"` | Higher reasoning effort in Plan mode only; execution model + effort untouched | `~/.codex/config.toml` |
-| **Copilot** | `"model": "auto"` | Copilot routes each task to the best-fit model | `~/.copilot/settings.json` |
-
-Codex has no plan-mode *model* swap (no `plan_mode_model` key, so no direct
-`opusplan` analog) — reasoning **effort** is the only phase-specific lever, so
-that's what's set. To change any default, edit the value in the file shown
-above (or use the harness's own `/model` picker) — the installer won't
-overwrite it on the next run.
-
-### Tiered subagents (Claude-only)
-
-Two subagent definitions install to `~/.claude/agents/`, each **pinned to a
-cheaper model than a plan-mode session** so delegated work runs cheaply no
-matter what the main session is set to:
-
-| Agent | Model / effort | For |
+| Harness | Default | Effect |
 | --- | --- | --- |
-| **`researcher`** | Sonnet / medium, read-only tools | Offloaded exploration — map how code works, find where a symbol is used, gather the facts an edit needs (importers, blast radius, schemas). Keeps the main context clean; never writes. |
-| **`mechanic`** | Haiku / low, edit tools | Already-decided mechanical edits — apply a settled rename across files, fix formatting, sync docs to a stated change. Kicks anything needing a judgment call back to you. |
+| Claude Code | `model: opusplan` | Opus in Plan mode, Sonnet for execution — a real per-phase model swap |
+| Codex | `plan_mode_reasoning_effort: high` | More reasoning in Plan mode only; the execution model and effort are untouched |
+| Copilot | `model: auto` | Copilot routes each task to a fitting model (no fixed plan/execute split) |
 
-Delegate to them by name (e.g. *"use the researcher agent to find every caller
-of `foo`"*). This tiering is Claude-only: Copilot CLI has fixed built-in agents
-and Codex has no user-definable per-agent model pin — the same Claude-native
-split as the hooks.
+Only Claude's `opusplan` actually swaps models between planning and execution;
+Codex has no plan-mode *model* lever (only effort), and Copilot's `auto` just
+routes dynamically. To change a default, edit its config file (or use the
+harness's `/model`) — the installer leaves your value alone.
+
+**Tiered subagents (Claude only)** install to `~/.claude/agents/`, each pinned
+to a cheaper model so delegated work stays cheap:
+
+- **`researcher`** (Sonnet, read-only) — offloaded exploration: map code, find
+  callers, gather the facts an edit needs. Never writes.
+- **`mechanic`** (Haiku) — already-decided mechanical edits; kicks anything that
+  needs a judgment call back to you.
+
+Call them by name ("use the researcher agent to…"). Copilot and Codex have no
+user-definable per-agent model pin, so this part is Claude-only.
 
 ## Install
 
@@ -135,23 +96,18 @@ cd agent-plan-and-track
 ./install.sh all        # or: claude | copilot | codex
 ```
 
-The installer is idempotent and non-destructive:
+Idempotent and non-destructive:
 
-- **Skills** are copied into the tool's user skills dir (this repo is the source of truth).
-- **`core-rules.md`** is copied next to the tool's config; a differing existing copy is backed up to `*.bak`.
-- **Instruction files** (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
-  `~/.copilot/copilot-instructions.md`) get the repo content inside a
-  marker-delimited **managed block** (`<!-- agent-plan-and-track:begin -->` …
-  `<!-- agent-plan-and-track:end -->`). Re-installs update only that block;
-  anything you add outside the markers is never touched. An existing file
-  *without* markers is left alone entirely.
-- **Hooks** are merged via `jq` (Claude/Codex) only when not already installed;
-  the Copilot hook file is repo-owned and kept in sync (differing copy backed
-  up to `*.bak`).
-- **Model defaults** and the Claude-only **tiered subagents** are set only when
-  you haven't already made a choice — see [Model defaults](#model-defaults).
+- **Skills, digest, and hooks** are copied/merged into each tool's user config;
+  a differing existing digest or Copilot hook is backed up to `*.bak`.
+- **Instruction files** get the repo content inside a marker-delimited managed
+  block — re-installs update only that block, and anything you add outside it is
+  never touched. A file without the markers is left alone entirely.
+- **Model defaults** are written only when you haven't already chosen one. The
+  Claude **subagents** are repo-owned like skills — kept in sync on each install
+  (customize them in the repo, not in `~/.claude/agents/`).
 
-Requires `jq` (install-time for Claude/Codex, runtime for the Copilot hook).
+Requires `jq`. Update later with `git pull && ./install.sh all`.
 
 ## Layout
 
@@ -167,124 +123,42 @@ skills/skill-comply/         measure whether a rule/skill is actually followed (
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
 agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku)
-hooks/claude/                Claude Code hooks: per-turn digest + compact suggester + delivery-gate + gateguard scripts
+hooks/claude/                Claude hooks: digest + compact suggester + delivery-gate + gateguard
 hooks/copilot/               Copilot hook (post-tool-use injection, throttled)
 hooks/codex/                 Codex hook (re-inject on resume/compact)
 install.sh                   per-tool installer
 ```
 
-## Updating
+## Customizing
 
-```sh
-cd agent-plan-and-track
-git pull
-./install.sh all
-```
+Two things survive every update:
 
-That propagates skills, the digest, instruction managed blocks, and the Copilot
-hook. The one thing it won't rewrite is a hook already merged into
-`~/.claude/settings.json` or `~/.codex/hooks.json` — if a repo update ever
-changes those hook *commands*, delete the old entry and re-run the installer.
-
-## Machine-specific rules
-
-Two customization points survive every update:
-
-- **`core-rules.local.md`** next to each tool's `core-rules.md` (e.g.
-  `~/.claude/core-rules.local.md`) — extra digest lines for this machine
-  (Python venvs, local paths). The hooks concatenate it after the shared
-  digest; the installer never touches it.
-- **Anything outside the managed block** in the instruction files — e.g. a
+- **`core-rules.local.md`** next to each tool's `core-rules.md` — extra digest
+  lines just for this machine (venvs, local paths). The installer never touches
+  it; the hooks append it after the shared digest.
+- **Anything outside the managed block** in an instruction file — e.g. a
   `## Python Environment` section below the end marker.
 
-## Per-tool details
+To change a shared rule, edit `rules/core-rules.md` and/or
+`rules/agent-guidelines.md` and re-run `./install.sh all` — digest changes are
+live immediately; restart Copilot/Codex sessions for instruction changes. To add
+a skill, drop it in `skills/<name>/SKILL.md` (the `description` tells the agent
+*when* to use it) and re-install; if it's Claude-only, add it to
+`CLAUDE_ONLY_SKILLS` in `install.sh`.
 
-### Claude Code (`~/.claude`)
+## Per-tool notes
 
-- Instructions: `~/.claude/CLAUDE.md` (loaded every session, re-injected after compaction).
-- Skills: `~/.claude/skills/<name>/SKILL.md`.
-- Model default: `"model": "opusplan"` in `~/.claude/settings.json` (Opus in
-  Plan mode, Sonnet for execution), set only if you haven't already chosen a
-  model. Change it with `/model` or by editing the file. See
-  [Model defaults](#model-defaults).
-- Subagents: `~/.claude/agents/{researcher,mechanic}.md` — Sonnet/Haiku helpers
-  for offloaded research and already-decided mechanical edits.
-- Hook: `UserPromptSubmit` in `~/.claude/settings.json` — `cat`s the digest, so
-  its stdout is injected as context **every turn**. Editing
-  `~/.claude/core-rules.md` takes effect immediately; no restart needed.
-- Compact hook (Claude-only): a `PreToolUse` (all tools) entry running
-  `~/.claude/scripts/suggest-compact.js` — the `strategic-compact` auto-suggester.
-  Merged idempotently and independently of the digest hook; see
-  [Meta-maintenance skills](#meta-maintenance-skills) for the config knobs.
-- Delivery-gate hook (Claude-only): a `Stop` hook running
-  `~/.claude/scripts/delivery-gate.js` — warn-only pre-finish checks (verify /
-  checkpoint / disk). Merged idempotently; `DELIVERY_GATE_BLOCK=1` opts into
-  enforcement. See [Meta-maintenance skills](#meta-maintenance-skills).
-- Gateguard hook (Claude-only): a `PreToolUse` hook on edit tools running
-  `~/.claude/scripts/gateguard.js` — denies the first edit per file until
-  investigation is presented; the retry always passes. Merged idempotently;
-  `GATEGUARD_DISABLED=1` turns it off, `GATEGUARD_WARN=1` demotes it to a
-  warning. See [Meta-maintenance skills](#meta-maintenance-skills).
-- Verify: start a session, send a few messages, then ask *"what are your
-  standing rules?"*
-- Attribution: set `"includeCoAuthoredBy": false` in `~/.claude/settings.json`
-  to stop Claude Code appending the `Co-Authored-By: Claude` trailer and the
-  "Generated with Claude Code" footer at the source (default `true`). The core
-  rule stays the cross-tool backstop.
+- **Claude** (`~/.claude`) — the digest is injected every turn via a
+  `UserPromptSubmit` hook, so edits to `core-rules.md` are live. Set
+  `"includeCoAuthoredBy": false` in `settings.json` to drop the co-author
+  trailer.
+- **Copilot** (`~/.copilot`) — reads instructions at session start (restart
+  after edits); the digest rides a throttled `postToolUse` hook (once per
+  10 min, since Copilot has no prompt-submit injection). `"includeCoAuthoredBy":
+  false` drops its trailer too.
+- **Codex** (`~/.codex`) — the user `AGENTS.md` loads before project ones; skills
+  live in `~/.agents/skills/`. Run `codex` and press `2` to accept new hooks.
+  Recent builds add no attribution trailer.
 
-### GitHub Copilot (`~/.copilot`)
-
-- Instructions: `~/.copilot/copilot-instructions.md` (CLI reads it at **session
-  start only** — restart sessions after editing).
-- Skills: `~/.copilot/skills/` (Copilot also scans `~/.claude/skills/` and `~/.agents/skills/`).
-- Model default: `"model": "auto"` in `~/.copilot/settings.json` (Copilot
-  auto-routes per task), added only if absent and only when the file parses as
-  plain JSON — a JSONC file with comments is left untouched. See
-  [Model defaults](#model-defaults).
-- Hook: `~/.copilot/hooks/core-rules.json` — Copilot doesn't support context
-  injection on prompt-submit, so this rides `postToolUse` (which does support
-  `additionalContext`), throttled to once per 10 minutes via a timestamp file
-  (`~/.copilot/.core-rules-last`). Change the `600` in the hook to re-tune.
-- Verify: new `copilot` session → run something that uses a tool → ask for its
-  standing rules.
-- Attribution: set `"includeCoAuthoredBy": false` in `~/.copilot/settings.json`
-  to stop the Copilot CLI adding a `Co-authored-by: Copilot` trailer (default
-  `true`).
-
-### Codex (`~/.codex`)
-
-- Instructions: `~/.codex/AGENTS.md` (user-level, loaded once per session and
-  concatenated *before* project `AGENTS.md` files — so project instructions win
-  on conflict by appearing later in the prompt).
-- Skills: `~/.agents/skills/<name>/SKILL.md` — the documented user-scope
-  location (`~/.codex/skills/` is legacy). Copilot scans `~/.agents/skills/`
-  too, so Codex-installed skills are visible to both.
-- Model default: `plan_mode_reasoning_effort = "high"` in
-  `~/.codex/config.toml` — raises reasoning effort in Plan mode only; the
-  execution model and effort are left untouched (Codex has no plan-mode model
-  swap). Added only if absent. See [Model defaults](#model-defaults).
-- Hook: merged into `~/.codex/hooks.json` — a `UserPromptSubmit` hook whose
-  stdout is injected as context **every turn**, same as Claude Code. Editing
-  `~/.codex/core-rules.md` takes effect immediately.
-- Accept: Run `codex` in a terminal and press `2` to accept all new hooks.
-- Verify: new codex session, a few messages in, ask for its standing rules.
-- Attribution: nothing to set — current Codex builds add no co-author or
-  "generated with" trailer, and the old `commit_attribution` config key was
-  removed upstream (May 2026). The core rule is the backstop; leaving
-  `commit_attribution = ""` in `~/.codex/config.toml` is harmless on older
-  builds that still read it.
-
-## Managing your rules
-
-This repo is the source of truth. To change a rule:
-
-1. Edit `rules/core-rules.md` (the digest) and/or `rules/agent-guidelines.md`.
-2. Re-run `./install.sh all`.
-3. Copilot/Codex instructions: restart sessions. Digest changes (Claude, Codex,
-   Copilot hooks read the file at fire time): take effect immediately.
-
-To add a new skill: create `skills/<name>/SKILL.md` with `name:` and
-`description:` frontmatter (the description tells the agent *when* to use it)
-and re-install — `copy_skills()` picks up every `skills/*/` dir automatically.
-If the skill is Claude-only, also add its name to `CLAUDE_ONLY_SKILLS` in
-`install.sh` so the other harnesses skip it.
+To check any of them: start a session, get a few messages in, and ask *"what are
+your standing rules?"*

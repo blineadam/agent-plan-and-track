@@ -57,8 +57,10 @@ copy_skills() {
 
 # Claude-only subagent definitions (agents/*.md): model-tiered helpers so
 # offloaded work runs on a cheaper model than the main session regardless of
-# what it's set to. Every agents/*.md is copied, so adding one needs no edit
-# here. No-op (silent) if the repo has no agents/ dir.
+# what it's set to. These are repo-owned artifacts, exactly like skills — the
+# repo is the source of truth, so each install overwrites them to keep them in
+# sync (customize in the repo, not in ~/.claude/agents). Every agents/*.md is
+# copied, so adding one needs no edit here. No-op if the repo has no agents/ dir.
 copy_agents() {
   local dest="$1" f name names=""
   [ -d "$REPO_DIR/agents" ] || return 0
@@ -72,33 +74,34 @@ copy_agents() {
   [ -n "$names" ] && echo "  agents          -> $dest/{$names} (Claude-only)"
 }
 
-# Insert a top-level TOML `key = "value"` into a config file, idempotently.
-# TOML has no jq, so this mirrors the awk managed-block approach used for
-# instruction files. A new key goes BEFORE the first [section] header (so it
-# stays a root-table key, never captured by a section) — attached to the
-# leading key block when a blank line precedes that section, or appended at
-# EOF when the file has no sections at all. Skips when the key already has an
-# active (non-comment) assignment, so re-runs never duplicate or clobber it.
+# Set a top-level (root-table) TOML `key = "value"` in a config file,
+# idempotently. TOML has no jq, so this stays dependency-free:
+#   - Idempotency check is scoped to the ROOT table (lines before the first
+#     [section]). A same-named key inside a [section] is a *different* key and
+#     must not count — it wouldn't supply the top-level default anyway.
+#   - The write PREPENDS the key as the file's first line. A root key at the
+#     very top is unambiguously a root-table assignment: it can never be
+#     captured by a [section] and can never land inside a multiline ("""...""")
+#     value, so no TOML-structure parsing is needed. (Contrived exception: a
+#     multiline string in the root region whose contents mimic a section header
+#     could fool the check into a false negative — accepted; Codex configs
+#     don't do that.)
 insert_toml_default() {
   local file="$1" key="$2" val="$3" tmp
   mkdir -p "$(dirname "$file")"
   [ -f "$file" ] || : > "$file"
-  if grep -qE "^[[:space:]]*${key}[[:space:]]*=" "$file"; then
-    echo "  plan-mode effort-- $key already set in $(basename "$file"); left alone"
+  if awk -v key="$key" '
+      seen { next }                                  # ignore everything after the first section
+      /^[[:space:]]*\[/ { seen = 1; next }           # first [section] ends the root table
+      $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { found = 1 }
+      END { exit found ? 0 : 1 }
+    ' "$file"; then
+    echo "  plan-mode effort-- $key already set at root in $(basename "$file"); left alone"
     return 0
   fi
   tmp="$(mktemp)"
-  awk -v ins="${key} = \"${val}\"" '
-    # nicety: attach to the leading key block at the first blank line, but only before any section
-    !done && seen && !seen_section && $0 ~ /^[[:space:]]*$/ { print ins; done=1 }
-    # hard rule: never let the key fall past the first [section] header (it must stay a root key)
-    !done && $0 ~ /^[[:space:]]*\[/ { print ins; done=1 }
-    { print }
-    !seen_section && $0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*#/ && $0 !~ /^[[:space:]]*\[/ { seen=1 }
-    $0 ~ /^[[:space:]]*\[/ { seen_section=1 }
-    END { if (!done) print ins }
-  ' "$file" > "$tmp" && mv "$tmp" "$file"
-  echo "  plan-mode effort-> $key = \"$val\" in $(basename "$file")"
+  { echo "$key = \"$val\""; cat "$file"; } > "$tmp" && mv "$tmp" "$file"
+  echo "  plan-mode effort-> $key = \"$val\" prepended in $(basename "$file")"
 }
 
 install_digest() {
