@@ -4,6 +4,7 @@
 
 - **Simplicity first**: Make every change as simple as possible. Touch only the code that's necessary.
 - **Root causes only**: No temporary fixes or workarounds. Senior-engineer standards.
+- **Size the investigation to the stakes**: Before deep-diving a warning or error, classify it: fatal or cosmetic? our code or an external tool's? If cosmetic and external, give the one-line verdict and recommendation and stop — don't reverse-engineer third-party internals or run patch experiments unless asked for a fix. Time-box triage to a few tool calls; if it balloons, surface findings so far and ask before continuing.
 - **Verify before done**: Never mark a task complete without proving it works — tests, logs, demonstrated behavior.
 - **Execute explicit instructions**: When the user gives exact, actionable values or steps, apply them directly — don't re-verify them into an open-ended investigation. If your own findings contradict them, state the caveat in one line and proceed with what they asked (unless it's destructive or irreversible); park deeper digging as a follow-up todo, not a blocker.
 - **Plan non-trivial work**: For tasks with 3+ steps or architectural decisions, use the `plan-and-track` skill (`tasks/todo.md`) before implementing. If something goes sideways, stop and re-plan.
