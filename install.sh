@@ -29,11 +29,14 @@ need_jq() {
   command -v jq >/dev/null 2>&1 || { echo "error: jq is required (brew install jq)" >&2; exit 1; }
 }
 
+# Portable skills — installed for every harness (Claude/Copilot/Codex).
+# The Claude-only skill (skill-comply) is installed separately in install_claude.
 copy_skills() {
   local dest="$1"
   mkdir -p "$dest"
-  cp -R "$REPO_DIR/skills/plan-and-track" "$REPO_DIR/skills/capture-lesson" "$dest/"
-  echo "  skills          -> $dest/{plan-and-track,capture-lesson}"
+  cp -R "$REPO_DIR/skills/plan-and-track" "$REPO_DIR/skills/capture-lesson" \
+        "$REPO_DIR/skills/rules-distill" "$REPO_DIR/skills/strategic-compact" "$dest/"
+  echo "  skills          -> $dest/{plan-and-track,capture-lesson,rules-distill,strategic-compact}"
 }
 
 install_digest() {
@@ -69,20 +72,35 @@ install_instructions() {
 install_claude() {
   echo "Claude Code (user scope: ~/.claude)"
   copy_skills "$HOME/.claude/skills"
+  cp -R "$REPO_DIR/skills/skill-comply" "$HOME/.claude/skills/"
+  echo "  skill (claude)  -> ~/.claude/skills/skill-comply (Claude-only)"
   install_digest "$HOME/.claude/core-rules.md"
   install_instructions "$HOME/.claude/CLAUDE.md"
+  # strategic-compact auto-suggest hook (Claude-only): script + PreToolUse hook.
+  mkdir -p "$HOME/.claude/scripts"
+  cp "$REPO_DIR/hooks/claude/suggest-compact.js" "$HOME/.claude/scripts/suggest-compact.js"
+  echo "  compact script  -> ~/.claude/scripts/suggest-compact.js"
   need_jq
   local settings="$HOME/.claude/settings.json" tmp
   mkdir -p "$HOME/.claude"
   [ -f "$settings" ] || echo '{}' > "$settings"
   if grep -q 'core-rules\.md' "$settings"; then
-    echo "  hook            -- already present in settings.json"
+    echo "  digest hook     -- already present in settings.json"
   else
     tmp="$(mktemp)"
     jq --slurpfile h "$REPO_DIR/hooks/claude/settings-hooks.json" \
       '.hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + $h[0].hooks.UserPromptSubmit)' \
       "$settings" > "$tmp" && mv "$tmp" "$settings"
-    echo "  hook            -> merged into $settings (UserPromptSubmit)"
+    echo "  digest hook     -> merged into $settings (UserPromptSubmit)"
+  fi
+  if grep -q 'suggest-compact' "$settings"; then
+    echo "  compact hook    -- already present in settings.json"
+  else
+    tmp="$(mktemp)"
+    jq --slurpfile h "$REPO_DIR/hooks/claude/pretooluse-compact.json" \
+      '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
+      "$settings" > "$tmp" && mv "$tmp" "$settings"
+    echo "  compact hook    -> merged into $settings (PreToolUse Edit/Write)"
   fi
   echo "  done. New Claude Code sessions pick this up automatically."
 }

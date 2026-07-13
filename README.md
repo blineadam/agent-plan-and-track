@@ -35,6 +35,28 @@ sessions with zero corrections never touch it.
 refactors, multi-file changes — where a durable plan and a growing lessons
 file pay off across a session or across resumed sessions.
 
+## Meta-maintenance skills
+
+Three skills that operate on the rules and skills themselves (adapted from
+[affaan-m/ecc](https://github.com/affaan-m/ecc)). Portability follows the same
+discipline as everything else here — tool-agnostic where it's safe, Claude-only
+where the mechanism is genuinely Claude-native:
+
+| Skill | What it does | Where it runs |
+| --- | --- | --- |
+| **`rules-distill`** | Scans installed skills across every harness + this repo's rule files, finds principles recurring in 2+ skills that aren't yet rules, and proposes `Append`/`Revise`/`New` edits for your approval. Mechanizes the manual `lessons.md` → `core-rules.md` promotion. | **All 3** (portable) |
+| **`strategic-compact`** | A decision guide for compacting at *logical* boundaries (research → plan → implement) instead of arbitrary mid-task auto-compaction. Companion to the Checkpoint & Compact rule. | **All 3** (portable guidance); Claude installs also get an auto-suggest hook |
+| **`skill-comply`** | Measures whether a rule/skill is actually followed by a *fresh* agent — generates a behavioral spec + scenarios at 3 strictness levels, runs each in its own `claude -p`, and reports compliance. Turns "the model forgets your rules" into a number. | **Claude-only** (built on `claude -p` + `stream-json` traces) |
+
+The `strategic-compact` **auto-suggest hook** (`~/.claude/scripts/suggest-compact.js`,
+a `PreToolUse` Edit/Write hook) reads the session transcript's real context size
+and nudges you toward `/compact` at a window-scaled threshold (160k on a 200k
+window, 250k on 1M), with a tool-call-count fallback. It only ever adds a
+one-line suggestion; it never blocks a tool call. Tune with `COMPACT_THRESHOLD`,
+`COMPACT_CONTEXT_THRESHOLD` (`0` disables the size signal), and
+`COMPACT_CONTEXT_INTERVAL`. Copilot/Codex get the guidance skill but not the
+hook — neither exposes the same transcript/`/compact` mechanics.
+
 ## Install
 
 ```sh
@@ -66,7 +88,10 @@ rules/agent-guidelines.md    the short instructions file (constant constraints)
 rules/core-rules.md          one-paragraph digest the hooks re-inject
 skills/plan-and-track/       plan → track → verify workflow (tasks/todo.md)
 skills/capture-lesson/       turn every user correction into a rule (tasks/lessons.md)
-hooks/claude/                Claude Code hook snippet (per-turn injection)
+skills/rules-distill/        distill cross-cutting skill principles into rules (portable)
+skills/strategic-compact/    when to /compact at logical boundaries (portable)
+skills/skill-comply/         measure whether a rule/skill is actually followed (Claude-only)
+hooks/claude/                Claude Code hooks: per-turn digest + compact suggester script
 hooks/copilot/               Copilot hook (post-tool-use injection, throttled)
 hooks/codex/                 Codex hook (re-inject on resume/compact)
 install.sh                   per-tool installer
@@ -105,6 +130,10 @@ Two customization points survive every update:
 - Hook: `UserPromptSubmit` in `~/.claude/settings.json` — `cat`s the digest, so
   its stdout is injected as context **every turn**. Editing
   `~/.claude/core-rules.md` takes effect immediately; no restart needed.
+- Compact hook (Claude-only): a `PreToolUse` (Edit/Write) entry running
+  `~/.claude/scripts/suggest-compact.js` — the `strategic-compact` auto-suggester.
+  Merged idempotently and independently of the digest hook; see
+  [Meta-maintenance skills](#meta-maintenance-skills) for the config knobs.
 - Verify: start a session, send a few messages, then ask *"what are your
   standing rules?"*
 - Attribution: set `"includeCoAuthoredBy": false` in `~/.claude/settings.json`

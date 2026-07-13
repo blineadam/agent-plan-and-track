@@ -1,0 +1,6 @@
+# graphify knowledge-graph artifacts (regenerated locally; never committed)
+graphify-out/
+.graphify/
+
+# OS cruft
+.DS_Store
