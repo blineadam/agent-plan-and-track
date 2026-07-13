@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat \"$HOME/.codex/core-rules.md\" 2>/dev/null || true",
+            "timeout": 5,
+            "statusMessage": "Refreshing standing rules"
+          }
+        ]
+      }
+    ]
+  }
+}
