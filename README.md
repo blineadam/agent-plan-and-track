@@ -18,22 +18,45 @@ match each kind of rule to a mechanism that keeps it alive:
 | Procedures (plan, capture lessons) | **Skills** | Loaded just-in-time, at the recent end of context, when triggered |
 | The core rules themselves | **Hooks** re-injecting a digest | Harness-enforced repetition, immune to attention decay |
 
-## The everyday skills
+## The everyday workflow
 
-- **`plan-and-track`** — kicks in on multi-step work (a feature, a refactor, a
-  3+ step fix, or resuming a repo that already has a `tasks/todo.md`). Writes a
-  checklist, tracks it, and verifies before closing out.
-- **`capture-lesson`** — kicks in whenever you correct the agent, turning the
-  correction into a durable rule in `tasks/lessons.md`.
+These are the ones you hit every session, roughly in the order you hit them —
+plan it, implement under a fact-forcing gate, get checked before you call it
+done, and turn any correction into a durable rule:
+
+- **`plan-and-track`** (skill) — kicks in on multi-step work (a feature, a
+  refactor, a 3+ step fix, or resuming a repo that already has a
+  `tasks/todo.md`). Writes a checklist, tracks it, and verifies before closing
+  out.
+- **gateguard** (skill + enforcing hook, Claude/Codex/Copilot) — before the
+  first edit to a file, demand the facts — callers, blast radius, schemas —
+  instead of guessing. The hook denies that first edit until you've presented
+  them; the retry always passes. One script sniffs each harness's payload
+  dialect (Claude `Edit`/`Write`, Codex `apply_patch`, Copilot `create`/`edit`).
+  `GATEGUARD_DISABLED=1` / `GATEGUARD_WARN=1` soften it.
+- **delivery-gate** (enforcing hook only, Claude/Codex) — a warn-only
+  pre-finish Stop check ("did you verify? did you checkpoint?") backing the
+  verify-before-done and capture-lesson rules at the harness layer.
+  `DELIVERY_GATE_BLOCK=1` makes it block.
+- **`capture-lesson`** (skill) — kicks in whenever you correct the agent,
+  turning the correction into a durable rule in `tasks/lessons.md`.
+
+Both hooks install idempotently (see Install below). Copilot has no soft-warn
+Stop event, so it gets gateguard but not delivery-gate; its gateguard wiring
+follows the CLI docs but wasn't testable locally. A harness that lacks the
+underlying event still gets the rule as a skill. Tuning knobs for both hooks
+live in their script headers under `hooks/`.
 
 Best for iterative work in a real repo — features, bug fixes, refactors — where
-a durable plan and a growing lessons file pay off across a session.
+a durable plan, an enforced gate, and a growing lessons file pay off across a
+session.
 
 ## Meta-maintenance skills
 
 Skills that maintain the rules and skills themselves (adapted from
-[affaan-m/ecc](https://github.com/affaan-m/ecc)). Portable where it's safe,
-Claude-only where the mechanism is genuinely Claude-native.
+[affaan-m/ecc](https://github.com/affaan-m/ecc)) rather than the everyday
+coding workflow above. Portable where it's safe, Claude-only where the
+mechanism is genuinely Claude-native.
 
 | Skill | What it does | Where |
 | --- | --- | --- |
@@ -41,25 +64,13 @@ Claude-only where the mechanism is genuinely Claude-native.
 | **`strategic-compact`** | Guides you to `/compact` at logical boundaries instead of mid-task. | All 3 |
 | **`context-budget`** | Audits always-on context cost and flags what's too big. | All 3 |
 | **`skill-comply`** | Measures whether a fresh agent actually follows a given rule. | Claude only |
-| **`gateguard`** | Before the first edit to a file, demand the facts — callers, blast radius, schemas — instead of guessing. | All 3 |
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
 
-Where a harness exposes the right event, these are backed by **enforcing hooks**
-(not just suggestions) — installed idempotently, each with an off switch:
-
-- **gateguard** (Claude, Codex, Copilot) — denies the first edit to each file
-  until you've presented the facts; the retry always passes. One script sniffs
-  each harness's payload dialect (Claude `Edit`/`Write`, Codex `apply_patch`,
-  Copilot `create`/`edit`). `GATEGUARD_DISABLED=1` / `GATEGUARD_WARN=1` soften it.
-- **delivery-gate** (Claude, Codex) — a warn-only pre-finish Stop check ("did
-  you verify? did you checkpoint?"). `DELIVERY_GATE_BLOCK=1` makes it block.
-- **compact suggester** (Claude) — nudges you toward `/compact` when the context
-  gets large. Never blocks.
-
-Tuning knobs live in each script's header under `hooks/`. Copilot has no
-soft-warn Stop event, so it gets gateguard but not delivery-gate; its gateguard
-wiring follows the CLI docs but wasn't testable locally. A harness that lacks the
-event still gets the rule as a skill.
+`strategic-compact` is additionally backed by a Claude-only enforcing hook (the
+**compact suggester**) that nudges you toward `/compact` when context gets
+large — installed idempotently, tunable via env vars in the script header
+(`COMPACT_THRESHOLD`, `COMPACT_CONTEXT_THRESHOLD`, `COMPACT_CONTEXT_INTERVAL`),
+and it never blocks.
 
 ## Model defaults
 
