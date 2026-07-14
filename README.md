@@ -1,13 +1,15 @@
 # agent-plan-and-track
 
-Portable, user-scoped agent rules for Claude Code, GitHub Copilot, and Codex:
-plan non-trivial work in `tasks/todo.md`, capture corrections in
-`tasks/lessons.md`, verify before claiming done — and keep those rules
-**sticky** in long sessions instead of letting them fade as the context grows.
+Portable, user-scoped agent rules for Claude Code, GitHub Copilot, and Codex that 
+remain active throughout a session and persist across future sessions.
 
-Best for iterative work in a pre-existing repo — features, bug fixes, refactors — where
-a durable plan, an enforced gate, and a growing lessons file pay off across a
-session.
+Uses a `tasks/todo.md` to plan non-trivial work, records your user corrections in 
+`tasks/lessons.md`, and verify changes before claiming completion. These rules 
+stay durable even as the context grows.
+
+Best for iterative work in an existing repository, including features, bug fixes, 
+and refactors, where a persistent plan, an enforced completion gate, and a 
+growing lessons file improve work over time.
 
 ## Why this exists
 
