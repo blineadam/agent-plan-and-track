@@ -26,25 +26,30 @@ A repo that fits in one corpus does not need this. Use plain `graphify update .`
 
 ## One-time build
 
-Build one graph per workspace, then hand the workspace list to `setup`. From the
-monorepo root (call the script by its path in this skill's directory):
+Build one graph per workspace, then hand the workspace list to `setup`. On the first
+run the engine is not in the repo yet (`setup` copies it into the repo root for you),
+so invoke it from the installed skill directory. Run from the monorepo root:
 
 ```sh
 graphify extract ./server --no-cluster --max-workers 4
 graphify extract ./ui --no-cluster --max-workers 4
 
-./graphify-monorepo-sync.sh setup server ui
+# <skill-dir> is where your harness installed this skill, e.g.
+#   ~/.claude/skills/graphify-monorepo, ~/.copilot/skills/graphify-monorepo,
+#   or ~/.agents/skills/graphify-monorepo
+<skill-dir>/graphify-monorepo-sync.sh setup server ui
 ```
 
 `--no-cluster` on the per-workspace builds is deliberate: only the merged root gets
 queried and clustered, so clustering each workspace first is wasted work.
 
 `setup` merges those workspace graphs into `graphify-out/graph.json`, clusters it,
-scaffolds the script + a warn-only pre-push hook into the repo (when it has `.git`),
-and writes a `## Graphify monorepo override` block into whichever of `CLAUDE.md`,
-`AGENTS.md`, and `.github/copilot-instructions.md` already exist. Commit the
-scaffolded `graphify-monorepo-sync.sh`, `graphify-monorepo.conf`, `githooks/`, and
-`graphify-out/` so clones inherit the refresh.
+scaffolds the script + a warn-only pre-push hook into the repo (when the repo is under
+git), and writes a `## Graphify monorepo override` block into whichever of `CLAUDE.md`,
+`AGENTS.md`, and `.github/copilot-instructions.md` already exist. Commit the scaffolded
+`graphify-monorepo-sync.sh`, `graphify-monorepo.conf`, `githooks/`, and `graphify-out/`.
+`core.hooksPath` is local git config and is not cloned, so run
+`./graphify-monorepo-sync.sh install-hook` once in each fresh clone to activate the hook.
 
 ## Day to day
 
@@ -55,8 +60,10 @@ After code changes, refresh the merged graph:
 ```
 
 It updates each workspace graph (AST-only, no API cost), re-merges into the root,
-re-clusters, and re-asserts the override block. With the pre-push hook installed, a
-`git push` runs this for you. Query the merged graph explicitly:
+re-clusters, and re-asserts the override block. The pre-push hook runs this before a
+`git push` and warns you when the refreshed files still need their own commit (a
+pre-push hook cannot add them to the push already in flight). Query the merged graph
+explicitly:
 
 ```sh
 graphify query "<question>" --graph graphify-out/graph.json

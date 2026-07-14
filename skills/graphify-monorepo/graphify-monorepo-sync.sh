@@ -53,11 +53,13 @@ INSTRUCTION_FILES=("CLAUDE.md" "AGENTS.md" ".github/copilot-instructions.md")
 die() { echo "graphify-monorepo: $*" >&2; exit 1; }
 info() { echo "graphify-monorepo: $*"; }
 
-# Write $1 (a temp file) back to $2, preserving a symlink at $2 (config files are
-# often symlinked from a dotfiles repo; a plain mv would replace the link).
+# Write $1 (a temp file) back to $2 by rewriting $2 in place. This preserves $2's
+# existing mode and owner, and any symlink at $2 (config files are often symlinked from
+# a dotfiles repo). A plain `mv` would instead stamp the temp file's 0600 mode onto $2
+# and replace a symlink with a regular file.
 write_back() {
   local tmp="$1" file="$2"
-  if [ -L "$file" ]; then cat "$tmp" > "$file"; rm -f "$tmp"; else mv "$tmp" "$file"; fi
+  cat "$tmp" > "$file"; rm -f "$tmp"
 }
 
 # ROOT is the repo the graph lives in. For sync/write-instructions/install-hook the
@@ -170,6 +172,15 @@ cmd_sync() {
   [ -n "${SYNC_WORKSPACES:-}" ] && read -ra update_list <<< "$SYNC_WORKSPACES"
   [ -n "$subset" ] && read -ra update_list <<< "$subset"
 
+  # Reject any update-list entry that is not a configured workspace: the merge always
+  # uses WORKSPACES, so updating a stray or typo'd dir would leave the real one stale.
+  local w c ok
+  for w in "${update_list[@]}"; do
+    ok=0
+    for c in "${WORKSPACES[@]}"; do [ "$w" = "$c" ] && { ok=1; break; }; done
+    [ "$ok" = 1 ] || die "'$w' is not a configured workspace (WORKSPACES: ${WORKSPACES[*]}). Check --workspaces / SYNC_WORKSPACES."
+  done
+
   local ws
   for ws in "${update_list[@]}"; do
     [ -d "$ROOT/$ws" ] || die "workspace '$ws' not found under $ROOT."
@@ -205,6 +216,12 @@ cmd_sync() {
 # hooksPath is configured, point core.hooksPath at ./githooks so clones inherit it.
 cmd_install_hook() {
   local hookdir="$ROOT/githooks" hook="$ROOT/githooks/pre-push"
+  local marker="graphify-monorepo: refresh the merged graph before push"
+  # Don't clobber a pre-push the repo already maintains: only (re)write our own.
+  if [ -e "$hook" ] && ! grep -q "$marker" "$hook" 2>/dev/null; then
+    info "githooks/pre-push already exists and isn't ours; leaving it untouched. Add a call to '$ENGINE_NAME sync' in it to enable auto-refresh."
+    return 0
+  fi
   mkdir -p "$hookdir"
   cat > "$hook" <<EOF
 #!/usr/bin/env bash
@@ -214,21 +231,27 @@ set -uo pipefail
 root="\$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 if [ -x "\$root/$ENGINE_NAME" ]; then
   "\$root/$ENGINE_NAME" sync || echo "graphify-monorepo: sync failed; push continues" >&2
+  if [ -n "\$(git -C "\$root" status --porcelain -- graphify-out CLAUDE.md AGENTS.md .github/copilot-instructions.md 2>/dev/null)" ]; then
+    echo "graphify-monorepo: graph refreshed but NOT part of this push (a pre-push hook cannot add it)." >&2
+    echo "graphify-monorepo: commit the refreshed files and push again to ship a current graph." >&2
+  fi
 fi
 exit 0
 EOF
   chmod +x "$hook"
   info "wrote githooks/pre-push (warn-only)."
 
-  if [ ! -d "$ROOT/.git" ]; then
-    info "no .git here; skipping hook wiring. Agents will refresh via the override instruction."
+  # `.git` is a directory in a normal repo but a FILE in a linked worktree or submodule;
+  # -e covers both, so we don't wrongly treat those as non-git and skip hook wiring.
+  if [ ! -e "$ROOT/.git" ]; then
+    info "no git repo at $ROOT (no .git); skipping hook wiring. Agents will refresh via the override instruction."
     return 0
   fi
   local current
   current="$(git -C "$ROOT" config --local core.hooksPath 2>/dev/null || true)"
   if [ -z "$current" ]; then
     git -C "$ROOT" config core.hooksPath githooks
-    info "set core.hooksPath=githooks (pre-push now active; commit githooks/ so clones inherit it)."
+    info "set core.hooksPath=githooks (pre-push active here). core.hooksPath is local git config and is NOT cloned; run './$ENGINE_NAME install-hook' in each fresh clone to activate it."
   elif [ "$current" = "githooks" ]; then
     info "core.hooksPath already githooks; pre-push active."
   else
@@ -255,7 +278,9 @@ cmd_setup() {
   fi
 
   local conf="$ROOT/$CONF_NAME" quoted=""
-  for ws in "$@"; do quoted="$quoted${quoted:+ }\"$ws\""; done
+  # Serialize each name with %q so a workspace dir containing spaces or shell
+  # metacharacters can't break or inject when load_config sources this file.
+  for ws in "$@"; do quoted="$quoted${quoted:+ }$(printf '%q' "$ws")"; done
   cat > "$conf" <<EOF
 # graphify-monorepo config. Workspaces merged into the root graphify-out/graph.json.
 # Regenerate/refresh with: ./$ENGINE_NAME sync
@@ -274,7 +299,10 @@ EOF
 Setup complete. Next:
   - Review and commit: $ENGINE_NAME, $CONF_NAME, githooks/pre-push, graphify-out/,
     and the "## Graphify monorepo override" block added to your instruction files.
-  - After code changes, run: ./$ENGINE_NAME sync   (or just push; the hook runs it)
+  - After code changes, run: ./$ENGINE_NAME sync   (the pre-push hook also runs it and
+    warns when the refresh needs its own commit).
+  - In each fresh clone, run: ./$ENGINE_NAME install-hook   (core.hooksPath is local
+    git config, so cloning copies the hook file but not its activation).
   - Keep running 'graphify <harness> install' for query guidance; the override block
     survives it and supersedes the wrong 'graphify update .' line.
 EOF
