@@ -177,7 +177,8 @@ your standing rules?"*
 
 ## Other helpful tools
 
-Informational only; nothing in this repo installs or depends on these.
+These are other skills I install and use that may also be helpful. Nothing in
+this repository installs or depends on them.
 
 - [graphify](https://github.com/safishamsi/graphify): builds a queryable
   knowledge graph of a codebase, so an agent can look up definitions, callers,
