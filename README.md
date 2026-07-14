@@ -50,7 +50,7 @@ A harness that can't run a given hook still gets the rule as a skill — that's
 why Copilot (no Stop event) gets gateguard but not delivery-gate. Tuning knobs
 for both hooks live in their script headers under `hooks/`.
 
-## Meta-maintenance skills
+## Maintenance skills
 
 Skills that maintain the rules and skills themselves (adapted from
 [affaan-m/ecc](https://github.com/affaan-m/ecc)) rather than the everyday
@@ -69,9 +69,9 @@ mechanism is genuinely Claude-native.
 ## Model defaults
 
 The installer sets a sensible model default for each harness so routine work
-doesn't run at top-tier cost. These are repo-owned: every install re-asserts
-them, so a `git pull && ./install.sh all` restores the intended default even on a
-machine that had drifted. What the default does differs by harness:
+doesn't run at top-tier cost. These are repo-owned: every install restores 
+the intended default even on a machine that had drifted. What the default does
+differs by harness:
 
 | Harness | Default | Effect |
 | --- | --- | --- |
