@@ -1,6 +1,6 @@
 ---
 name: skill-comply
-description: Measure whether a skill, rule, or instruction file is actually followed by a fresh agent — even when the prompt doesn't reinforce it. Generate a behavioral spec and scenarios at 3 strictness levels, run each in a fresh non-interactive agent, classify the tool-call trace against the spec, and report compliance. Use to check "is this rule really being obeyed?" after adding or editing rules/skills.
+description: Measure whether a skill, rule, or instruction file is actually followed by a fresh agent — even when the prompt doesn't reinforce it. Generate a behavioral spec and scenarios at 3 strictness levels, run each in a fresh non-interactive agent, classify the tool-call trace against the spec, and report compliance. Use to check "is this rule really being obeyed?" after adding or editing rules/skills. For whether the RIGHT skill is triggered at all, use skill-activation.
 ---
 
 # skill-comply (Claude Code only)
