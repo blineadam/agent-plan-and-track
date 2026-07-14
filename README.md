@@ -66,6 +66,16 @@ mechanism is genuinely Claude-native.
 | **`skill-activation`** | Tests whether the *right* skill fires for a prompt — routing regression, sibling to `skill-comply`. | All 3 (runtime check is Claude-only) |
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
 
+## Large monorepos (graphify)
+
+`graphify-monorepo` (skill, all 3 harnesses) is for repos too big for graphify's
+single-corpus scan, where the root graph is several workspace graphs merged with
+`graphify merge-graphs`. It ships a `sync` script that refreshes the merge the right
+way (update each workspace, re-merge, re-cluster) and writes a `## Graphify monorepo
+override` block into your instruction files so agents stop running the
+corpus-wrecking `graphify update .`. A warn-only pre-push hook keeps the graph current
+where the repo has `.git`. See `skills/graphify-monorepo/SKILL.md`.
+
 ## Model defaults
 
 The installer sets a sensible model default for each harness so routine work
@@ -134,6 +144,7 @@ skills/skill-comply/         measure whether a rule/skill is actually followed (
 skills/skill-activation/     routing regression: does the right skill fire? (static: all 3; runtime: Claude)
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
+skills/graphify-monorepo/    keep a merged multi-workspace graphify graph current (portable)
 agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku)
 hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
