@@ -66,15 +66,30 @@ mechanism is genuinely Claude-native.
 | **`skill-activation`** | Tests whether the *right* skill fires for a prompt — routing regression, sibling to `skill-comply`. | All 3 (runtime check is Claude-only) |
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
 
-## Large monorepos (graphify)
+## Integrations
 
-`graphify-monorepo` (skill, all 3 harnesses) is for repos too big for graphify's
-single-corpus scan, where the root graph is several workspace graphs merged with
-`graphify merge-graphs`. It ships a `sync` script that refreshes the merge the right
-way (update each workspace, re-merge, re-cluster) and writes a `## Graphify monorepo
-override` block into your instruction files so agents stop running the
-corpus-wrecking `graphify update .`. A warn-only pre-push hook keeps the graph current
-where the repo has `.git`. See `skills/graphify-monorepo/SKILL.md`.
+Skills that support a specific external tool rather than the agent workflow itself.
+Optional: add one only if you use the tool it wraps. This is where future external-tool
+skills go too.
+
+### graphify (large monorepos)
+
+**graphify** builds a queryable knowledge graph of a codebase, so an agent can ask
+"where is this defined, what calls it" instead of grepping blind, and its installer
+tells the agent to run `graphify update .` after code changes. That is fine on a normal
+repo. On a monorepo too big for a single scan, graphify instead has you build one graph
+per workspace and merge them, and there `graphify update .` quietly rebuilds everything
+as one graph and throws the merge away.
+
+The [`graphify-monorepo` skill](skills/graphify-monorepo/SKILL.md) (all 3 harnesses)
+covers that case. It ships a `sync` script that refreshes the merged graph the right way
+(update each workspace, re-merge, re-cluster) and writes an override into your
+instruction files so the agent stops running the destructive command. A warn-only
+pre-push hook keeps the graph current where the repo is under git.
+
+Use it when graphify reports a repo is too big for one scan, or when your
+`graphify-out/graph.json` was built by merging several workspace graphs. A repo that
+fits in a single graph does not need it.
 
 ## Model defaults
 
