@@ -1,6 +1,6 @@
 ---
 name: context-budget
-description: Audit the always-on context cost of the agent config — skills, instruction files, and the rules digest — estimate tokens, flag oversized components, and recommend trims (keep / lazy-load / remove). Use when the context feels bloated, after adding several skills or rules, or as periodic hygiene on the instruction surface.
+description: Audit the always-on context cost of the agent config — skills, instruction files, and the rules digest — estimate tokens, flag oversized components, and recommend trims (keep / lazy-load / remove). Use when the context feels bloated, after adding several skills or rules, or as periodic hygiene on the instruction surface. Not for compacting a long conversation — that's strategic-compact.
 ---
 
 # Context Budget
