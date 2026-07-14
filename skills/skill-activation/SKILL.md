@@ -37,10 +37,12 @@ portable guidance, one Claude-specific mechanism):
   activation isn't detectable there; run Phase 0 only on Codex.
 
 > **Only Skill-tool skills are testable this way.** A skill that fires via the
-> Skill tool (plan-and-track, capture-lesson, context-budget, …) shows up in the
-> trace. Hook-enforced gates (`gateguard`, `delivery-gate`) fire from the harness,
-> not the Skill tool, so they never appear — test those with skill-comply or by
-> exercising the hook, not here.
+> Skill tool (plan-and-track, capture-lesson, context-budget, gateguard, …) shows
+> up in the trace and is eligible for the corpus. `delivery-gate` is hook-only
+> (no SKILL.md) — it fires from the harness Stop event, never via the Skill tool,
+> so it never appears; exercise its hook instead. gateguard is hook-*enforced*
+> too, but it also ships as a skill, so its *routing* is testable here even though
+> its *enforcement* isn't.
 
 ## When to use
 

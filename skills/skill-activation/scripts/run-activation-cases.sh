@@ -123,6 +123,19 @@ while IFS= read -r line; do
   prompt=$(jq -r '.prompt' <<<"$line")
   expect=$(jq -r '.expect_skill // empty' <<<"$line")
   forbid=$(jq -r '.forbid_skill // empty' <<<"$line")
+
+  # Validate before touching the filesystem or passing vacuously: the id is
+  # interpolated into a trace path (reject path syntax so a case can't escape
+  # the trace dir), and expect_skill is required (a case with no expect and no
+  # forbidden hit would "pass" while testing nothing — a false negative).
+  invalid=""
+  case "$id" in ""|*/*|*..*) invalid="invalid id '$id': path syntax not allowed" ;; esac
+  [[ -z "$invalid" && -z "$expect" ]] && invalid="invalid case '$id': missing required expect_skill"
+  if [[ -n "$invalid" ]]; then
+    jq -n --arg id "$id" --arg expect "$expect" --arg forbid "$forbid" --arg reason "$invalid" \
+      '{id:$id, expect_skill:$expect, forbid_skill:$forbid, activated:[], pass:false, reason:$reason}' > "$tmp/c.$i.json"
+    i=$((i+1)); continue
+  fi
   trace="$trace_dir/$id.jsonl"
 
   if [[ "$mode" == "run" ]]; then
@@ -130,7 +143,8 @@ while IFS= read -r line; do
       > "$trace" 2> "$trace_dir/$id.err" || true
   fi
   if [[ ! -f "$trace" ]]; then
-    jq -n --arg id "$id" '{id:$id, pass:false, reason:"no trace file", activated:[]}' > "$tmp/c.$i.json"
+    jq -n --arg id "$id" --arg expect "$expect" --arg forbid "$forbid" \
+      '{id:$id, expect_skill:$expect, forbid_skill:$forbid, activated:[], pass:false, reason:"no trace file"}' > "$tmp/c.$i.json"
     i=$((i+1)); continue
   fi
 
@@ -152,7 +166,14 @@ while IFS= read -r line; do
   i=$((i+1))
 done < "$FIXTURES"
 
-[[ $i -eq 0 ]] && { echo '{"cases":[],"passed":0,"total":0}'; exit 0; }
+# In --run we created trace_dir with mktemp; disclose it rather than silently
+# leaving prompts and tool-call transcripts in /tmp. Kept (not deleted) so a
+# failing case's trace can be inspected; rm it when done.
+[[ "$mode" == "run" ]] && echo "# traces retained at $trace_dir — inspect failing cases, then rm" >&2
+
+# accuracy stays present (null) on the empty-corpus path so the report shape
+# never varies for consumers.
+[[ $i -eq 0 ]] && { echo '{"total":0,"passed":0,"accuracy":null,"cases":[]}'; exit 0; }
 jq -s '{total: length,
         passed: (map(select(.pass))|length),
         accuracy: ((map(select(.pass))|length) / length),
