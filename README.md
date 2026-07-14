@@ -35,21 +35,18 @@ done, and turn any correction into a durable rule:
 - **gateguard** (skill + enforcing hook, Claude/Codex/Copilot) — before the
   first edit to a file, demand the facts — callers, blast radius, schemas —
   instead of guessing. The hook denies that first edit until you've presented
-  them; the retry always passes. One script sniffs each harness's payload
-  dialect (Claude `Edit`/`Write`, Codex `apply_patch`, Copilot `create`/`edit`).
-  `GATEGUARD_DISABLED=1` / `GATEGUARD_WARN=1` soften it.
+  them; the retry always passes. One script handles all three harnesses, and an
+  env var can soften or disable it.
 - **delivery-gate** (enforcing hook only, Claude/Codex) — a warn-only
   pre-finish Stop check ("did you verify? did you checkpoint?") backing the
-  verify-before-done and capture-lesson rules at the harness layer.
-  `DELIVERY_GATE_BLOCK=1` makes it block.
+  verify-before-done and capture-lesson rules at the harness layer. An env var
+  can make it block.
 - **`capture-lesson`** (skill) — kicks in whenever you correct the agent,
   turning the correction into a durable rule in `tasks/lessons.md`.
 
-Both hooks install idempotently (see Install below). Copilot has no soft-warn
-Stop event, so it gets gateguard but not delivery-gate; its gateguard wiring
-follows the CLI docs but wasn't testable locally. A harness that lacks the
-underlying event still gets the rule as a skill. Tuning knobs for both hooks
-live in their script headers under `hooks/`.
+A harness that can't run a given hook still gets the rule as a skill — that's
+why Copilot (no Stop event) gets gateguard but not delivery-gate. Tuning knobs
+for both hooks live in their script headers under `hooks/`.
 
 ## Meta-maintenance skills
 
@@ -68,9 +65,8 @@ mechanism is genuinely Claude-native.
 
 `strategic-compact` is additionally backed by a Claude-only enforcing hook (the
 **compact suggester**) that nudges you toward `/compact` when context gets
-large — installed idempotently, tunable via env vars in the script header
-(`COMPACT_THRESHOLD`, `COMPACT_CONTEXT_THRESHOLD`, `COMPACT_CONTEXT_INTERVAL`),
-and it never blocks.
+large — installed idempotently, tunable via env vars in the script header, and
+it never blocks.
 
 ## Model defaults
 
