@@ -1,6 +1,6 @@
 # agent-plan-and-track
 
-Portable, user-scoped agent rules for Claude Code, GitHub Copilot, and Codex that 
+Portable, user-scoped agent rules/skills/hooks for Claude Code, GitHub Copilot, and Codex that 
 remain active throughout a session and persist across future sessions.
 
 Uses a `tasks/todo.md` to plan non-trivial work, records your user corrections in 
