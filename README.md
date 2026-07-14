@@ -68,21 +68,22 @@ mechanism is genuinely Claude-native.
 
 ## Model defaults
 
-The installer also sets a sensible model default for each harness so routine
-work doesn't run at top-tier cost — written **only if you haven't already chosen
-one**, so it never clobbers your setting and re-runs are no-ops. What the
-default does differs by harness:
+The installer sets a sensible model default for each harness so routine work
+doesn't run at top-tier cost. These are repo-owned: every install re-asserts
+them, so a `git pull && ./install.sh all` restores the intended default even on a
+machine that had drifted. What the default does differs by harness:
 
 | Harness | Default | Effect |
 | --- | --- | --- |
-| Claude Code | `model: opusplan` | Opus in Plan mode, Sonnet for execution — a real per-phase model swap |
-| Codex | `plan_mode_reasoning_effort: high` | More reasoning in Plan mode only; the execution model and effort are untouched |
+| Claude Code | `model: opusplan` | Opus in Plan mode, Sonnet for execution: a real per-phase model swap |
+| Codex | `plan_mode_reasoning_effort: high` | More reasoning in Plan mode only; the execution model and effort stay yours |
 | Copilot | `model: auto` | Copilot routes each task to a fitting model (no fixed plan/execute split) |
 
-Only Claude's `opusplan` actually swaps models between planning and execution;
-Codex has no plan-mode *model* lever (only effort), and Copilot's `auto` just
-routes dynamically. To change a default, edit its config file (or use the
-harness's `/model`) — the installer leaves your value alone.
+Claude also gets `switchModelsOnFlag: true`, the model-switch-on-flag / fast-mode
+toggle. To keep a machine's own model instead of the default, run with
+`PT_KEEP_MODEL=1` (it still fills in a default when none is set); that opt-out
+covers the model settings, not the Codex plan-mode effort. A Copilot
+`settings.json` with JSONC comments jq can't round-trip is always left untouched.
 
 **Tiered subagents (Claude only)** install to `~/.claude/agents/`, each pinned
 to a cheaper model so delegated work stays cheap:
@@ -104,15 +105,16 @@ cd agent-plan-and-track
 ./install.sh all        # or: claude | copilot | codex
 ```
 
-Idempotent and non-destructive:
+Idempotent. Re-runs re-assert the repo's intended state; your own content is kept:
 
 - **Skills, digest, and hooks** are copied/merged into each tool's user config;
   a differing existing digest or Copilot hook is backed up to `*.bak`.
 - **Instruction files** get the repo content inside a marker-delimited managed
-  block — re-installs update only that block, and anything you add outside it is
+  block: re-installs update only that block, and anything you add outside it is
   never touched. A file without the markers is left alone entirely.
-- **Model defaults** are written only when you haven't already chosen one. The
-  Claude **subagents** are repo-owned like skills — kept in sync on each install
+- **Model defaults** are repo-owned and overwritten on each install (set
+  `PT_KEEP_MODEL=1` to keep a machine's own model choice). The Claude
+  **subagents** are repo-owned like skills, kept in sync on each install
   (customize them in the repo, not in `~/.claude/agents/`).
 
 Requires `jq`. Update later with `git pull && ./install.sh all`.

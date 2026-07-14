@@ -4,7 +4,7 @@
 #
 # Usage: ./install.sh {claude|copilot|codex|all}
 #
-# Idempotent and non-destructive:
+# Idempotent. Re-runs re-assert the repo's intended state; your own content is kept:
 #   - skills are copied (this repo is the source of truth)
 #   - the core-rules digest is copied; a differing existing file is backed up to *.bak;
 #     machine-specific rules belong in core-rules.local.md next to it (never touched)
@@ -14,6 +14,10 @@
 #     file WITHOUT markers is never modified.
 #   - hooks are merged only if not already installed (Claude/Codex); the Copilot hook
 #     files are repo-owned and overwritten, with a *.bak backup if one differed
+#   - managed defaults (Claude model=opusplan + switchModelsOnFlag, Copilot
+#     model=auto, Codex plan_mode_reasoning_effort=high) are repo-owned and
+#     OVERWRITTEN on every install. PT_KEEP_MODEL=1 keeps an existing per-machine
+#     model choice; a Copilot settings.json jq can't round-trip is left untouched.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,19 +78,34 @@ copy_agents() {
   [ -n "$names" ] && echo "  agents          -> $dest/{$names} (Claude-only)"
 }
 
-# Set a top-level (root-table) TOML `key = "value"` in a config file,
-# idempotently. TOML has no jq, so this stays dependency-free:
-#   - Idempotency check is scoped to the ROOT table (lines before the first
-#     [section]). A same-named key inside a [section] is a *different* key and
-#     must not count — it wouldn't supply the top-level default anyway.
-#   - The write PREPENDS the key as the file's first line. A root key at the
-#     very top is unambiguously a root-table assignment: it can never be
-#     captured by a [section] and can never land inside a multiline ("""...""")
-#     value, so no TOML-structure parsing is needed. (Contrived exception: a
-#     multiline string in the root region whose contents mimic a section header
-#     could fool the check into a false negative — accepted; Codex configs
-#     don't do that.)
-insert_toml_default() {
+# Set a repo-owned JSON default in a settings file (jq), overwriting on every
+# install so a re-run re-asserts the intended value. With PT_KEEP_MODEL=1 this
+# reverts to set-if-absent: an existing value is kept, an absent one still gets
+# the default. $3 is a JSON value literal ('"opusplan"', 'true').
+set_json_default() {
+  local file="$1" key="$2" jqval="$3" label="$4" tmp prev
+  if [ "${PT_KEEP_MODEL:-}" = "1" ] && jq -e --arg k "$key" 'has($k)' "$file" >/dev/null 2>&1; then
+    printf '  %-16s-- PT_KEEP_MODEL=1; kept %s=%s\n' "$label" "$key" \
+      "$(jq -r --arg k "$key" '.[$k]' "$file")"
+    return 0
+  fi
+  prev="$(jq -r --arg k "$key" 'if has($k) then (.[$k]|tostring) else "unset" end' "$file")"
+  tmp="$(mktemp)"
+  jq --arg k "$key" --argjson v "$jqval" '.[$k] = $v' "$file" > "$tmp" && mv "$tmp" "$file"
+  printf '  %-16s-> %s=%s (was: %s)\n' "$label" "$key" \
+    "$(jq -r --arg k "$key" '.[$k]' "$file")" "$prev"
+}
+
+# Set a top-level (root-table) TOML `key = "value"`, overwriting on every install.
+# TOML has no jq, so this stays dependency-free. Scope is the ROOT table (lines
+# before the first [section]); a same-named key inside a [section] is a different
+# key and is never touched. An absent key is PREPENDED as the file's first line,
+# which is unambiguously a root assignment (never captured by a [section], never
+# inside a multiline """...""" value). A present root key has its line replaced in
+# place. (Contrived exception, unchanged from before: a multiline string in the
+# root region mimicking a section header could fool the scope check; Codex configs
+# don't do that.)
+upsert_toml_default() {
   local file="$1" key="$2" val="$3" tmp
   mkdir -p "$(dirname "$file")"
   [ -f "$file" ] || : > "$file"
@@ -96,12 +115,20 @@ insert_toml_default() {
       $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { found = 1 }
       END { exit found ? 0 : 1 }
     ' "$file"; then
-    echo "  plan-mode effort-- $key already set at root in $(basename "$file"); left alone"
-    return 0
+    tmp="$(mktemp)"
+    awk -v key="$key" -v val="$val" '
+      !seen && /^[[:space:]]*\[/ { seen = 1 }        # first [section] ends the root table
+      !done && !seen && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+        print key " = \"" val "\""; done = 1; next   # replace the root key in place
+      }
+      { print }
+    ' "$file" > "$tmp" && mv "$tmp" "$file"
+    echo "  plan-mode effort-> $key = \"$val\" set in $(basename "$file")"
+  else
+    tmp="$(mktemp)"
+    { echo "$key = \"$val\""; cat "$file"; } > "$tmp" && mv "$tmp" "$file"
+    echo "  plan-mode effort-> $key = \"$val\" prepended in $(basename "$file")"
   fi
-  tmp="$(mktemp)"
-  { echo "$key = \"$val\""; cat "$file"; } > "$tmp" && mv "$tmp" "$file"
-  echo "  plan-mode effort-> $key = \"$val\" prepended in $(basename "$file")"
 }
 
 install_digest() {
@@ -159,16 +186,11 @@ install_claude() {
   local settings="$HOME/.claude/settings.json" tmp
   mkdir -p "$HOME/.claude"
   [ -f "$settings" ] || echo '{}' > "$settings"
-  # Global model default: opusplan (Opus in Plan mode, Sonnet for execution) —
-  # a cheaper default than pinning Opus for everything. Only set when the user
-  # hasn't already chosen a model; never clobber an existing choice.
-  if jq -e 'has("model")' "$settings" >/dev/null 2>&1; then
-    echo "  model default   -- settings.json already sets model=$(jq -r .model "$settings"); left alone"
-  else
-    tmp="$(mktemp)"
-    jq '.model = "opusplan"' "$settings" > "$tmp" && mv "$tmp" "$settings"
-    echo "  model default   -> settings.json model=opusplan (Opus plan / Sonnet exec)"
-  fi
+  # Repo-owned model defaults, re-asserted on every install (PT_KEEP_MODEL=1 keeps
+  # an existing per-machine choice): opusplan runs Opus in Plan mode and Sonnet for
+  # execution; switchModelsOnFlag enables the model-switch-on-flag / fast-mode toggle.
+  set_json_default "$settings" model '"opusplan"' "model default"
+  set_json_default "$settings" switchModelsOnFlag true "fast-mode flag"
   if grep -q 'core-rules\.md' "$settings"; then
     echo "  digest hook     -- already present in settings.json"
   else
@@ -214,22 +236,17 @@ install_copilot() {
   install_digest "$HOME/.copilot/core-rules.md"
   install_instructions "$HOME/.copilot/copilot-instructions.md"
   # Global model default: "auto" lets Copilot route to the best model per task.
-  # Add only if absent, and only when the settings file parses as plain JSON —
-  # a JSONC file with comments jq can't round-trip is left untouched (warn).
-  local csettings="$HOME/.copilot/settings.json" ctmp
+  # Re-asserted on every install (PT_KEEP_MODEL=1 keeps an existing choice), but
+  # only when the settings file parses as plain JSON: a JSONC file with comments
+  # jq can't round-trip is left untouched (warn).
+  local csettings="$HOME/.copilot/settings.json"
   if ! command -v jq >/dev/null 2>&1; then
     echo "  model default   -- jq not found; skipping Copilot model default (add \"model\":\"auto\" by hand)"
   elif [ -f "$csettings" ] && ! jq empty "$csettings" >/dev/null 2>&1; then
     echo "  model default   -- $csettings isn't plain JSON (JSONC comments?); NOT modified. Add \"model\":\"auto\" by hand."
   else
     [ -f "$csettings" ] || echo '{}' > "$csettings"
-    if jq -e 'has("model")' "$csettings" >/dev/null 2>&1; then
-      echo "  model default   -- Copilot settings.json already sets model=$(jq -r .model "$csettings"); left alone"
-    else
-      ctmp="$(mktemp)"
-      jq '.model = "auto"' "$csettings" > "$ctmp" && mv "$ctmp" "$csettings"
-      echo "  model default   -> Copilot settings.json model=auto"
-    fi
+    set_json_default "$csettings" model '"auto"' "model default"
   fi
   mkdir -p "$HOME/.copilot/hooks"
   local chook="$HOME/.copilot/hooks/core-rules.json"
@@ -260,10 +277,11 @@ install_codex() {
   copy_skills "$HOME/.agents/skills"
   install_digest "$HOME/.codex/core-rules.md"
   install_instructions "$HOME/.codex/AGENTS.md"
-  # Plan-mode default: raise reasoning effort in Plan mode only, leaving the
-  # execution model + effort untouched. Codex has no plan-mode *model* swap
-  # (no opusplan analog), so effort is the only phase-specific lever.
-  insert_toml_default "$HOME/.codex/config.toml" "plan_mode_reasoning_effort" "high"
+  # Plan-mode default, re-asserted on every install: raise reasoning effort in
+  # Plan mode only, leaving the execution model and effort untouched. Codex has no
+  # plan-mode model swap (no opusplan analog), so effort is the only phase-specific
+  # lever. Not gated by PT_KEEP_MODEL (that opt-out covers model settings only).
+  upsert_toml_default "$HOME/.codex/config.toml" "plan_mode_reasoning_effort" "high"
   need_jq
   local hooks="$HOME/.codex/hooks.json" tmp
   mkdir -p "$HOME/.codex"
