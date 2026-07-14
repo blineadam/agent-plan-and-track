@@ -76,15 +76,13 @@ machine that had drifted. What the default does differs by harness:
 | Harness | Default | Effect |
 | --- | --- | --- |
 | Claude Code | `model: opusplan` | Opus in Plan mode, Sonnet for execution: a real per-phase model swap |
+| Claude Code | `switchModelsOnFlag: true` | Switches to another model on a safety-flagged message instead of stopping the session |
 | Codex | `plan_mode_reasoning_effort: high` | More reasoning in Plan mode only; the execution model and effort stay yours |
 | Copilot | `model: auto` | Copilot routes each task to a fitting model (no fixed plan/execute split) |
 
-Claude also gets `switchModelsOnFlag: true`, so Claude Code switches to another
-model when a message is flagged by safety measures instead of pausing the session.
-To keep a machine's own model instead of the default, run with `PT_KEEP_MODEL=1`
-(it still fills in a default when none is set); that opt-out covers the model
-settings, not the Codex plan-mode effort. A Copilot `settings.json` with JSONC
-comments jq can't round-trip is always left untouched.
+Install with `PT_KEEP_MODEL=1` to keep a machine's existing Claude and Copilot
+model settings (the model and `switchModelsOnFlag`) instead of overwriting them;
+the Codex plan-mode effort still updates.
 
 **Tiered subagents (Claude only)** install to `~/.claude/agents/`, each pinned
 to a cheaper model so delegated work stays cheap:
