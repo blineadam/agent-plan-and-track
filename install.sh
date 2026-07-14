@@ -78,6 +78,15 @@ copy_agents() {
   [ -n "$names" ] && echo "  agents          -> $dest/{$names} (Claude-only)"
 }
 
+# Write $1 (a temp file) back to $2, preserving a symlink at $2 instead of
+# replacing it. Config files are often symlinked from a dotfiles repo; a plain
+# `mv` would swap the link for a regular file. When $2 is a symlink we write
+# through it (truncate + rewrite the target); otherwise we mv for atomicity.
+write_back() {
+  local tmp="$1" file="$2"
+  if [ -L "$file" ]; then cat "$tmp" > "$file"; rm -f "$tmp"; else mv "$tmp" "$file"; fi
+}
+
 # Set a repo-owned JSON default in a settings file (jq), overwriting on every
 # install so a re-run re-asserts the intended value. With PT_KEEP_MODEL=1 this
 # reverts to set-if-absent: an existing value is kept, an absent one still gets
@@ -91,7 +100,7 @@ set_json_default() {
   fi
   prev="$(jq -r --arg k "$key" 'if has($k) then (.[$k]|tostring) else "unset" end' "$file")"
   tmp="$(mktemp)"
-  jq --arg k "$key" --argjson v "$jqval" '.[$k] = $v' "$file" > "$tmp" && mv "$tmp" "$file"
+  jq --arg k "$key" --argjson v "$jqval" '.[$k] = $v' "$file" > "$tmp" && write_back "$tmp" "$file"
   printf '  %-16s-> %s=%s (was: %s)\n' "$label" "$key" \
     "$(jq -r --arg k "$key" '.[$k]' "$file")" "$prev"
 }
@@ -102,9 +111,10 @@ set_json_default() {
 # key and is never touched. An absent key is PREPENDED as the file's first line,
 # which is unambiguously a root assignment (never captured by a [section], never
 # inside a multiline """...""" value). A present root key has its line replaced in
-# place. (Contrived exception, unchanged from before: a multiline string in the
-# root region mimicking a section header could fool the scope check; Codex configs
-# don't do that.)
+# place. Documented limit, out of scope by design: this is a line-based scan, so a
+# root-region multiline ("""...""") value whose interior line reads like `key =` or
+# a `[section]` header could fool it into rewriting string content. Codex
+# config.toml has no such strings, so we accept that over shipping a TOML parser.
 upsert_toml_default() {
   local file="$1" key="$2" val="$3" tmp
   mkdir -p "$(dirname "$file")"
@@ -122,11 +132,11 @@ upsert_toml_default() {
         print key " = \"" val "\""; done = 1; next   # replace the root key in place
       }
       { print }
-    ' "$file" > "$tmp" && mv "$tmp" "$file"
+    ' "$file" > "$tmp" && write_back "$tmp" "$file"
     echo "  plan-mode effort-> $key = \"$val\" set in $(basename "$file")"
   else
     tmp="$(mktemp)"
-    { echo "$key = \"$val\""; cat "$file"; } > "$tmp" && mv "$tmp" "$file"
+    { echo "$key = \"$val\""; cat "$file"; } > "$tmp" && write_back "$tmp" "$file"
     echo "  plan-mode effort-> $key = \"$val\" prepended in $(basename "$file")"
   fi
 }
@@ -188,16 +198,17 @@ install_claude() {
   [ -f "$settings" ] || echo '{}' > "$settings"
   # Repo-owned model defaults, re-asserted on every install (PT_KEEP_MODEL=1 keeps
   # an existing per-machine choice): opusplan runs Opus in Plan mode and Sonnet for
-  # execution; switchModelsOnFlag enables the model-switch-on-flag / fast-mode toggle.
+  # execution; switchModelsOnFlag=true lets Claude Code switch to another model when
+  # a message is flagged by safety measures, instead of pausing the session.
   set_json_default "$settings" model '"opusplan"' "model default"
-  set_json_default "$settings" switchModelsOnFlag true "fast-mode flag"
+  set_json_default "$settings" switchModelsOnFlag true "safety-switch"
   if grep -q 'core-rules\.md' "$settings"; then
     echo "  digest hook     -- already present in settings.json"
   else
     tmp="$(mktemp)"
     jq --slurpfile h "$REPO_DIR/hooks/claude/settings-hooks.json" \
       '.hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + $h[0].hooks.UserPromptSubmit)' \
-      "$settings" > "$tmp" && mv "$tmp" "$settings"
+      "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  digest hook     -> merged into $settings (UserPromptSubmit)"
   fi
   if grep -q 'suggest-compact' "$settings"; then
@@ -206,7 +217,7 @@ install_claude() {
     tmp="$(mktemp)"
     jq --slurpfile h "$REPO_DIR/hooks/claude/pretooluse-compact.json" \
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
-      "$settings" > "$tmp" && mv "$tmp" "$settings"
+      "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  compact hook    -> merged into $settings (PreToolUse, all tools)"
   fi
   if grep -q 'delivery-gate' "$settings"; then
@@ -215,7 +226,7 @@ install_claude() {
     tmp="$(mktemp)"
     jq --slurpfile h "$REPO_DIR/hooks/claude/stop-delivery-gate.json" \
       '.hooks.Stop = ((.hooks.Stop // []) + $h[0].hooks.Stop)' \
-      "$settings" > "$tmp" && mv "$tmp" "$settings"
+      "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  delivery hook   -> merged into $settings (Stop; warn-only, DELIVERY_GATE_BLOCK=1 to enforce)"
   fi
   if grep -q 'gateguard' "$settings"; then
@@ -224,7 +235,7 @@ install_claude() {
     tmp="$(mktemp)"
     jq --slurpfile h "$REPO_DIR/hooks/claude/pretooluse-gateguard.json" \
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
-      "$settings" > "$tmp" && mv "$tmp" "$settings"
+      "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  gateguard hook  -> merged into $settings (PreToolUse on edits; GATEGUARD_DISABLED=1 to turn off)"
   fi
   echo "  done. New Claude Code sessions pick this up automatically."
@@ -292,7 +303,7 @@ install_codex() {
     tmp="$(mktemp)"
     jq --slurpfile h "$REPO_DIR/hooks/codex/hooks.json" \
       '.hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + $h[0].hooks.UserPromptSubmit)' \
-      "$hooks" > "$tmp" && mv "$tmp" "$hooks"
+      "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
     echo "  hook            -> merged into $hooks (UserPromptSubmit, per turn)"
   fi
   # gateguard + delivery-gate share the universal scripts with Claude; Codex's
@@ -308,7 +319,7 @@ install_codex() {
     tmp="$(mktemp)"
     jq --slurpfile h "$REPO_DIR/hooks/codex/pretooluse-gateguard.json" \
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
-      "$hooks" > "$tmp" && mv "$tmp" "$hooks"
+      "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
     echo "  gateguard hook  -> merged into $hooks (PreToolUse on apply_patch; GATEGUARD_DISABLED=1 to turn off)"
   fi
   if grep -q 'delivery-gate' "$hooks"; then
@@ -317,7 +328,7 @@ install_codex() {
     tmp="$(mktemp)"
     jq --slurpfile h "$REPO_DIR/hooks/codex/stop-delivery-gate.json" \
       '.hooks.Stop = ((.hooks.Stop // []) + $h[0].hooks.Stop)' \
-      "$hooks" > "$tmp" && mv "$tmp" "$hooks"
+      "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
     echo "  delivery hook   -> merged into $hooks (Stop; warn-only, DELIVERY_GATE_BLOCK=1 to enforce)"
   fi
   echo "  done. Hooks need node at runtime. Start a new codex session to load."

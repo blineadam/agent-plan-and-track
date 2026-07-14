@@ -79,11 +79,12 @@ machine that had drifted. What the default does differs by harness:
 | Codex | `plan_mode_reasoning_effort: high` | More reasoning in Plan mode only; the execution model and effort stay yours |
 | Copilot | `model: auto` | Copilot routes each task to a fitting model (no fixed plan/execute split) |
 
-Claude also gets `switchModelsOnFlag: true`, the model-switch-on-flag / fast-mode
-toggle. To keep a machine's own model instead of the default, run with
-`PT_KEEP_MODEL=1` (it still fills in a default when none is set); that opt-out
-covers the model settings, not the Codex plan-mode effort. A Copilot
-`settings.json` with JSONC comments jq can't round-trip is always left untouched.
+Claude also gets `switchModelsOnFlag: true`, so Claude Code switches to another
+model when a message is flagged by safety measures instead of pausing the session.
+To keep a machine's own model instead of the default, run with `PT_KEEP_MODEL=1`
+(it still fills in a default when none is set); that opt-out covers the model
+settings, not the Codex plan-mode effort. A Copilot `settings.json` with JSONC
+comments jq can't round-trip is always left untouched.
 
 **Tiered subagents (Claude only)** install to `~/.claude/agents/`, each pinned
 to a cheaper model so delegated work stays cheap:
