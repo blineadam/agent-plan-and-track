@@ -58,23 +58,11 @@ mechanism is genuinely Claude-native.
 | Skill | What it does | Where |
 | --- | --- | --- |
 | **`rules-distill`** | Finds principles recurring across your skills that aren't rules yet, and proposes promoting them. | All 3 |
-| **`strategic-compact`** | Guides you to `/compact` at logical boundaries instead of mid-task. | All 3 |
+| **`strategic-compact`** | Guides you to `/compact` at logical boundaries instead of mid-task; backed by a Claude-only enforcing hook that nudges you there. | All 3 |
 | **`context-budget`** | Audits always-on context cost and flags what's too big. | All 3 |
 | **`skill-comply`** | Measures whether a fresh agent actually follows a given rule. | Claude only |
-| **`skill-activation`** | Tests whether the *right* skill fires for a prompt — routing regression, sibling to `skill-comply`. | All 3\* |
+| **`skill-activation`** | Tests whether the *right* skill fires for a prompt — routing regression, sibling to `skill-comply`. | All 3 (runtime check is Claude-only) |
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
-
-\* `skill-activation`'s static router-signal check (does each skill carry a
-usable trigger?) runs on all three harnesses. Its *runtime* check — actually
-firing a prompt and reading which skill activated — is verified on Claude
-(`stream-json`), likely portable to Copilot (it has a `skill` tool + JSON
-output; verify first), and unavailable on Codex, whose `exec --json` trace has
-no skill event. So on Codex it's static-only.
-
-`strategic-compact` is additionally backed by a Claude-only enforcing hook (the
-**compact suggester**) that nudges you toward `/compact` when context gets
-large — installed idempotently, tunable via env vars in the script header, and
-it never blocks.
 
 ## Model defaults
 
