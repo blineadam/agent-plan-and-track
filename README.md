@@ -94,8 +94,9 @@ to a cheaper model so delegated work stays cheap:
 - **`mechanic`** (Haiku) — already-decided mechanical edits; kicks anything that
   needs a judgment call back to you.
 
-Call them by name ("use the researcher agent to…"). Copilot and Codex have no
-user-definable per-agent model pin, so this part is Claude-only.
+Claude routes work to them automatically based on their descriptions; you can
+also invoke one explicitly ("use the researcher agent to…"). Copilot and Codex
+have no user-definable per-agent model pin, so tiered subagents are Claude-only.
 
 ## Install
 
