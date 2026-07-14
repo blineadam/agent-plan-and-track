@@ -5,11 +5,11 @@ plan non-trivial work in `tasks/todo.md`, capture corrections in
 `tasks/lessons.md`, verify before claiming done — and keep those rules
 **sticky** in long sessions instead of letting them fade as the context grows.
 
-## Why this exists
-
 Best for iterative work in a pre-existing repo — features, bug fixes, refactors — where
 a durable plan, an enforced gate, and a growing lessons file pay off across a
 session.
+
+## Why this exists
 
 Global instruction files (`CLAUDE.md`, `AGENTS.md`, `copilot-instructions.md`)
 sit at the very top of the context window, and in a long chat the model's
