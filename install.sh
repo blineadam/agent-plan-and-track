@@ -60,9 +60,10 @@ copy_skills() {
   echo "  skills          -> $dest/{$names}"
 }
 
-# Claude-only subagent definitions (agents/*.md): model-tiered helpers so
-# offloaded work runs on a cheaper model than the main session regardless of
-# what it's set to. These are repo-owned artifacts, exactly like skills. The
+# Claude-only subagent definitions (agents/*.md): model-tiered helpers, each
+# pinned to whatever model tier its task actually needs (cheaper for routine
+# delegation, stronger for high-stakes judgment calls) regardless of the main
+# session's model. These are repo-owned artifacts, exactly like skills. The
 # repo is the source of truth, so each install overwrites them to keep them in
 # sync (customize in the repo, not in ~/.claude/agents). Every agents/*.md is
 # copied, so adding one needs no edit here. No-op if the repo has no agents/ dir.
