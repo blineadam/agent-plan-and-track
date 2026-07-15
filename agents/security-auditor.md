@@ -2,7 +2,7 @@
 name: security-auditor
 description: Security-focused review, pinned to Opus regardless of the session's default model. Delegate here to assess authentication/authorization logic, injection risks, secrets handling, and other security-sensitive changes before they ship, including new auth flows, permission checks, and anything touching credentials or a trust boundary with user input. Read-only: reports findings and severity, never patches them. Reach for this specifically when a missed vulnerability is expensive enough to warrant top-tier reasoning over whatever model the session happens to be running, not for routine code review.
 model: opus
-effort: high
+effort: xhigh
 tools: Read, Grep, Glob
 ---
 
