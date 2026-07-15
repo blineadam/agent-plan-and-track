@@ -1,10 +1,10 @@
 # AGENTS.md
 
-This file provides guidance to LLM's when working with code in this repository.
+This file provides guidance to LLMs when working with code in this repository.
 
 ## What this repo is
 
-Portable, user-scoped agent rules/skills/hooks for Claude Code, GitHub Copilot, and Codex. This is meta-architecture, not application code: markdown skill files, Node hook scripts, and bash utility scripts that `install.sh` deploys into `~/.claude`, `~/.copilot`, `~/.codex`.
+Portable, user-scoped agent rules/skills/hooks for Claude Code, GitHub Copilot, and Codex. This is meta-architecture, not application code: markdown skill files, Node hook scripts, and bash utility scripts that `install.sh` deploys into `~/.claude`, `~/.copilot`, `~/.codex` (Codex's own skills go to `~/.agents/skills`, not `~/.codex`).
 
 ## Style conventions
 
@@ -12,16 +12,16 @@ This repo's implicit conventions are captured in `.ai-style-rules.md` at the pro
 
 ## Local additions
 
-If this checkout has a `AGENTS.local.md` next to this file, read it too: it holds machine-local tooling instructions (e.g. graphify) that aren't checked in because not every checkout has that tooling installed.
+If this checkout has an `AGENTS.local.md` next to this file, read it too: it holds machine-local tooling instructions (e.g. graphify) that aren't checked in because not every checkout has that tooling installed.
 
 ## Commands
 
 There is no build/lint/test suite in the traditional sense. The relevant commands:
 
-- `./install.sh all` (or `claude` | `copilot` | `codex`) — deploy this repo's rules/skills/hooks to the target harness(es). Idempotent; requires `jq`. Re-run after editing anything under `rules/`, `skills/`, `hooks/`, or `agents/` to propagate the change.
-- `skills/skill-activation/scripts/run-activation-cases.sh --dry-run` — list routing-regression cases (free). `--precheck [SKILLS_DIR]` statically lints skill descriptions for trigger-clause signal (free). `--run` actually invokes `claude -p` per case and costs money — needs `ACTIVATION_ALLOW_SPEND=1` and must run inside an isolated, network-restricted sandbox (see script header).
-- `skills/context-budget/scripts/scan-context.sh` — estimate always-on context cost (skills + instruction files + rules digest) and flag oversized components.
-- `skills/rules-distill/scripts/scan-rules.sh` / `scan-skills.sh` — index this repo's rules and inventory installed skills, feeding a `rules-distill` run.
+- `./install.sh all` (or `claude` | `copilot` | `codex`): deploy this repo's rules/skills/hooks to the target harness(es). Idempotent. The `claude` and `codex` targets require `jq`; `copilot` degrades gracefully without it, skipping only its model default, though the hooks it installs still need `jq` at runtime. Re-run after editing anything under `rules/`, `skills/`, `hooks/`, or `agents/` to propagate the change.
+- `skills/skill-activation/scripts/run-activation-cases.sh --dry-run`: list routing-regression cases (free). `--precheck [SKILLS_DIR]` statically lints skill descriptions for trigger-clause signal (free). `--run` actually invokes `claude -p` per case and costs money: it needs `ACTIVATION_ALLOW_SPEND=1` and must run inside an isolated, network-restricted sandbox (see script header).
+- `skills/context-budget/scripts/scan-context.sh`: estimate always-on context cost (skills + instruction files + rules digest) and flag oversized components.
+- `skills/rules-distill/scripts/scan-rules.sh` / `scan-skills.sh`: index this repo's rules and inventory installed skills, feeding a `rules-distill` run.
 - To sanity-check a change by hand: install it, start a fresh session in the target harness, and ask "what are your standing rules?"
 
 ## Architecture
@@ -30,31 +30,32 @@ There is no build/lint/test suite in the traditional sense. The relevant command
 
 Three kinds of rules use three different mechanisms, chosen because each survives attention decay in a long session differently:
 
-- **Instruction file** (`rules/agent-guidelines.md`) — short, constant constraints, always loaded, kept tiny so it isn't buried by its own bulk.
-- **Skills** (`skills/*/SKILL.md`) — procedures, loaded just-in-time when triggered by the `description` frontmatter. That description is load-bearing: it must front-load the trigger clause ("Use when X" / "Use BEFORE Y"), since it's the only part loaded into every session.
-- **Hooks re-injecting a digest** (`rules/core-rules.md`, delivered via `hooks/`) — the core rules themselves, repeated by harness enforcement rather than left to the model's attention.
+- **Instruction file** (`rules/agent-guidelines.md`): short, constant constraints, always loaded, kept tiny so it isn't buried by its own bulk.
+- **Skills** (`skills/*/SKILL.md`): procedures, loaded just-in-time when triggered by the `description` frontmatter. That description is load-bearing: it must front-load the trigger clause ("Use when X" / "Use BEFORE Y"), since it's the only part loaded into every session.
+- **Hooks re-injecting a digest** (`rules/core-rules.md`, delivered via `hooks/`): the core rules themselves, repeated by harness enforcement rather than left to the model's attention.
 
-`rules/` is the single source of truth. Installed per-harness copies (an `~/.claude/CLAUDE.md` managed block, `~/.claude/core-rules.md`, etc.) are generated by `install.sh` and overwritten on every install — never hand-edit an installed copy; edit the repo copy and reinstall.
+`rules/` is the single source of truth. Installed per-harness copies (an `~/.claude/CLAUDE.md` managed block, `~/.claude/core-rules.md`, etc.) are generated by `install.sh` and overwritten on every install: never hand-edit an installed copy, edit the repo copy and reinstall.
 
 ### install.sh
 
-One installer, three targets (`install_claude`, `install_codex`, `install_copilot`) sharing common helpers (`copy_skills`, `copy_agents`, `write_back`). Idempotent re-runs re-assert the repo's intended state without clobbering user content:
+One installer, three targets (`install_claude`, `install_codex`, `install_copilot`) sharing common helpers (`copy_skills`, `install_digest`, `install_instructions`, `write_back`). Idempotent re-runs re-assert the repo's intended state without clobbering user content:
 
-- Skills/hooks/subagents are copied wholesale (repo-owned). `CLAUDE_ONLY_SKILLS` in install.sh lists the skills that install Claude-only (currently `skill-comply`); everything else under `skills/` installs to all three harnesses.
+- Skills are always copied wholesale (repo-owned). `CLAUDE_ONLY_SKILLS` in install.sh lists the skills that install Claude-only (currently `skill-comply`); everything else under `skills/` installs to all three harnesses. Subagents (`agents/*.md`) are copied the same way, but only by `install_claude` via `copy_agents`: Copilot and Codex install no subagents.
 - Instruction files get the repo content inside a marker-delimited managed block (`<!-- agent-plan-and-track:begin/end -->`); content a user adds outside the markers survives re-installs, and a file without markers is left alone entirely.
-- Model defaults (Claude `opusplan`, Copilot `auto`, Codex plan-mode reasoning effort) are repo-owned and overwritten each install unless `PT_KEEP_MODEL=1`.
+- Hook *scripts* (`gateguard.js`, `delivery-gate.js`, `suggest-compact.js`) are copied wholesale to each harness's scripts directory. Hook *wiring*, the JSON that registers those scripts with the harness, is only merged in if not already present for Claude/Codex (`settings.json` / `hooks.json`); Copilot's own hook files (`core-rules.json`, `pretooluse-gateguard.json`) are instead repo-owned and overwritten outright, with a `.bak` backup if one differed.
+- Model defaults (Claude `opusplan` + `switchModelsOnFlag`, Copilot `auto`) are repo-owned and overwritten each install unless `PT_KEEP_MODEL=1`. Codex's plan-mode reasoning effort is separate and always overwritten regardless of `PT_KEEP_MODEL`, which covers model settings only.
 
 ### Hooks
 
-`hooks/gateguard.js` and `hooks/delivery-gate.js` are single shared Node scripts, not one fork per harness: each sniffs the wire dialect at runtime (`detectDialect`) and branches. The `hooks/<harness>/*.json` files carry no logic; they only wire that shared script into the harness's own hook contract (Claude/Codex's PascalCase `matcher` + `hooks[].command` shape vs. Copilot's `version:1` + `bash` + `timeoutSec` shape) — the differing keys are a wire-contract requirement, never normalize one to match the other. Every hook fails open, wrapped in a top-level `try { main() } catch { ...allow...; process.exit(0) }`, so a hook bug can't wedge a session.
+`hooks/gateguard.js` and `hooks/delivery-gate.js` are single shared Node scripts, not one fork per harness. `gateguard.js` sniffs the wire dialect at runtime (`detectDialect`) and branches between Copilot's shape and the shared Claude/Codex shape; `delivery-gate.js` needs no such branching, since Claude and Codex already expose the same Stop payload contract. The `hooks/<harness>/pretooluse-gateguard.json` wiring files carry no logic of their own, only wiring that shared script into the harness's own hook contract (Claude/Codex's PascalCase `matcher` + `hooks[].command` shape vs. Copilot's `version:1` + `bash` + `timeoutSec` shape): the differing keys are a wire-contract requirement, never normalize one to match the other. Not every hook JSON file is logic-free, though: Copilot's `core-rules.json` inlines its own 10-minute throttle check directly in the `bash` command. Every hook fails open, wrapped in a top-level `try { main() } catch { ...; process.exit(0) }`; only `gateguard.js`'s catch needs to emit an explicit allow decision (Copilot's PreToolUse is fail-closed), while `delivery-gate.js` and `suggest-compact.js` simply exit 0, since Claude/Codex already fail open on a hook that produces no output.
 
-- `gateguard.js` — PreToolUse hook, all 3 harnesses. Blocks the first edit to a file until investigation (callers, blast radius, schemas) is demonstrated; the retry always passes.
-- `delivery-gate.js` — Stop hook, Claude/Codex only (Copilot has no Stop event). Warn-only pre-finish check backing verify-before-done/capture-lesson.
-- `hooks/claude/suggest-compact.js` — Claude-only nudge toward `/compact` at logical boundaries.
+- `gateguard.js`: PreToolUse hook, all 3 harnesses. Blocks the first edit to a file until investigation (callers, blast radius, schemas) is demonstrated; the retry always passes.
+- `delivery-gate.js`: Stop hook, Claude/Codex only (Copilot has no Stop event). Warn-only pre-finish check backing verify-before-done/capture-lesson.
+- `hooks/claude/suggest-compact.js`: Claude-only nudge toward `/compact` at logical boundaries.
 
 ### Skills
 
-Two groups under `skills/<name>/SKILL.md`: the everyday workflow (`plan-and-track`, `capture-lesson`) hit every session; maintenance skills (adapted from [affaan-m/ecc](https://github.com/affaan-m/ecc)) maintain the rules/skills themselves (`rules-distill`, `strategic-compact`, `context-budget`, `skill-comply`, `skill-activation`, `inherit-legacy-style`, `copilot-review-instructions`). Cross-skill references use `[[skill-name]]` wiki-link syntax rather than duplicating content.
+Two groups under `skills/<name>/SKILL.md`: the everyday workflow (`plan-and-track`, `gateguard`, `capture-lesson`) hit every session; maintenance skills maintain the rules/skills themselves. Of those, `rules-distill`, `strategic-compact`, `context-budget`, `skill-comply`, and `inherit-legacy-style` are adapted from [affaan-m/ecc](https://github.com/affaan-m/ecc); `skill-activation` and `copilot-review-instructions` were built directly in this repo. Cross-skill references use `[[skill-name]]` wiki-link syntax rather than duplicating content.
 
 ### Style enforcement loop
 
