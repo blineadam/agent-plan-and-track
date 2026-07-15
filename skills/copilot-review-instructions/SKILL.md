@@ -1,6 +1,6 @@
 ---
 name: copilot-review-instructions
-description: Generate or refresh path-scoped .github/instructions/*.instructions.md files so GitHub Copilot's PR review enforces a project's actual conventions instead of generic defaults. Gathers review-worthy rules from every source the project already has, including .ai-style-rules.md, the project's own instructions file (CLAUDE.md / AGENTS.md / copilot-instructions.md), README, CONTRIBUTING, docs, plus a bounded source scan. Use whenever those conventions are created or change and the project uses GitHub Copilot code review, either right after [[inherit-legacy-style]] captures implicit conventions or standalone. The generated artifact is Copilot-only, since no Claude or Codex equivalent exists.
+description: Generate or refresh path-scoped .github/instructions/*.instructions.md files so GitHub Copilot's PR review enforces a project's actual conventions instead of generic defaults. Gathers review-worthy rules from every source the project already has, including .ai-style-rules.md, the project's own instructions file (CLAUDE.md / AGENTS.md / .github/copilot-instructions.md), README, CONTRIBUTING, docs, plus a bounded source scan. Use whenever those conventions are created or change and the project uses GitHub Copilot code review, either right after [[inherit-legacy-style]] captures implicit conventions or standalone. The generated artifact is Copilot-only, since no Claude or Codex equivalent exists.
 ---
 
 # copilot-review-instructions
@@ -18,7 +18,7 @@ Boundary with [[inherit-legacy-style]]: that skill infers *unwritten*
 conventions from code and records them in `.ai-style-rules.md`. This skill
 collects *all* review-worthy material, both written (instructions files, README,
 docs) and inferred (`.ai-style-rules.md`), and converts the combined set into
-Copilot's format. Run inherit-legacy-style first when you also want the
+Copilot's format. Run [[inherit-legacy-style]] first when you also want the
 implicit-convention layer; it isn't required if the project already documents
 its rules elsewhere.
 
