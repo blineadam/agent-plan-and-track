@@ -86,7 +86,8 @@ model settings (the model and `switchModelsOnFlag`) instead of overwriting them;
 the Codex plan-mode effort still updates.
 
 **Tiered subagents (Claude only)** install to `~/.claude/agents/`, each pinned
-to a cheaper model so delegated work stays cheap:
+to a model chosen for what the work needs, cheaper for routine delegation,
+stronger for judgment calls a same-topic skill can't guarantee a model tier for:
 
 - **`researcher`** (Sonnet, read-only) offloads exploration: map code, find
   callers, gather the facts an edit needs. Never writes.
@@ -95,6 +96,12 @@ to a cheaper model so delegated work stays cheap:
 - **`debugger`** (Sonnet, read-only + Bash) reproduces a failure and traces it
   to root cause before any fix is attempted, handing back a failing
   regression test. Never edits code.
+- **`security-auditor`** (Opus, read-only) reviews security-sensitive code
+  (auth, injection, secrets) and reports exploit scenarios ranked by
+  severity. Never patches.
+- **`architect-reviewer`** (Opus, read-only) weighs a non-trivial design
+  decision before it's committed to: coupling, blast radius, simpler
+  alternatives. Never implements.
 
 Claude routes work to them automatically based on their descriptions; you can
 also invoke one explicitly ("use the researcher agent to…"). Copilot and Codex
@@ -137,7 +144,8 @@ skills/skill-activation/     routing regression: does the right skill fire? (sta
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
 skills/copilot-review-instructions/ generate Copilot PR-review instructions from a project's documented conventions (portable; Copilot-only output)
-agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku), debugger (Sonnet)
+agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku),
+                              debugger (Sonnet), security-auditor (Opus), architect-reviewer (Opus)
 hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
 hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate
