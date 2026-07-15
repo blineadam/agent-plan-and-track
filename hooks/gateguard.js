@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * GateGuard — universal fact-forcing edit gate (Claude Code, Codex, Copilot CLI)
+ * GateGuard: universal fact-forcing edit gate (Claude Code, Codex, Copilot CLI)
  *
  * A PreToolUse gate that denies the FIRST edit to each file per session with a
- * fact demand — importers/callers, blast radius, real data schemas, the user's
- * verbatim instruction — instead of letting the model guess. Self-evaluation
+ * fact demand: importers/callers, blast radius, real data schemas, the user's
+ * verbatim instruction, instead of letting the model guess. Self-evaluation
  * ("are you sure?") always gets "yes"; demanding facts forces a real search,
  * and the investigation itself improves the edit. Adapted (lean) from ECC's
  * gateguard-fact-force hook.
@@ -13,17 +13,17 @@
  *   - Claude / Codex ("snake"): top-level snake_case `tool_name` / `tool_input`,
  *     and Claude-style camelCase `hookSpecificOutput` on output. File edits are
  *     `Edit|Write|MultiEdit|NotebookEdit` (Claude) or `apply_patch` (Codex; one
- *     patch envelope can touch several files — all are gated).
+ *     patch envelope can touch several files: all are gated).
  *   - Copilot: camelCase `toolName` / `toolArgs`, top-level `permissionDecision`
  *     on output. File edits are `create|edit`. Copilot is FAIL-CLOSED (a hook
  *     crash or non-zero exit denies the tool), so every exit path here emits an
  *     explicit `{"permissionDecision":"allow"}` for Copilot and the outer catch
- *     allows too — the gate must never accidentally block by dying.
+ *     allows too: the gate must never accidentally block by dying.
  *
  * LOOP-FREE BY CONSTRUCTION: each gated file is marked "checked" in session
  * state at deny time, so the retry after presenting facts always passes. A file
  * can never be denied twice. If state can't be persisted, the edit is ALLOWED
- * with a stderr warning — never deny what we can't record, or the model would
+ * with a stderr warning: never deny what we can't record, or the model would
  * be denied forever.
  *
  * Deliberately not ported from ECC: the destructive-Bash and routine-Bash
@@ -86,7 +86,7 @@ function detectDialect(input) {
 }
 
 // Copilot must be told "allow" explicitly (fail-closed). Claude/Codex fail
-// open, so a silent exit 0 is their allow — matching the original behavior.
+// open, so a silent exit 0 is their allow: matching the original behavior.
 function emitAllow(dialect) {
   if (dialect === 'copilot') process.stdout.write(JSON.stringify({ permissionDecision: 'allow' }));
 }
@@ -111,7 +111,7 @@ function emitDeny(dialect, reason) {
 
 function emitWarn(dialect, reason) {
   if (dialect === 'copilot') {
-    // Copilot's PreToolUse has no soft-warn channel — allow and note on stderr.
+    // Copilot's PreToolUse has no soft-warn channel: allow and note on stderr.
     process.stderr.write(`[GateGuard] (warn) ${reason}\n`);
     emitAllow('copilot');
     return;
@@ -177,14 +177,14 @@ function isEnvExempt(filePath) {
 
 // --- Edit extraction (per dialect) ---
 //
-// Returns { edits: [{ path, create }], recognized } — `recognized` is false
+// Returns { edits: [{ path, create }], recognized }: `recognized` is false
 // when this tool call isn't a file edit we gate (allow it through). One call
 // may carry several edits: a Codex apply_patch envelope can Add/Update/Delete/
 // Move multiple files in a single patch.
 
 // Parse an apply_patch command envelope into its file operations. The four
 // file-declaring lines are the only ones that name a path:
-//   *** Add File: <p>      (create)   *** Delete File: <p>  (edit — a removal)
+//   *** Add File: <p>      (create)   *** Delete File: <p>  (edit: a removal)
 //   *** Update File: <p>   (edit)     *** Move to: <p>      (rename target)
 function parseApplyPatch(command) {
   const edits = [];
@@ -250,7 +250,7 @@ function isSubagent(input) {
 // --- Per-session state: one empty marker file per gated path ---
 //
 // A marker file is created atomically per (session, file) pair, so parallel
-// first-edits to different files can never clobber each other's marks — the
+// first-edits to different files can never clobber each other's marks: the
 // failure mode a single shared JSON has (read-modify-write race), which
 // would let a file be denied twice. The denial ordinal is simply the number
 // of markers already in the session dir.
@@ -282,8 +282,8 @@ function countMarkers(dir) {
 
 // Atomically claim the (session, file) marker with an exclusive create, so
 // even two parallel edits of the SAME file can't both deny. Returns 'ok' if
-// this call claimed it, 'exists' if it was already claimed (allow — this file
-// was gated before), or 'fail' on any other error (allow — fail open).
+// this call claimed it, 'exists' if it was already claimed (allow: this file
+// was gated before), or 'fail' on any other error (allow: fail open).
 function claimMarker(dir, filePath) {
   try {
     fs.writeFileSync(markerPath(dir, filePath), '', { flag: 'wx' });
@@ -334,17 +334,17 @@ function pathLabel(paths) {
 function editGateMsg(paths) {
   const head =
     paths.length === 1
-      ? `[GateGuard] First edit of ${sanitizePath(paths[0])} this session — before editing, present these facts:`
-      : `[GateGuard] First edit of these files this session (${pathLabel(paths)}) — before editing, present these facts:`;
+      ? `[GateGuard] First edit of ${sanitizePath(paths[0])} this session: before editing, present these facts:`
+      : `[GateGuard] First edit of these files this session (${pathLabel(paths)}): before editing, present these facts:`;
   return [
     head,
     '',
-    '1. Importers/callers: list the files that import or call this one (search the tree — Grep/Glob, not memory).',
+    '1. Importers/callers: list the files that import or call this one (search the tree: Grep/Glob, not memory).',
     '2. Blast radius: the public functions/classes/exports this change affects.',
     '3. Data schemas: if this file reads/writes data, show real field names and formats (redacted or synthetic values).',
     "4. The user's current instruction, quoted verbatim.",
     '',
-    'Present the facts, then retry the same edit — the retry always passes.',
+    'Present the facts, then retry the same edit: the retry always passes.',
     '(GATEGUARD_DISABLED=1 turns this gate off; GATEGUARD_WARN=1 demotes it to a warning.)',
   ].join('\n');
 }
@@ -352,8 +352,8 @@ function editGateMsg(paths) {
 function createGateMsg(paths) {
   const head =
     paths.length === 1
-      ? `[GateGuard] Creating ${sanitizePath(paths[0])} — before writing it, present these facts:`
-      : `[GateGuard] Creating these files (${pathLabel(paths)}) — before writing them, present these facts:`;
+      ? `[GateGuard] Creating ${sanitizePath(paths[0])}: before writing it, present these facts:`
+      : `[GateGuard] Creating these files (${pathLabel(paths)}): before writing them, present these facts:`;
   return [
     head,
     '',
@@ -362,7 +362,7 @@ function createGateMsg(paths) {
     '3. Data schemas: if it reads/writes data, show real field names and formats (redacted or synthetic values).',
     "4. The user's current instruction, quoted verbatim.",
     '',
-    'Present the facts, then retry the same write — the retry always passes.',
+    'Present the facts, then retry the same write: the retry always passes.',
     '(GATEGUARD_DISABLED=1 turns this gate off; GATEGUARD_WARN=1 demotes it to a warning.)',
   ].join('\n');
 }
@@ -425,7 +425,7 @@ function main() {
     /* claim will fail-open below if the dir truly can't be made */
   }
 
-  // Mark at deny time so the retry passes — this is what makes the gate
+  // Mark at deny time so the retry passes: this is what makes the gate
   // loop-free. Claim every unchecked path; if a claim can't persist, fail open.
   const ordinalBase = countMarkers(dir);
   const newlyGated = [];
@@ -472,7 +472,7 @@ try {
   try {
     process.stdout.write(JSON.stringify({ permissionDecision: 'allow' }));
   } catch {
-    /* stdout gone — nothing more we can do */
+    /* stdout gone, nothing more we can do */
   }
   process.exit(0);
 }

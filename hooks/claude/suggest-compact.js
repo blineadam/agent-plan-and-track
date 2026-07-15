@@ -7,7 +7,7 @@
  * It adds a one-line suggestion to the next model turn via hookSpecificOutput; it
  * never blocks a tool call and always exits 0. Firing on every tool call keeps the
  * tool-count signal honest during read/search/Bash-heavy phases (e.g. research)
- * that do no edits — the bounded-tail transcript read keeps this cheap.
+ * that do no edits: the bounded-tail transcript read keeps this cheap.
  *
  * Two signals:
  *  - Context size (primary): reads the latest assistant `usage` record from the
@@ -16,7 +16,7 @@
  *  - Tool-call count (secondary): first at COMPACT_THRESHOLD, then every 25.
  *
  * Self-contained: no external modules, Node core only (Claude Code ships Node).
- * Claude-native — reads Claude's transcript JSONL format and suggests /compact —
+ * Claude-native: reads Claude's transcript JSONL format and suggests /compact,
  * so it stays a Claude-only piece; Copilot/Codex get the guidance skill instead.
  *
  * Config (env): COMPACT_THRESHOLD (default 50), COMPACT_CONTEXT_THRESHOLD
@@ -39,7 +39,7 @@ function readStdin() {
 
 // Last assistant usage record in the transcript → real context size + model.
 // Reads only a bounded tail: transcripts grow without limit in the long sessions
-// this hook targets, and the latest usage record sits at the very end — so a full
+// this hook targets, and the latest usage record sits at the very end, so a full
 // read+parse on every tool call would be O(total transcript) for no benefit.
 function readLatestUsage(transcriptPath) {
   if (!transcriptPath) return null;
@@ -53,7 +53,7 @@ function readLatestUsage(transcriptPath) {
     const buf = Buffer.alloc(readBytes);
     if (readBytes > 0) fs.readSync(fd, buf, 0, readBytes, size - readBytes);
     text = buf.toString('utf8');
-    // If we started mid-file, the first line is probably partial — drop it.
+    // If we started mid-file, the first line is probably partial. Drop it.
     if (readBytes < size) {
       const nl = text.indexOf('\n');
       text = nl >= 0 ? text.slice(nl + 1) : '';
@@ -149,7 +149,7 @@ function main() {
       const pct = Math.round((usage.tokens / windowTokens) * 100);
       const win = windowTokens >= 1000000 ? '1M' : '200k';
       messages.push(
-        `[StrategicCompact] Context ~${approx} tokens (${pct}% of ${win} window) — consider /compact at the next logical boundary.`
+        `[StrategicCompact] Context ~${approx} tokens (${pct}% of ${win} window); consider /compact at the next logical boundary.`
       );
     } else if (bucket < last) {
       // Context shrank (e.g. after /compact) → resync the saved bucket downward
@@ -179,11 +179,11 @@ function main() {
   }
   if (count === toolThreshold) {
     messages.push(
-      `[StrategicCompact] ${toolThreshold} tool calls reached — consider /compact if you're transitioning phases.`
+      `[StrategicCompact] ${toolThreshold} tool calls reached; consider /compact if you're transitioning phases.`
     );
   } else if (count > toolThreshold && (count - toolThreshold) % 25 === 0) {
     messages.push(
-      `[StrategicCompact] ${count} tool calls — good checkpoint for /compact if the context is stale.`
+      `[StrategicCompact] ${count} tool calls: good checkpoint for /compact if the context is stale.`
     );
   }
 

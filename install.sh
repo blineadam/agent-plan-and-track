@@ -21,7 +21,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MARK_BEGIN="<!-- agent-plan-and-track:begin (managed block — edit in the repo, not here) -->"
+MARK_BEGIN="<!-- agent-plan-and-track:begin (managed block: edit in the repo, not here) -->"
+MARK_BEGIN_PREFIX="<!-- agent-plan-and-track:begin ("
 MARK_END="<!-- agent-plan-and-track:end -->"
 
 usage() {
@@ -33,7 +34,7 @@ need_jq() {
   command -v jq >/dev/null 2>&1 || { echo "error: jq is required (brew install jq)" >&2; exit 1; }
 }
 
-# Claude-only skills — installed by install_claude, skipped for the other
+# Claude-only skills: installed by install_claude, skipped for the other
 # harnesses. Everything else under skills/ is portable and installs everywhere.
 CLAUDE_ONLY_SKILLS=("skill-comply")
 
@@ -45,7 +46,7 @@ is_claude_only() {
   return 1
 }
 
-# Portable skills — every skills/*/ dir except the Claude-only ones, so a new
+# Portable skills: every skills/*/ dir except the Claude-only ones, so a new
 # skill is picked up by re-installing with no install.sh edit.
 copy_skills() {
   local dest="$1" dir name names=""
@@ -61,7 +62,7 @@ copy_skills() {
 
 # Claude-only subagent definitions (agents/*.md): model-tiered helpers so
 # offloaded work runs on a cheaper model than the main session regardless of
-# what it's set to. These are repo-owned artifacts, exactly like skills — the
+# what it's set to. These are repo-owned artifacts, exactly like skills. The
 # repo is the source of truth, so each install overwrites them to keep them in
 # sync (customize in the repo, not in ~/.claude/agents). Every agents/*.md is
 # copied, so adding one needs no edit here. No-op if the repo has no agents/ dir.
@@ -158,10 +159,10 @@ install_instructions() {
   if [ ! -f "$dest" ]; then
     { echo "$MARK_BEGIN"; cat "$REPO_DIR/rules/agent-guidelines.md"; echo "$MARK_END"; } > "$dest"
     echo "  instructions    -> $dest"
-  elif grep -qF "$MARK_BEGIN" "$dest"; then
+  elif grep -qF "$MARK_BEGIN_PREFIX" "$dest"; then
     tmp="$(mktemp)"
-    awk -v begin="$MARK_BEGIN" -v end="$MARK_END" -v src="$REPO_DIR/rules/agent-guidelines.md" '
-      $0 == begin { print; while ((getline line < src) > 0) print line; close(src); skip = 1; next }
+    awk -v prefix="$MARK_BEGIN_PREFIX" -v begin="$MARK_BEGIN" -v end="$MARK_END" -v src="$REPO_DIR/rules/agent-guidelines.md" '
+      index($0, prefix) == 1 { print begin; while ((getline line < src) > 0) print line; close(src); skip = 1; next }
       $0 == end   { skip = 0 }
       !skip' "$dest" > "$tmp" && mv "$tmp" "$dest"
     echo "  instructions    -> managed block updated in $dest (content outside markers untouched)"
@@ -268,7 +269,7 @@ install_copilot() {
   cp "$REPO_DIR/hooks/copilot/core-rules.json" "$chook"
   echo "  hook            -> ~/.copilot/hooks/core-rules.json (postToolUse, 10-min throttle)"
   # gateguard: universal script + repo-owned preToolUse wiring (like core-rules).
-  # UNVERIFIED: the Copilot CLI wasn't available to test against locally — the
+  # UNVERIFIED: the Copilot CLI wasn't available to test against locally: the
   # wire format follows the docs + the proven core-rules.json shape.
   mkdir -p "$HOME/.copilot/scripts"
   cp "$REPO_DIR/hooks/gateguard.js" "$HOME/.copilot/scripts/gateguard.js"

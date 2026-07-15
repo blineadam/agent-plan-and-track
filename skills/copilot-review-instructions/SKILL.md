@@ -1,6 +1,6 @@
 ---
 name: copilot-review-instructions
-description: Generate or refresh path-scoped .github/instructions/*.instructions.md files so GitHub Copilot's PR review enforces a project's actual conventions instead of generic defaults. Gathers review-worthy rules from every source the project already has, including .ai-style-rules.md, the project's own instructions file (CLAUDE.md / AGENTS.md / .github/copilot-instructions.md), README, CONTRIBUTING, docs, plus a bounded source scan. Use whenever those conventions are created or change and the project uses GitHub Copilot code review, either right after [[inherit-legacy-style]] captures implicit conventions or standalone. The generated artifact is Copilot-only, since no Claude or Codex equivalent exists.
+description: Generate or refresh path-scoped .github/instructions/*.instructions.md files so GitHub Copilot's PR review enforces a project's actual conventions instead of generic defaults. Gathers review-worthy rules from every source the project already has, including .ai-style-rules.md, the project's own instructions file (CLAUDE.md / AGENTS.md / .github/copilot-instructions.md), README, CONTRIBUTING, docs, plus a bounded source scan. Use whenever those conventions are created or change, or the project's directory/language layout changes (buckets and globs derive from it), and the project uses GitHub Copilot code review, either right after [[inherit-legacy-style]] captures implicit conventions or standalone. The generated artifact is Copilot-only, since no Claude or Codex equivalent exists.
 ---
 
 # copilot-review-instructions
@@ -48,7 +48,10 @@ which rules each one carries:
    discipline, verification). These are prime review-directive material and
    usually live nowhere near `.ai-style-rules.md`.
 3. **`README.md`, `CONTRIBUTING.md`, `docs/`**: human-written guidance already
-   in the repo (layout conventions, contribution rules).
+   in the repo (layout conventions, contribution rules). For a large
+   documentation tree, apply the same scale-tiered sampling as the source scan
+   below: index first, read fully only within the tier's budget, so this step
+   can't blow the context budget on a large repo.
 4. **A bounded scan of source itself**, scaled to repo size the way
    [[inherit-legacy-style]] tiers its sampling, to ground the documented rules
    in real examples and to derive the actual directory/extension globs Step 2
@@ -66,12 +69,21 @@ flagging it in review adds nothing the pipeline doesn't already enforce.
 
 From the union of everything gathered (not just `.ai-style-rules.md`'s
 sections), group rules by the files they govern. Derive buckets from what's
-actually present, not from an assumed language or stack:
+actually present, not from an assumed language or stack.
 
-- **One repo-wide bucket** (`applyTo: "**"`) for rules that apply regardless of
-  file type: writing voice, PR/commit hygiene, scope discipline, verification
+Before bucketing, resolve same-scope conflicts: if two sources give
+contradictory directives for the same files (e.g. the README says X, the
+instructions file says not-X), that's a conflict, not a union. Surface it the
+same one-question-at-a-time way [[inherit-legacy-style]] resolves conflicts,
+and drop the losing directive rather than folding both into the same bucket.
+
+- **One repo-wide bucket** (`applyTo: "**"`), only if at least one genuinely
+  repo-wide rule was gathered, for rules that apply regardless of file type:
+  writing voice, PR/commit hygiene, scope discipline, verification
   expectations. These usually come from the instructions file, not
-  `.ai-style-rules.md`.
+  `.ai-style-rules.md`. Skip this bucket for a project whose gathered rules
+  are exclusively path-scoped, rather than emitting an empty or invented
+  repo-wide file.
 - **One bucket per distinct area** evidenced by the sources: group by shared
   directory prefix or file extension actually present (e.g. a scripts cluster
   from `.ai-style-rules.md`'s Golden Files, a docs/skill cluster from the

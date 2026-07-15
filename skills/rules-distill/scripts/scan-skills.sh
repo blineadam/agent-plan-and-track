@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scan-skills.sh — enumerate installed skills across every supported harness and
+# scan-skills.sh: enumerate installed skills across every supported harness and
 # extract each skill's name/description/mtime as a JSON inventory.
 #
 # Usage: scan-skills.sh [EXTRA_SKILLS_DIR ...]
@@ -8,7 +8,7 @@
 # Tool-agnostic: scans the user-scope skills dir of Claude Code, GitHub Copilot,
 # and Codex (whichever exist), plus any dirs passed as arguments (e.g. this
 # repo's own skills/ when run from the repo root). Duplicate skill names across
-# dirs are reported as-is — a distill run treats them as one skill by name.
+# dirs are reported as-is: a distill run treats them as one skill by name.
 #
 # Environment:
 #   RULES_DISTILL_SKILLS_DIRS  Colon-separated dirs to scan instead of the
