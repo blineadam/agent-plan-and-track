@@ -35,9 +35,11 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `command -v jq >/dev/null 2>&1 || { echo "error: ..." >&2; exit 1; }`
   (keep the `>/dev/null 2>&1`: without it, a successful `command -v` prints
   the executable's path to stdout, corrupting a script whose stdout is a
-  JSON contract). Don't flag POSIX core utilities (`wc`, `tr`, `awk`,
-  `sort`, `find`, `grep`, `sed`, ...) for a gate: those are assumed always
-  present.
+  JSON contract). Exit 1 when the dependency is required for the script to
+  function; when a single step is optional (e.g. `install.sh`'s Copilot
+  model default), warn and skip that step instead of exiting. Don't flag
+  POSIX core utilities (`wc`, `tr`, `awk`, `sort`, `find`, `grep`, `sed`,
+  ...) for a gate: those are assumed always present.
 - Use `mktemp -d` for scratch space with a matching `trap ... EXIT` cleanup.
 - Build JSON via `jq -n --arg` / `--argjson`, not string concatenation.
 - `snake_case` for local variables and functions. Top-level script
@@ -56,7 +58,11 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 
 - Don't add a top-level `scripts/` directory. Skill-owned scripts live at
   `skills/<name>/scripts/`, next to the `SKILL.md` that documents them.
-  Hook scripts live at `hooks/` (shared) or `hooks/<harness>/` (wiring only).
+  Hook scripts live at `hooks/` (shared across harnesses) or
+  `hooks/<harness>/` (that harness's own implementation, e.g.
+  `hooks/claude/suggest-compact.js`, plus the JSON that wires a shared
+  script into that harness's hook contract). Don't reject a harness-specific
+  script under `hooks/<harness>/` as misplaced just because it isn't JSON.
 
 ## install.sh defaults
 

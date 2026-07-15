@@ -20,8 +20,10 @@ Applies to shared rule files, skill docs, agent docs, and the README. See
 - A skill's frontmatter `description` must lead with (or clearly contain)
   the trigger clause: "Use when X," "Use BEFORE Y." A summary of what the
   skill does, with no trigger clause, is not sufficient.
-- Cross-skill references use `[[skill-name]]` wiki-link syntax instead of
-  duplicating another skill's content inline.
+- Cross-skill references inside a skill's body use `[[skill-name]]`
+  wiki-link syntax instead of duplicating another skill's content inline.
+  A frontmatter `description` may still name a sibling skill in plain text
+  for routing purposes (see `context-budget`, `skill-activation`).
 - New skills default to portable across Claude, Codex, and Copilot. If a
   skill (or part of one) is scoped to a single harness, the PR should say
   why and note the split in the README's skill table, not just silently
