@@ -70,9 +70,11 @@ the header, plus three mandatory sections:
 Independent of persistence strength, if the project uses (or plans to use)
 GitHub Copilot's PR code review, offer to also invoke
 [[copilot-review-instructions]] to generate path-scoped
-`.github/instructions/*.instructions.md` review directives from the rules
-just written. Skip this offer entirely for projects that don't use Copilot
-review.
+`.github/instructions/*.instructions.md` review directives. That skill draws
+on the rules just written plus the rest of the project's documented
+conventions (its instructions file, README, and docs), not on
+`.ai-style-rules.md` alone. Skip this offer entirely for projects that don't
+use Copilot review.
 
 ## Incremental update
 
