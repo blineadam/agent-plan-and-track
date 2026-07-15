@@ -67,6 +67,13 @@ the header, plus three mandatory sections:
   Edit/Write in `settings.json` for mechanical enforcement.
 - **None** — keep the file; the user references it manually.
 
+Independent of persistence strength, if the project uses (or plans to use)
+GitHub Copilot's PR code review, offer to also invoke
+[[copilot-review-instructions]] to generate path-scoped
+`.github/instructions/*.instructions.md` review directives from the rules
+just written. Skip this offer entirely for projects that don't use Copilot
+review.
+
 ## Incremental update
 
 1. Read the existing `.ai-style-rules.md`; diff from its recorded commit
