@@ -2,7 +2,7 @@
 name: debugger
 description: Failure diagnosis and reproduction, pinned to a cheaper-than-Opus model. Delegate here to reproduce a bug, trace it to root cause, and hand back a failing regression test, before any fix is attempted. Has Bash to run and observe but no Edit/Write, and is instructed to never modify the working tree, so a fix is always a separate, deliberate step taken by the caller or the mechanic agent. Runs on Sonnet regardless of the main session's model. Prefer this over debugging inline whenever the fix isn't obvious from the error message alone.
 model: sonnet
-effort: medium
+effort: high
 tools: Read, Grep, Glob, Bash
 ---
 
