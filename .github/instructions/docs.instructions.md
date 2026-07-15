@@ -1,5 +1,6 @@
 ---
 applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,README.md"
+excludeAgent: "cloud-agent"
 ---
 
 # Docs review instructions

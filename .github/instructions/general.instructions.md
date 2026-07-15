@@ -1,12 +1,13 @@
 ---
 applyTo: "**"
+excludeAgent: "cloud-agent"
 ---
 
 # General review instructions
 
 This repo is a portable set of agent rules/skills/hooks for Claude Code,
 Copilot, and Codex. Full conventions live in `.ai-style-rules.md` at the repo
-root — read it before reviewing. Flag anything below as a review comment, not
+root: read it before reviewing. Flag anything below as a review comment, not
 just a suggestion.
 
 ## Writing voice
