@@ -65,6 +65,7 @@ mechanism is genuinely Claude-native.
 | **`skill-comply`** | Measures whether a fresh agent actually follows a given rule. | Claude only |
 | **`skill-activation`** | Tests whether the *right* skill fires for a prompt — routing regression, sibling to `skill-comply`. | All 3 (runtime check is Claude-only) |
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
+| **`copilot-review-instructions`** | Generates path-scoped `.github/instructions/*.instructions.md` PR-review directives from a project's documented conventions (style rules, instructions file, README, docs). | All 3 (Copilot-only output) |
 
 ## Model defaults
 
@@ -132,6 +133,7 @@ skills/skill-comply/         measure whether a rule/skill is actually followed (
 skills/skill-activation/     routing regression: does the right skill fire? (static: all 3; runtime: Claude)
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
+skills/copilot-review-instructions/ generate Copilot PR-review instructions from a project's documented conventions (portable; Copilot-only output)
 agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku)
 hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)

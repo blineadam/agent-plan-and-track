@@ -67,6 +67,15 @@ the header, plus three mandatory sections:
   Edit/Write in `settings.json` for mechanical enforcement.
 - **None** — keep the file; the user references it manually.
 
+Independent of persistence strength, if the project uses (or plans to use)
+GitHub Copilot's PR code review, offer to also invoke
+[[copilot-review-instructions]] to generate path-scoped
+`.github/instructions/*.instructions.md` review directives. That skill draws
+on the rules just written plus the rest of the project's documented
+conventions (its instructions file, README, and docs), not on
+`.ai-style-rules.md` alone. Skip this offer entirely for projects that don't
+use Copilot review.
+
 ## Incremental update
 
 1. Read the existing `.ai-style-rules.md`; diff from its recorded commit
@@ -75,6 +84,11 @@ the header, plus three mandatory sections:
    through the one-question-at-a-time protocol.
 3. Append a dated `### [YYYY-MM-DD] Style Evolution Log` entry — never
    rewrite existing rules.
+4. If this update changed any convention and the project uses GitHub Copilot's
+   PR code review, re-offer [[copilot-review-instructions]] under the same gate
+   as first-time Step 6, so the generated review files refresh against the new
+   rules instead of going stale. Skip the offer when nothing review-worthy
+   changed or the project doesn't use Copilot review.
 
 ## Per-turn enforcement
 
