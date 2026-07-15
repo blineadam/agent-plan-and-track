@@ -21,6 +21,15 @@ Applies to shared rule files, skill docs, agent docs, and the README. See
   skill does, with no trigger clause, is not sufficient.
 - Cross-skill references use `[[skill-name]]` wiki-link syntax instead of
   duplicating another skill's content inline.
+- New skills default to portable across Claude, Codex, and Copilot. If a
+  skill (or part of one) is scoped to a single harness, the PR should say
+  why and note the split in the README's skill table, not just silently
+  narrow it.
+- A skill/workflow that needs a "this happened" signal should prefer state
+  the project already owns (e.g. a checklist file being fully checked)
+  over querying a specific external system (GitHub, a CI, a ticket
+  tracker). Flag a hard dependency on one external tool unless it's
+  optional/best-effort.
 
 ## Don't hand-edit installed copies
 

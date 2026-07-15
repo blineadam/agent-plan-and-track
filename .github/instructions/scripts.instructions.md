@@ -1,5 +1,5 @@
 ---
-applyTo: "hooks/**/*.js,**/*.sh,install.sh"
+applyTo: "hooks/**/*.js,hooks/**/*.json,**/*.sh,install.sh"
 ---
 
 # Script review instructions
@@ -32,3 +32,24 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 - Use `mktemp -d` for scratch space with a matching `trap ... EXIT` cleanup.
 - Build JSON via `jq -n --arg` / `--argjson`, not string concatenation.
 - `snake_case` for functions and variables.
+
+## Hook wiring files (JSON)
+
+- `hooks/claude/*.json`, `hooks/codex/*.json`, and `hooks/copilot/*.json`
+  each speak that harness's own wire dialect (event key casing, `command`
+  vs `bash`, `timeout` vs `timeoutSec`). Don't propose normalizing one
+  dialect to match another: the differing shape is a harness contract, not
+  an inconsistency.
+
+## File placement
+
+- Don't add a top-level `scripts/` directory. Skill-owned scripts live at
+  `skills/<name>/scripts/`, next to the `SKILL.md` that documents them.
+  Hook scripts live at `hooks/` (shared) or `hooks/<harness>/` (wiring only).
+
+## install.sh defaults
+
+- A repo-owned managed default (model/effort settings, skill installs)
+  should be overwritten on every install run, not guarded by
+  set-if-absent, unless the target write is genuinely unsafe to clobber
+  (e.g. a config file a JSON tool can't round-trip losslessly).

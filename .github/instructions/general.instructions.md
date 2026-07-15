@@ -32,3 +32,12 @@ just a suggestion.
   refactors riding along with the real change.
 - Flag scope creep: new abstractions, config knobs, or features the task
   didn't ask for.
+- Flag unnecessarily complex implementations where a simpler one would
+  clearly do (skip this for trivial, obvious fixes).
+
+## Verification
+
+- Flag a behavioral change with no demonstrated verification: tests, logs,
+  or a described manual check.
+- Flag a bug fix with no regression test, when a test harness already
+  exists in the repo.
