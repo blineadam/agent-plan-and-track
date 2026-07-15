@@ -35,6 +35,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # On pull_request events, check out the PR head commit instead of
+          # GitHub's ephemeral merge-ref commit, so results attach to the SHA
+          # the branch protection ruleset's code-scanning check is watching.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
