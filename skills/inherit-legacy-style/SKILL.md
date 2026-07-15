@@ -41,7 +41,7 @@ quality):
 **3. Filter noise before involving the user.** A minority pattern under 5%
 of occurrences *and* fewer than 10 instances is weak signal: majority wins,
 minority goes to the DONTs list. A near-even split, or a semantic fork on a
-core dimension, is strong signal, ask. Small-project exception: at ≲ 50
+core dimension, is a strong signal; ask. Small-project exception: at ≲ 50
 files, "3 vs 2" is not a majority; ask.
 
 **4. Resolve conflicts one at a time.** For each strong-signal conflict,
@@ -82,7 +82,7 @@ use Copilot review.
    fingerprint to HEAD (`--stat` first) to find what changed.
 2. Compare new code against the recorded rules; run only *new* conflicts
    through the one-question-at-a-time protocol.
-3. Append a dated `### [YYYY-MM-DD] Style Evolution Log` entry, never
+3. Append a dated `### [YYYY-MM-DD] Style Evolution Log` entry; never
    rewrite existing rules.
 4. If this update changed any convention and the project uses (or plans to
    use) GitHub Copilot's PR code review, re-offer [[copilot-review-instructions]]

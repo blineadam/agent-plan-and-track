@@ -23,7 +23,7 @@
 # "id" field). --run writes those same files then checks them, but is a real,
 # billable, tool-executing operation: it refuses unless ACTIVATION_ALLOW_SPEND=1,
 # and you MUST run it inside an isolated container/VM with no network egress and
-# restricted mounts, a competing/injected prompt will execute tool calls. Never
+# restricted mounts; a competing/injected prompt will execute tool calls. Never
 # pass --dangerously-skip-permissions here. See SKILL.md for the full rationale.
 #
 # Tuning (env):

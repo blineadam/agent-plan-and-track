@@ -58,7 +58,7 @@ Launch a general-purpose subagent per cluster with this prompt:
 > 3. **Clear violation risk**: one sentence on what breaks if ignored.
 > 4. **Not already covered**: check the full rules text, including the same idea in different words.
 >
-> **Assign a verdict** per candidate: `Append` (to an existing section), `Revise` (existing rule is wrong/insufficient, give before/after), `New Section`, `New File`, `Already Covered`, or `Too Specific` (stays in the skill).
+> **Assign a verdict** per candidate: `Append` (to an existing section), `Revise` (existing rule is wrong/insufficient; give before/after), `New Section`, `New File`, `Already Covered`, or `Too Specific` (stays in the skill).
 >
 > **Output** JSON per candidate: `{principle, evidence:[skill §section], violation_risk, verdict, target ("agent-guidelines.md §… / core-rules.md / new"), confidence, draft (for Append/New), revision:{reason,before,after} (for Revise)}`.
 >

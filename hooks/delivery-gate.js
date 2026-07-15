@@ -258,13 +258,13 @@ function main() {
   }
   if (rationalized) {
     warnings.push(
-      `Recent text reads like an unverified claim ("good enough"/"should work"/"didn't test"), verify before done: run it, show the output.`
+      `Recent text reads like an unverified claim ("good enough"/"should work"/"didn't test"); verify before done: run it, show the output.`
     );
   }
   if (minDiskMB > 0) {
     const free = freeDiskMB(cwd);
     if (free !== null && free < minDiskMB) {
-      warnings.push(`Low free disk on the working directory (~${free} MB), builds/tests may fail.`);
+      warnings.push(`Low free disk on the working directory (~${free} MB); builds/tests may fail.`);
     }
   }
 

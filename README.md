@@ -88,7 +88,7 @@ the Codex plan-mode effort still updates.
 **Tiered subagents (Claude only)** install to `~/.claude/agents/`, each pinned
 to a cheaper model so delegated work stays cheap:
 
-- **`researcher`** (Sonnet, read-only), offloaded exploration: map code, find
+- **`researcher`** (Sonnet, read-only) offloads exploration: map code, find
   callers, gather the facts an edit needs. Never writes.
 - **`mechanic`** (Haiku): already-decided mechanical edits; kicks anything that
   needs a judgment call back to you.

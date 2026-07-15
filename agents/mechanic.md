@@ -1,6 +1,6 @@
 ---
 name: mechanic
-description: Low-risk mechanical edits, pinned to the cheapest capable model. Delegate here only when the change is already fully specified and needs no design judgment, applying a decided rename across files, fixing formatting or typos, updating docs/comments to match a stated change, or making the same small edit in many places. Runs on Haiku to keep routine edits off the main session's budget. NOT for anything requiring architectural decisions, ambiguous requirements, or a fix whose approach isn't yet settled; send those to the main session or the researcher agent first.
+description: Low-risk mechanical edits, pinned to the cheapest capable model. Delegate here only when the change is already fully specified and needs no design judgment (applying a decided rename across files, fixing formatting or typos, updating docs/comments to match a stated change, or making the same small edit in many places). Runs on Haiku to keep routine edits off the main session's budget. NOT for anything requiring architectural decisions, ambiguous requirements, or a fix whose approach isn't yet settled; send those to the main session or the researcher agent first.
 model: haiku
 effort: low
 tools: Read, Grep, Glob, Edit, Write

@@ -32,7 +32,7 @@ portable guidance, one Claude-specific mechanism):
 - **Phase 2 (runtime activation): Claude verified · Copilot likely · Codex
   no.** Claude Code emits a `Skill` tool_use in its `stream-json` trace
   (verified). Copilot exposes a `skill` tool plus `--output-format=json`, so the
-  same parse should work, the checker already reads both shapes, but verify
+  same parse should work (the checker already reads both shapes), but verify
   empirically first. Codex `exec --json` has no skill event, so runtime
   activation isn't detectable there; run Phase 0 only on Codex.
 

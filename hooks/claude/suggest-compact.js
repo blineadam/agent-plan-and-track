@@ -149,7 +149,7 @@ function main() {
       const pct = Math.round((usage.tokens / windowTokens) * 100);
       const win = windowTokens >= 1000000 ? '1M' : '200k';
       messages.push(
-        `[StrategicCompact] Context ~${approx} tokens (${pct}% of ${win} window), consider /compact at the next logical boundary.`
+        `[StrategicCompact] Context ~${approx} tokens (${pct}% of ${win} window); consider /compact at the next logical boundary.`
       );
     } else if (bucket < last) {
       // Context shrank (e.g. after /compact) → resync the saved bucket downward
@@ -179,11 +179,11 @@ function main() {
   }
   if (count === toolThreshold) {
     messages.push(
-      `[StrategicCompact] ${toolThreshold} tool calls reached, consider /compact if you're transitioning phases.`
+      `[StrategicCompact] ${toolThreshold} tool calls reached; consider /compact if you're transitioning phases.`
     );
   } else if (count > toolThreshold && (count - toolThreshold) % 25 === 0) {
     messages.push(
-      `[StrategicCompact] ${count} tool calls, good checkpoint for /compact if the context is stale.`
+      `[StrategicCompact] ${count} tool calls: good checkpoint for /compact if the context is stale.`
     );
   }
 

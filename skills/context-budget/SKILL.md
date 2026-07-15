@@ -6,8 +6,8 @@ description: Audit the always-on context cost of the agent config (skills, instr
 # Context Budget
 
 Estimate what the agent config costs in every session and find the bloat. The
-always-on surface: instruction files, the rules digest, and every skill's
-frontmatter: loads into the context window on *every* turn, before the task
+always-on surface (instruction files, the rules digest, and every skill's
+frontmatter) loads into the context window on *every* turn, before the task
 even starts. This skill enumerates that surface, estimates its token cost, flags
 oversized components, and sorts each into **keep / lazy-load / remove**.
 
@@ -63,7 +63,7 @@ exist) plus any dirs you pass, each harness's instruction file, and the
   the `harness` it was classified into.
 
 Report a one-line summary per harness before analysis, e.g.
-`claude: ~1.4k always-on / 6 skills · copilot: ~2.4k / 21 · codex: ~1.2k / 4, 2 oversized`.
+`claude: ~1.4k always-on / 6 skills · copilot: ~2.4k / 21 · codex: ~1.2k / 4 (2 oversized total)`.
 
 ## Phase 2: Triage (LLM judgment)
 

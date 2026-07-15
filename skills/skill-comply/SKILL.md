@@ -60,7 +60,7 @@ stops supporting it? Write 1–2 user prompts per level:
 Run every scenario in its own fresh process, capturing the trace. **Isolate it.**
 A competing or prompt-injected scenario *will* execute tool calls, so run inside
 a container/VM with restricted mounts and no network egress. A `mktemp -d` is a
-working directory, not a sandbox, and never pass `--dangerously-skip-permissions`
+working directory, not a sandbox. Never pass `--dangerously-skip-permissions`
 here: it would let an injected scenario reach your home dir, credentials, and
 network unattended. If you can't containerize, keep normal permission prompts or
 an explicit tool allowlist. Keep stdout (the stream-json trace) and stderr

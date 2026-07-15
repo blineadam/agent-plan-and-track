@@ -22,6 +22,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MARK_BEGIN="<!-- agent-plan-and-track:begin (managed block: edit in the repo, not here) -->"
+MARK_BEGIN_PREFIX="<!-- agent-plan-and-track:begin ("
 MARK_END="<!-- agent-plan-and-track:end -->"
 
 usage() {
@@ -158,10 +159,10 @@ install_instructions() {
   if [ ! -f "$dest" ]; then
     { echo "$MARK_BEGIN"; cat "$REPO_DIR/rules/agent-guidelines.md"; echo "$MARK_END"; } > "$dest"
     echo "  instructions    -> $dest"
-  elif grep -qF "$MARK_BEGIN" "$dest"; then
+  elif grep -qF "$MARK_BEGIN_PREFIX" "$dest"; then
     tmp="$(mktemp)"
-    awk -v begin="$MARK_BEGIN" -v end="$MARK_END" -v src="$REPO_DIR/rules/agent-guidelines.md" '
-      $0 == begin { print; while ((getline line < src) > 0) print line; close(src); skip = 1; next }
+    awk -v prefix="$MARK_BEGIN_PREFIX" -v begin="$MARK_BEGIN" -v end="$MARK_END" -v src="$REPO_DIR/rules/agent-guidelines.md" '
+      index($0, prefix) == 1 { print begin; while ((getline line < src) > 0) print line; close(src); skip = 1; next }
       $0 == end   { skip = 0 }
       !skip' "$dest" > "$tmp" && mv "$tmp" "$dest"
     echo "  instructions    -> managed block updated in $dest (content outside markers untouched)"
