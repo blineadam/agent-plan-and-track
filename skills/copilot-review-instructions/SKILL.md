@@ -1,6 +1,6 @@
 ---
 name: copilot-review-instructions
-description: Generate or refresh path-scoped .github/instructions/*.instructions.md files so GitHub Copilot's PR review enforces a project's actual conventions instead of generic defaults. Gathers review-worthy rules from every source the project already has: .ai-style-rules.md, the project's own instructions file (CLAUDE.md / AGENTS.md / copilot-instructions.md), README, CONTRIBUTING, docs, plus a bounded source scan. Use whenever those conventions are created or change and the project uses GitHub Copilot code review: after [[inherit-legacy-style]] captures implicit conventions, or standalone. Copilot-only: no Claude/Codex equivalent artifact exists.
+description: Generate or refresh path-scoped .github/instructions/*.instructions.md files so GitHub Copilot's PR review enforces a project's actual conventions instead of generic defaults. Gathers review-worthy rules from every source the project already has, including .ai-style-rules.md, the project's own instructions file (CLAUDE.md / AGENTS.md / copilot-instructions.md), README, CONTRIBUTING, docs, plus a bounded source scan. Use whenever those conventions are created or change and the project uses GitHub Copilot code review, either right after [[inherit-legacy-style]] captures implicit conventions or standalone. The generated artifact is Copilot-only, since no Claude or Codex equivalent exists.
 ---
 
 # copilot-review-instructions
@@ -113,7 +113,9 @@ describe.
 
 Unlike an append-only style log, these files have no history worth preserving:
 they're a pure function of the current sources. On each run, fully regenerate
-every file this skill owns (identified by the marker comment from Step 3). If an
+every file this skill owns (identified by the marker comment from Step 3), and
+delete any marker-owned file whose bucket is no longer in the current set, so a
+dropped language or directory can't leave stale directives behind. If an
 existing `.github/instructions/*.instructions.md` file lacks that marker, treat
 it as hand-authored: don't overwrite it silently, flag it to the user instead.
 
@@ -147,7 +149,10 @@ skill's own origin PR:
 
 ## Portability
 
-Copilot-only. `applyTo` path scoping and `excludeAgent` are a GitHub Copilot
-code-review feature with no Claude Code or Codex equivalent artifact, so this
-skill has nothing to port, unlike the portable-guidance-plus-one-mechanism
-split used by [[strategic-compact]] or [[skill-activation]].
+Installs and runs on all three harnesses: any agent can generate these files for
+a repo that uses Copilot's PR review, and [[inherit-legacy-style]] (portable)
+offers to invoke it. Only the output is Copilot-specific, since `applyTo` path
+scoping and `excludeAgent` are GitHub Copilot code-review features with no Claude
+Code or Codex equivalent. There's no harness-specific mechanism to gate, so the
+skill body is identical everywhere, unlike the guidance-plus-one-mechanism split
+in [[strategic-compact]] or [[skill-activation]].
