@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scan-context.sh — estimate the always-on context cost of the agent config
+# scan-context.sh: estimate the always-on context cost of the agent config
 # (skills + instruction files + rules digest) and flag oversized components.
 #
 # Usage: scan-context.sh [EXTRA_SKILLS_DIR ...]
@@ -16,8 +16,8 @@
 #
 # What counts as "always on": a skill's SKILL.md frontmatter (name + description)
 # is what loads into every session; the body loads only when the skill fires.
-# So we report BOTH — `frontmatter_tokens` (the always-on cost) and `body_tokens`
-# (the on-demand cost) — and size-flag on total file lines (in practice the
+# So we report BOTH: `frontmatter_tokens` (the always-on cost) and `body_tokens`
+# (the on-demand cost), and size-flag on total file lines (in practice the
 # body; frontmatter is only a few lines).
 #
 # Thresholds (override via env): SKILL_LINE_LIMIT (400), RULES_LINE_LIMIT (100),
@@ -139,7 +139,7 @@ done
 if [[ $j -eq 0 ]]; then configs="[]"; else configs=$(jq -s '.' "$tmpdir"/cfg.*.json); fi
 
 # Report always-on cost PER HARNESS, not as one cross-harness sum: the three
-# harnesses are mutually exclusive — a session runs in exactly one, so summing
+# harnesses are mutually exclusive: a session runs in exactly one, so summing
 # them (and any repo ./skills copies passed as args) would charge a portable
 # skill up to four times and combine three instruction/digest pairs that never
 # co-load. Each skill/config is classified to its harness; extra dirs (e.g. the
@@ -169,7 +169,7 @@ jq -n --argjson skills "$skills" --argjson configs "$configs" \
   | ($configs | map(. + {harness: hkey(.path)}))  as $cf
   | {
       limits: {skill_lines:$sl, rules_lines:$rl, instructions_lines:$il},
-      note: "always_on_tokens is PER harness — a session pays one harness column, never the sum. repo_inventory is source skills from extra dirs passed as args (e.g. ./skills), not a session cost.",
+      note: "always_on_tokens is PER harness: a session pays one harness column, never the sum. repo_inventory is source skills from extra dirs passed as args (e.g. ./skills), not a session cost.",
       harnesses: {
         claude:  hstats([$sk[]|select(.harness=="claude")];  [$cf[]|select(.harness=="claude")]),
         copilot: hstats([$sk[]|select(.harness=="copilot")]; [$cf[]|select(.harness=="copilot")]),

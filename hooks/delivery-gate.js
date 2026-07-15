@@ -2,21 +2,21 @@
 /**
  * Delivery Gate (Claude Code + Codex)
  *
- * A Stop hook that runs deterministic pre-finish checks at the harness layer —
+ * A Stop hook that runs deterministic pre-finish checks at the harness layer:
  * the "verify before done" + "capture-lesson" + "checkpoint state" standing
  * rules, enforced where the model can't skip them. Both Claude Code and Codex
  * expose a Stop event with a Claude-shaped payload (`stop_hook_active`,
  * `transcript_path`, `last_assistant_message`) and accept the same output
  * contract, so one script serves both. Copilot has no soft-warn Stop channel
  * (only block/allow) and an undocumented transcript format, so it relies on the
- * rules-digest guidance instead — no Copilot delivery-gate.
+ * rules-digest guidance instead. No Copilot delivery-gate.
  *
  * DEFAULT: WARN-ONLY. It surfaces a `systemMessage` and always allows the stop.
  * A Stop hook that traps the user in a loop is worse than the problem it solves,
  * so blocking is strictly opt-in (DELIVERY_GATE_BLOCK=1) and self-limiting: it
  * blocks at most once per turn (honoring `stop_hook_active`), never repeatedly.
  *
- * Checks (heuristic — all WARN):
+ * Checks (heuristic: all WARN):
  *  - Complex session (>= EDIT_THRESHOLD edits) that never checkpointed to
  *    tasks/todo.md.
  *  - Rationalization language in recent assistant text ("good enough", "should
@@ -25,9 +25,9 @@
  *
  * Two transcript formats are read in one pass, keyed off record shape:
  *  - Claude JSONL: `{message:{role:"assistant",content:[{type:"tool_use",
- *    name:"Edit"|"Write"|...}]}}` — count edit tool_use blocks.
+ *    name:"Edit"|"Write"|...}]}}`: count edit tool_use blocks.
  *  - Codex rollout: `{payload:{type:"patch_apply_end",success,changes:{<abs
- *    path>:{type:"add"|"update"|...}}}}` — count changed files per applied
+ *    path>:{type:"add"|"update"|...}}}}`: count changed files per applied
  *    patch. (Verified against a live ~/.codex/sessions rollout.)
  *  Rationalization is scanned on a bounded transcript tail (recent Claude text)
  *  AND on the Stop payload's `last_assistant_message` (Codex's recent text,
@@ -129,7 +129,7 @@ function forEachLine(filePath, fn) {
     leftover += decoder.end();
     if (leftover) fn(leftover);
   } catch {
-    /* partial read — use what we got */
+    /* partial read, use what we got */
   } finally {
     try {
       fs.closeSync(fd);
@@ -194,7 +194,7 @@ function scanEditsAndCheckpoint(transcriptPath) {
   return { edits, touchedTodo };
 }
 
-// Rationalization scan over recent assistant text only (the bounded tail) — a
+// Rationalization scan over recent assistant text only (the bounded tail), a
 // phrase early in a long session that was later resolved shouldn't trip the gate.
 function scanRationalization(entries) {
   const texts = [];
@@ -253,18 +253,18 @@ function main() {
   const warnings = [];
   if (edits >= editThreshold && !touchedTodo) {
     warnings.push(
-      `Complex session (${edits} edits) but tasks/todo.md was never updated — checkpoint your plan/state before finishing (plan-and-track).`
+      `Complex session (${edits} edits) but tasks/todo.md was never updated: checkpoint your plan/state before finishing (plan-and-track).`
     );
   }
   if (rationalized) {
     warnings.push(
-      `Recent text reads like an unverified claim ("good enough"/"should work"/"didn't test") — verify before done: run it, show the output.`
+      `Recent text reads like an unverified claim ("good enough"/"should work"/"didn't test"), verify before done: run it, show the output.`
     );
   }
   if (minDiskMB > 0) {
     const free = freeDiskMB(cwd);
     if (free !== null && free < minDiskMB) {
-      warnings.push(`Low free disk on the working directory (~${free} MB) — builds/tests may fail.`);
+      warnings.push(`Low free disk on the working directory (~${free} MB), builds/tests may fail.`);
     }
   }
 
@@ -277,7 +277,7 @@ function main() {
 
   if (process.env.DELIVERY_GATE_BLOCK === '1') {
     // Opt-in blocking: block THIS stop once. Because stop_hook_active is set on
-    // the retry, the next stop attempt passes straight through — override by
+    // the retry, the next stop attempt passes straight through: override by
     // simply stopping again.
     process.stdout.write(
       JSON.stringify({

@@ -15,7 +15,7 @@ growing lessons file improve work over time.
 
 Global instruction files (`CLAUDE.md`, `AGENTS.md`, `copilot-instructions.md`)
 sit at the very top of the context window, and in a long chat the model's
-attention to them drifts — it starts "forgetting" your rules. The fix is to
+attention to them drifts: it starts "forgetting" your rules. The fix is to
 match each kind of rule to a mechanism that keeps it alive:
 
 | Rule type | Mechanism | Why it sticks |
@@ -26,27 +26,27 @@ match each kind of rule to a mechanism that keeps it alive:
 
 ## The everyday workflow
 
-These are the ones you hit every session, roughly in the order you hit them —
+These are the ones you hit every session, roughly in the order you hit them:
 plan it, implement under a fact-forcing gate, get checked before you call it
 done, and turn any correction into a durable rule:
 
-- **`plan-and-track`** (skill) — kicks in on multi-step work (a feature, a
+- **`plan-and-track`** (skill): kicks in on multi-step work (a feature, a
   refactor, a 3+ step fix, or resuming a repo that already has a
   `tasks/todo.md`). Writes a checklist, tracks it, and verifies before closing
   out.
-- **gateguard** (skill + enforcing hook, Claude/Codex/Copilot) — before the
-  first edit to a file, demand the facts — callers, blast radius, schemas —
+- **gateguard** (skill + enforcing hook, Claude/Codex/Copilot): before the
+  first edit to a file, demand the facts: callers, blast radius, schemas,
   instead of guessing. The hook denies that first edit until you've presented
   them; the retry always passes. One script handles all three harnesses, and an
   env var can soften or disable it.
-- **delivery-gate** (enforcing hook only, Claude/Codex) — a warn-only
+- **delivery-gate** (enforcing hook only, Claude/Codex): a warn-only
   pre-finish Stop check ("did you verify? did you checkpoint?") backing the
   verify-before-done and capture-lesson rules at the harness layer. An env var
   can make it block.
-- **`capture-lesson`** (skill) — kicks in whenever you correct the agent,
+- **`capture-lesson`** (skill): kicks in whenever you correct the agent,
   turning the correction into a durable rule in `tasks/lessons.md`.
 
-A harness that can't run a given hook still gets the rule as a skill — that's
+A harness that can't run a given hook still gets the rule as a skill: that's
 why Copilot (no Stop event) gets gateguard but not delivery-gate. Tuning knobs
 for both hooks live in their script headers under `hooks/`.
 
@@ -63,7 +63,7 @@ mechanism is genuinely Claude-native.
 | **`strategic-compact`** | Guides you to `/compact` at logical boundaries instead of mid-task; backed by a Claude-only enforcing hook that nudges you there. | All 3 |
 | **`context-budget`** | Audits always-on context cost and flags what's too big. | All 3 |
 | **`skill-comply`** | Measures whether a fresh agent actually follows a given rule. | Claude only |
-| **`skill-activation`** | Tests whether the *right* skill fires for a prompt — routing regression, sibling to `skill-comply`. | All 3 (runtime check is Claude-only) |
+| **`skill-activation`** | Tests whether the *right* skill fires for a prompt: routing regression, sibling to `skill-comply`. | All 3 (runtime check is Claude-only) |
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
 | **`copilot-review-instructions`** | Generates path-scoped `.github/instructions/*.instructions.md` PR-review directives from a project's documented conventions (style rules, instructions file, README, docs). | All 3 (Copilot-only output) |
 
@@ -88,9 +88,9 @@ the Codex plan-mode effort still updates.
 **Tiered subagents (Claude only)** install to `~/.claude/agents/`, each pinned
 to a cheaper model so delegated work stays cheap:
 
-- **`researcher`** (Sonnet, read-only) — offloaded exploration: map code, find
+- **`researcher`** (Sonnet, read-only), offloaded exploration: map code, find
   callers, gather the facts an edit needs. Never writes.
-- **`mechanic`** (Haiku) — already-decided mechanical edits; kicks anything that
+- **`mechanic`** (Haiku): already-decided mechanical edits; kicks anything that
   needs a judgment call back to you.
 
 Claude routes work to them automatically based on their descriptions; you can
@@ -147,14 +147,14 @@ install.sh                   per-tool installer
 
 Two things survive every update:
 
-- **`core-rules.local.md`** next to each tool's `core-rules.md` — extra digest
+- **`core-rules.local.md`** next to each tool's `core-rules.md`: extra digest
   lines just for this machine (venvs, local paths). The installer never touches
   it; the hooks append it after the shared digest.
-- **Anything outside the managed block** in an instruction file — e.g. a
+- **Anything outside the managed block** in an instruction file, e.g. a
   `## Python Environment` section below the end marker.
 
 To change a shared rule, edit `rules/core-rules.md` and/or
-`rules/agent-guidelines.md` and re-run `./install.sh all` — digest changes are
+`rules/agent-guidelines.md` and re-run `./install.sh all`: digest changes are
 live immediately; restart Copilot/Codex sessions for instruction changes. To add
 a skill, drop it in `skills/<name>/SKILL.md` (the `description` tells the agent
 *when* to use it) and re-install; if it's Claude-only, add it to
@@ -162,15 +162,15 @@ a skill, drop it in `skills/<name>/SKILL.md` (the `description` tells the agent
 
 ## Per-tool notes
 
-- **Claude** (`~/.claude`) — the digest is injected every turn via a
+- **Claude** (`~/.claude`): the digest is injected every turn via a
   `UserPromptSubmit` hook, so edits to `core-rules.md` are live. Set
   `"includeCoAuthoredBy": false` in `settings.json` to drop the co-author
   trailer.
-- **Copilot** (`~/.copilot`) — reads instructions at session start (restart
+- **Copilot** (`~/.copilot`): reads instructions at session start (restart
   after edits); the digest rides a throttled `postToolUse` hook (once per
   10 min, since Copilot has no prompt-submit injection). `"includeCoAuthoredBy":
   false` drops its trailer too.
-- **Codex** (`~/.codex`) — the user `AGENTS.md` loads before project ones; skills
+- **Codex** (`~/.codex`): the user `AGENTS.md` loads before project ones; skills
   live in `~/.agents/skills/`. Run `codex` and press `2` to accept new hooks.
   Recent builds add no attribution trailer.
 
@@ -184,4 +184,6 @@ this repository installs or depends on them.
 
 - [graphify](https://github.com/safishamsi/graphify): builds a queryable
   knowledge graph of a codebase, so an agent can look up definitions, callers,
-  and structure instead of grepping blind.
+  and structure instead of grepping blind. This repo's own graphify usage
+  rules live in a gitignored `CLAUDE.local.md`/`AGENTS.local.md`, not in the
+  tracked `CLAUDE.md`/`AGENTS.md`, since not every checkout has it installed.

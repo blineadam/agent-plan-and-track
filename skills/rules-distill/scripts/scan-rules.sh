@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scan-rules.sh — index this repo's rule files (H2 headings + line counts) so a
+# scan-rules.sh: index this repo's rule files (H2 headings + line counts) so a
 # distill run can check candidates against what the rules already cover.
 #
 # Usage: scan-rules.sh [RULES_DIR]
 # Output: JSON to stdout. Requires jq.
 #
 # This repo is the source of truth for the rules (README: "This repo is the
-# source of truth"), so we index the repo's rules/ dir — NOT the per-tool
+# source of truth"), so we index the repo's rules/ dir, NOT the per-tool
 # installed copies. Run from the repo root, or pass the rules dir explicitly.
 #
 # Environment:
@@ -20,7 +20,7 @@ RULES_DIR="${RULES_DISTILL_DIR:-${1:-$PWD/rules}}"
 
 if [[ ! -d "$RULES_DIR" ]]; then
   jq -n --arg path "$RULES_DIR" \
-    '{error:"rules dir not found — run from the repo root or pass RULES_DIR",path:$path}' >&2
+    '{error:"rules dir not found: run from the repo root or pass RULES_DIR",path:$path}' >&2
   exit 1
 fi
 

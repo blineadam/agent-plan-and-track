@@ -1,6 +1,6 @@
 ---
 name: capture-lesson
-description: Record a lesson in the active project's tasks/lessons.md after the user corrects a mistake, rejects an approach, points out something missed, or gives feedback on how to work. Use IMMEDIATELY after ANY correction from the user — the goal is to never repeat the same mistake twice.
+description: Record a lesson in the active project's tasks/lessons.md after the user corrects a mistake, rejects an approach, points out something missed, or gives feedback on how to work. Use IMMEDIATELY after ANY correction from the user; the goal is to never repeat the same mistake twice.
 ---
 
 # Capture Lesson
@@ -9,7 +9,7 @@ Self-improvement loop: turn every user correction into a rule that prevents the 
 
 ## When this fires
 
-Any time the user corrects course: a rejected approach, a bug you introduced, a misunderstood requirement, a workflow preference you violated. Don't wait to be asked — capture it as part of handling the correction.
+Any time the user corrects course: a rejected approach, a bug you introduced, a misunderstood requirement, a workflow preference you violated. Don't wait to be asked: capture it as part of handling the correction.
 
 ## Steps
 
@@ -23,7 +23,7 @@ Any time the user corrects course: a rejected approach, a bug you introduced, a 
    ```
 
 3. Write the rule so it's checkable before acting (e.g. "Before editing X, always check Y"), not a vague aspiration.
-4. If a similar lesson already exists, strengthen or generalize the existing entry instead of duplicating it — iterate until the mistake rate drops.
+4. If a similar lesson already exists, strengthen or generalize the existing entry instead of duplicating it: iterate until the mistake rate drops.
 
 ## At session start
 

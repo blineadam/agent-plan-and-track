@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# run-activation-cases.sh — routing-regression harness for skills.
+# run-activation-cases.sh: routing-regression harness for skills.
 #
 # Tests whether the RIGHT skill fires for a given prompt (a description/router
-# question) — the static + runtime complement to skill-comply, which tests
+# question): the static + runtime complement to skill-comply, which tests
 # whether a fired skill is FOLLOWED (a body question).
 #
 # Activation is checked DETERMINISTICALLY: a case passes iff the expected skill
@@ -23,7 +23,7 @@
 # "id" field). --run writes those same files then checks them, but is a real,
 # billable, tool-executing operation: it refuses unless ACTIVATION_ALLOW_SPEND=1,
 # and you MUST run it inside an isolated container/VM with no network egress and
-# restricted mounts — a competing/injected prompt will execute tool calls. Never
+# restricted mounts, a competing/injected prompt will execute tool calls. Never
 # pass --dangerously-skip-permissions here. See SKILL.md for the full rationale.
 #
 # Tuning (env):
@@ -31,14 +31,14 @@
 #   ACTIVATION_ALLOW_SPEND   set to 1 to permit --run to call claude -p
 #
 # Requires jq. Portability:
-#   --precheck  fully portable — reads SKILL.md descriptions only. Point it at
+#   --precheck  fully portable: reads SKILL.md descriptions only. Point it at
 #               ~/.claude/skills, ~/.copilot/skills, or ~/.codex/skills.
 #   --check     parses any JSONL trace that surfaces a skill tool call, keyed on
 #               a tool named "skill" (case-insensitive): Claude Code's `Skill`
 #               tool_use (verified) and, by the same shape, GitHub Copilot's
 #               `skill` tool (likely; verify empirically). Codex `exec --json`
 #               emits no skill event, so runtime activation is NOT detectable
-#               there — use --precheck only on Codex.
+#               there. Use --precheck only on Codex.
 #   --run       Claude only (invokes `claude -p`).
 # Recursive descent makes the parse envelope-agnostic to minor format changes.
 
@@ -60,9 +60,9 @@ case "${1:-}" in
 esac
 
 # Extract the set of skills a trace activated via the skill tool. Harness-
-# tolerant: matches any object whose tool name is "skill" (case-insensitive) —
-# Claude's `Skill`, Copilot's `skill` — and reads the skill name from the field
-# either harness places it in.
+# tolerant: matches any object whose tool name is "skill" (case-insensitive,
+# e.g. Claude's `Skill`, Copilot's `skill`), and reads the skill name from the
+# field either harness places it in.
 activated_skills() {
   jq -r '
     .. | objects
@@ -127,7 +127,7 @@ while IFS= read -r line; do
   # Validate before touching the filesystem or passing vacuously: the id is
   # interpolated into a trace path (reject path syntax so a case can't escape
   # the trace dir), and expect_skill is required (a case with no expect and no
-  # forbidden hit would "pass" while testing nothing — a false negative).
+  # forbidden hit would "pass" while testing nothing, a false negative).
   invalid=""
   case "$id" in ""|*/*|*..*) invalid="invalid id '$id': path syntax not allowed" ;; esac
   [[ -z "$invalid" && -z "$expect" ]] && invalid="invalid case '$id': missing required expect_skill"
@@ -169,7 +169,7 @@ done < "$FIXTURES"
 # In --run we created trace_dir with mktemp; disclose it rather than silently
 # leaving prompts and tool-call transcripts in /tmp. Kept (not deleted) so a
 # failing case's trace can be inspected; rm it when done.
-[[ "$mode" == "run" ]] && echo "# traces retained at $trace_dir — inspect failing cases, then rm" >&2
+[[ "$mode" == "run" ]] && echo "# traces retained at $trace_dir: inspect failing cases, then rm" >&2
 
 # accuracy stays present (null) on the empty-corpus path so the report shape
 # never varies for consumers.

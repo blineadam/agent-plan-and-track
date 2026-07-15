@@ -8,6 +8,6 @@ graphify-out/
 # Local-only agent config and task tracking (never committed)
 /.claude/
 /.codex/
-/AGENTS.md
-/CLAUDE.md
+/AGENTS.local.md
+/CLAUDE.local.md
 /tasks/
