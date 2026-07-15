@@ -27,8 +27,8 @@ just a suggestion.
 
 ## Scope discipline
 
-- Simplicity first: flag the smallest change that solves the problem: touch
-  only necessary code.
+- Simplicity first: flag a change that's larger than necessary, touching
+  more files or code than the problem requires.
 - Root causes only: flag temporary fixes, workarounds, or unrequested
   refactors riding along with the real change.
 - Flag scope creep: new abstractions, config knobs, or features the task

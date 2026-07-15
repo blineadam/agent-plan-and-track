@@ -13,11 +13,11 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 
 - Must fail open: wrap `main()` in a top-level `try { main() } catch { ...
   ; process.exit(0) }` and never let an error escape uncaught.
-- No bare, unexplained `catch {}`. A catch needs either a one-line comment
-  explaining why swallowing is safe, or a stderr diagnostic, except the
-  shared `readStdin()` idiom (`catch { return ''; }`): its safe
-  empty-string fallback is a documented, repo-wide pattern that doesn't
-  need re-explaining at each call site.
+- No silent `catch {}` with zero recovery action. Assigning or returning a
+  self-evidently safe default (`''`, `null`, `{}`, `[]`) needs no comment;
+  that's the norm across the golden hooks, not just `readStdin()`. Add a
+  one-line comment or stderr diagnostic only when the fallback's safety
+  isn't obvious from the code alone (e.g. it changes control flow).
 - Do not propose factoring the duplicated `readStdin()` / `intEnv()` helpers
   into a shared module. Each script installs standalone into a different
   harness's scripts directory with no shared `node_modules` or relative
@@ -32,9 +32,12 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 
 - Start with `set -euo pipefail`.
 - Gate nonstandard or optional external CLI dependencies before use, e.g.
-  `command -v jq || { echo "error: ..." >&2; exit 1; }`. Don't flag POSIX
-  core utilities (`wc`, `tr`, `awk`, `sort`, `find`, ...) for a gate: those
-  are assumed always present.
+  `command -v jq >/dev/null 2>&1 || { echo "error: ..." >&2; exit 1; }`
+  (keep the `>/dev/null 2>&1`: without it, a successful `command -v` prints
+  the executable's path to stdout, corrupting a script whose stdout is a
+  JSON contract). Don't flag POSIX core utilities (`wc`, `tr`, `awk`,
+  `sort`, `find`, `grep`, `sed`, ...) for a gate: those are assumed always
+  present.
 - Use `mktemp -d` for scratch space with a matching `trap ... EXIT` cleanup.
 - Build JSON via `jq -n --arg` / `--argjson`, not string concatenation.
 - `snake_case` for local variables and functions. Top-level script
