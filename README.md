@@ -92,6 +92,9 @@ to a cheaper model so delegated work stays cheap:
   callers, gather the facts an edit needs. Never writes.
 - **`mechanic`** (Haiku): already-decided mechanical edits; kicks anything that
   needs a judgment call back to you.
+- **`debugger`** (Sonnet, read-only + Bash) reproduces a failure and traces it
+  to root cause before any fix is attempted, handing back a failing
+  regression test. Never edits code.
 
 Claude routes work to them automatically based on their descriptions; you can
 also invoke one explicitly ("use the researcher agent to…"). Copilot and Codex
@@ -134,7 +137,7 @@ skills/skill-activation/     routing regression: does the right skill fire? (sta
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
 skills/copilot-review-instructions/ generate Copilot PR-review instructions from a project's documented conventions (portable; Copilot-only output)
-agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku)
+agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku), debugger (Sonnet)
 hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
 hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate
