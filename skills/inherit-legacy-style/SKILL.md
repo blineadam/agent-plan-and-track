@@ -84,6 +84,11 @@ use Copilot review.
    through the one-question-at-a-time protocol.
 3. Append a dated `### [YYYY-MM-DD] Style Evolution Log` entry — never
    rewrite existing rules.
+4. If this update changed any convention and the project uses GitHub Copilot's
+   PR code review, re-offer [[copilot-review-instructions]] under the same gate
+   as first-time Step 6, so the generated review files refresh against the new
+   rules instead of going stale. Skip the offer when nothing review-worthy
+   changed or the project doesn't use Copilot review.
 
 ## Per-turn enforcement
 

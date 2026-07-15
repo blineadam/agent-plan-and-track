@@ -50,8 +50,13 @@ which rules each one carries:
 3. **`README.md`, `CONTRIBUTING.md`, `docs/`**: human-written guidance already
    in the repo (layout conventions, contribution rules).
 4. **A bounded scan of source itself**, scaled to repo size the way
-   [[inherit-legacy-style]] tiers its sampling, for anything review-worthy the
-   documents above miss.
+   [[inherit-legacy-style]] tiers its sampling, to ground the documented rules
+   in real examples and to derive the actual directory/extension globs Step 2
+   needs. If the scan surfaces an apparently review-worthy convention that no
+   source documents, don't promote it here: route it through
+   [[inherit-legacy-style]] so its majority and conflict checks decide whether
+   it's a real rule. Inferring new conventions from code is that skill's job,
+   not this one's.
 
 Treat any lint/CI config as context only, don't transcribe it: a review
 instruction shouldn't restate a rule a linter already blocks mechanically, since
