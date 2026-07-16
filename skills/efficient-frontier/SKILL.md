@@ -1,6 +1,6 @@
 ---
 name: efficient-frontier
-description: Use when a task's research, coding, or testing work can be delegated to one of the tiered subagents (planner, executor, researcher, mechanic, debugger, security-auditor, architect-reviewer, fable-advisor) instead of doing it all in the main session: before spawning any subagent, when picking which tier fits a piece of delegated work, or when reviewing what a subagent handed back.
+description: Use when a piece of work fits a tiered subagent instead of the main session: implementing or executing an already-written plan, spec, or todo batch; delegating the drafting of an implementation plan or spec to the planner tier (for starting a task's own tasks/todo.md workflow, use plan-and-track instead); research or codebase mapping across many files; reproducing a bug; a fully-specified mechanical edit; or a high-stakes security or architecture judgment. Also use before spawning any subagent (planner, executor, researcher, mechanic, debugger, security-auditor, architect-reviewer, fable-advisor), when picking which tier fits a piece of delegated work, or when reviewing what a subagent handed back.
 ---
 
 # Efficient Frontier
@@ -11,14 +11,14 @@ Use the main session's own reasoning where its judgment actually matters: archit
 
 Eight subagents, each pinned to a model tier that matches the cost of a missed judgment call (see `agents/*.md`):
 
-- **planner** (fable, read-only): writes the spec or plan before any code is touched.
-- **executor** (sonnet): implements a spec that's already been decided; not for open design decisions.
-- **researcher** (sonnet, read-only): gathers facts across many files, maps how something works, answers a bounded question.
-- **mechanic** (haiku): makes a mechanical edit that's already fully specified, no judgment calls.
-- **debugger** (sonnet, read-only): reproduces a failure and hands back a root cause plus a failing regression test; never fixes it.
-- **security-auditor** (fable, read-only): reviews security-sensitive changes for exploitable weakness; never patches.
-- **architect-reviewer** (fable, read-only): reviews a non-trivial design decision for tradeoffs and coupling; never implements.
-- **fable-advisor** (fable): a quick, under-300-word second opinion when a decision needs one more independent read, not a full review.
+- **planner** (read-only): drafts the spec or plan before any code is touched and returns it as text; the caller persists it (e.g. to tasks/todo.md).
+- **executor**: implements a spec that's already been decided; not for open design decisions.
+- **researcher** (read-only): gathers facts across many files, maps how something works, answers a bounded question.
+- **mechanic**: makes a mechanical edit that's already fully specified, no judgment calls.
+- **debugger** (read-only): reproduces a failure and hands back a root cause plus a failing regression test; never fixes it.
+- **security-auditor** (read-only): reviews security-sensitive changes for exploitable weakness; never patches.
+- **architect-reviewer** (read-only): reviews a non-trivial design decision for tradeoffs and coupling; never implements.
+- **fable-advisor**: a quick, under-300-word second opinion when a decision needs one more independent read, not a full review.
 
 ## Workflow
 

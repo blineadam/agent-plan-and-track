@@ -10,7 +10,7 @@ assertion into a measurement: given a prompt that *should* fire skill X, does a
 **fresh** agent actually activate X, and not a neighbouring skill with an
 overlapping trigger?
 
-This is the routing sibling of [[skill-comply]]. Keep the two straight:
+This is the routing sibling of [[skill-comply]] (a Claude-only skill; Codex and Copilot don't install it). Keep the two straight:
 
 - **skill-activation**: is the **right skill picked**? Tests the `description`
   frontmatter (the router signal).
@@ -121,7 +121,7 @@ always upstream of a rerun:
 - **Forbidden skill fired** → two descriptions claim the same territory. Add a
   terse ownership boundary to each (this vs. that), as skill-comply and
   skill-activation do for one another. Keep it to one clause: frontmatter is
-  paid every turn ([[context-budget]]).
+  paid every turn ([[context-budget]]'s concern).
 
 A persistently misrouting trigger that resists description fixes is a candidate
 for a hook, same escalation path skill-comply uses.
