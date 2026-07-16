@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/scripts/suggest-compact.js\""
+            "command": "node \"__SCRIPTS__/suggest-compact.js\""
           }
         ]
       }

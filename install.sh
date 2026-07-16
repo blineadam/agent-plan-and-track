@@ -18,6 +18,11 @@
 #     model=auto, Codex plan_mode_reasoning_effort=high) are repo-owned and
 #     OVERWRITTEN on every install. PT_KEEP_MODEL=1 keeps an existing per-machine
 #     model choice; a Copilot settings.json jq can't round-trip is left untouched.
+#
+# PARITY: install.ps1 is the Windows (PowerShell) sibling of this script and must
+# stay in lockstep. Any change to the managed surface here (skills, agents, the
+# core-rules digest, the instructions managed block, hook wiring + __SCRIPTS__
+# substitution, model/effort defaults, the TOML upsert) must be mirrored there.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,6 +92,16 @@ copy_agents() {
 write_back() {
   local tmp="$1" file="$2"
   if [ -L "$file" ]; then cat "$tmp" > "$file"; rm -f "$tmp"; else mv "$tmp" "$file"; fi
+}
+
+# Render a hook wiring template ($1) to stdout with the __SCRIPTS__ placeholder
+# replaced by the resolved absolute scripts dir ($2). Baking the real path at
+# install time removes all runtime $HOME expansion from hook commands, which is
+# exactly what Claude Code's Windows hook-resolution bugs mishandle. $2 stays
+# forward-slashed (node accepts forward slashes on Windows too, and it avoids
+# JSON backslash escaping); install.ps1 mirrors this substitution 1:1.
+render_hook() {
+  sed "s|__SCRIPTS__|$2|g" "$1"
 }
 
 # Set a repo-owned JSON default in a settings file (jq), overwriting on every
@@ -184,8 +199,11 @@ install_claude() {
   copy_agents "$HOME/.claude/agents"
   install_digest "$HOME/.claude/core-rules.md"
   install_instructions "$HOME/.claude/CLAUDE.md"
-  # strategic-compact auto-suggest hook (Claude-only): script + PreToolUse hook.
   mkdir -p "$HOME/.claude/scripts"
+  # core-rules digest hook (shared script): replaces the old inline `cat` command.
+  cp "$REPO_DIR/hooks/core-rules-digest.js" "$HOME/.claude/scripts/core-rules-digest.js"
+  echo "  digest script   -> ~/.claude/scripts/core-rules-digest.js"
+  # strategic-compact auto-suggest hook (Claude-only): script + PreToolUse hook.
   cp "$REPO_DIR/hooks/claude/suggest-compact.js" "$HOME/.claude/scripts/suggest-compact.js"
   echo "  compact script  -> ~/.claude/scripts/suggest-compact.js"
   # delivery-gate pre-finish Stop hook (shared Claude+Codex script): + Stop hook.
@@ -204,11 +222,14 @@ install_claude() {
   # a message is flagged by safety measures, instead of pausing the session.
   set_json_default "$settings" model '"opusplan"' "model default"
   set_json_default "$settings" switchModelsOnFlag true "safety-switch"
-  if grep -q 'core-rules\.md' "$settings"; then
+  local cscripts="$HOME/.claude/scripts"
+  # Match either the new digest command (core-rules-digest) or an old install's
+  # inline `cat ...core-rules.md`, so upgrading never double-merges the hook.
+  if grep -q 'core-rules' "$settings"; then
     echo "  digest hook     -- already present in settings.json"
   else
     tmp="$(mktemp)"
-    jq --slurpfile h "$REPO_DIR/hooks/claude/settings-hooks.json" \
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/claude/settings-hooks.json" "$cscripts") \
       '.hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + $h[0].hooks.UserPromptSubmit)' \
       "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  digest hook     -> merged into $settings (UserPromptSubmit)"
@@ -217,7 +238,7 @@ install_claude() {
     echo "  compact hook    -- already present in settings.json"
   else
     tmp="$(mktemp)"
-    jq --slurpfile h "$REPO_DIR/hooks/claude/pretooluse-compact.json" \
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/claude/pretooluse-compact.json" "$cscripts") \
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
       "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  compact hook    -> merged into $settings (PreToolUse, all tools)"
@@ -226,7 +247,7 @@ install_claude() {
     echo "  delivery hook   -- already present in settings.json"
   else
     tmp="$(mktemp)"
-    jq --slurpfile h "$REPO_DIR/hooks/claude/stop-delivery-gate.json" \
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/claude/stop-delivery-gate.json" "$cscripts") \
       '.hooks.Stop = ((.hooks.Stop // []) + $h[0].hooks.Stop)' \
       "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  delivery hook   -> merged into $settings (Stop; warn-only, DELIVERY_GATE_BLOCK=1 to enforce)"
@@ -235,7 +256,7 @@ install_claude() {
     echo "  gateguard hook  -- already present in settings.json"
   else
     tmp="$(mktemp)"
-    jq --slurpfile h "$REPO_DIR/hooks/claude/pretooluse-gateguard.json" \
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/claude/pretooluse-gateguard.json" "$cscripts") \
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
       "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  gateguard hook  -> merged into $settings (PreToolUse on edits; GATEGUARD_DISABLED=1 to turn off)"
@@ -261,28 +282,38 @@ install_copilot() {
     [ -f "$csettings" ] || echo '{}' > "$csettings"
     set_json_default "$csettings" model '"auto"' "model default"
   fi
-  mkdir -p "$HOME/.copilot/hooks"
+  mkdir -p "$HOME/.copilot/hooks" "$HOME/.copilot/scripts"
+  local cscripts="$HOME/.copilot/scripts" rendered
+  # Shared scripts: the core-rules digest (replaces the old inline bash+jq
+  # throttle, so Copilot no longer needs jq at runtime) and the universal
+  # gateguard. UNVERIFIED: the Copilot CLI wasn't available to test against
+  # locally; the wire format follows the docs + the proven core-rules.json shape.
+  cp "$REPO_DIR/hooks/core-rules-digest.js" "$cscripts/core-rules-digest.js"
+  echo "  digest script   -> ~/.copilot/scripts/core-rules-digest.js"
+  cp "$REPO_DIR/hooks/gateguard.js" "$cscripts/gateguard.js"
+  echo "  gateguard script-> ~/.copilot/scripts/gateguard.js"
+  # Repo-owned hook wiring, overwritten each install (with a .bak if it differed).
+  # Compare against the RENDERED template (paths already substituted), not the raw
+  # template, or the baked-in path would always read as "changed" and re-.bak.
   local chook="$HOME/.copilot/hooks/core-rules.json"
-  if [ -f "$chook" ] && ! cmp -s "$REPO_DIR/hooks/copilot/core-rules.json" "$chook"; then
+  rendered="$(mktemp)"
+  render_hook "$REPO_DIR/hooks/copilot/core-rules.json" "$cscripts" > "$rendered"
+  if [ -f "$chook" ] && ! cmp -s "$rendered" "$chook"; then
     cp "$chook" "$chook.bak"
     echo "  (existing hook differed; backed up to $chook.bak)"
   fi
-  cp "$REPO_DIR/hooks/copilot/core-rules.json" "$chook"
+  cp "$rendered" "$chook"; rm -f "$rendered"
   echo "  hook            -> ~/.copilot/hooks/core-rules.json (postToolUse, 10-min throttle)"
-  # gateguard: universal script + repo-owned preToolUse wiring (like core-rules).
-  # UNVERIFIED: the Copilot CLI wasn't available to test against locally: the
-  # wire format follows the docs + the proven core-rules.json shape.
-  mkdir -p "$HOME/.copilot/scripts"
-  cp "$REPO_DIR/hooks/gateguard.js" "$HOME/.copilot/scripts/gateguard.js"
-  echo "  gateguard script-> ~/.copilot/scripts/gateguard.js"
   local ghook="$HOME/.copilot/hooks/pretooluse-gateguard.json"
-  if [ -f "$ghook" ] && ! cmp -s "$REPO_DIR/hooks/copilot/pretooluse-gateguard.json" "$ghook"; then
+  rendered="$(mktemp)"
+  render_hook "$REPO_DIR/hooks/copilot/pretooluse-gateguard.json" "$cscripts" > "$rendered"
+  if [ -f "$ghook" ] && ! cmp -s "$rendered" "$ghook"; then
     cp "$ghook" "$ghook.bak"
     echo "  (existing gateguard hook differed; backed up to $ghook.bak)"
   fi
-  cp "$REPO_DIR/hooks/copilot/pretooluse-gateguard.json" "$ghook"
+  cp "$rendered" "$ghook"; rm -f "$rendered"
   echo "  gateguard hook  -> ~/.copilot/hooks/pretooluse-gateguard.json (preToolUse on create|edit)"
-  echo "  done. Hooks need jq + node at runtime. Start a NEW copilot session to load."
+  echo "  done. Hooks need node at runtime. Start a NEW copilot session to load."
 }
 
 install_codex() {
@@ -296,30 +327,32 @@ install_codex() {
   # lever. Not gated by PT_KEEP_MODEL (that opt-out covers model settings only).
   upsert_toml_default "$HOME/.codex/config.toml" "plan_mode_reasoning_effort" "high"
   need_jq
-  local hooks="$HOME/.codex/hooks.json" tmp
-  mkdir -p "$HOME/.codex"
+  local hooks="$HOME/.codex/hooks.json" cscripts="$HOME/.codex/scripts" tmp
+  mkdir -p "$HOME/.codex" "$cscripts"
   [ -f "$hooks" ] || echo '{"hooks":{}}' > "$hooks"
-  if grep -q 'core-rules\.md' "$hooks"; then
+  # Shared scripts: the core-rules digest (replaces the old inline `cat`) plus
+  # gateguard + delivery-gate. Codex's Stop payload and apply_patch PreToolUse are
+  # Claude-shaped, so the same universal code runs here (dialect sniffed at runtime).
+  cp "$REPO_DIR/hooks/core-rules-digest.js" "$cscripts/core-rules-digest.js"
+  cp "$REPO_DIR/hooks/gateguard.js" "$cscripts/gateguard.js"
+  cp "$REPO_DIR/hooks/delivery-gate.js" "$cscripts/delivery-gate.js"
+  echo "  scripts         -> ~/.codex/scripts/{core-rules-digest,gateguard,delivery-gate}.js"
+  # Match either the new digest command or an old install's inline `cat ...core-rules.md`,
+  # so upgrading never double-merges the hook.
+  if grep -q 'core-rules' "$hooks"; then
     echo "  hook            -- already present in hooks.json"
   else
     tmp="$(mktemp)"
-    jq --slurpfile h "$REPO_DIR/hooks/codex/hooks.json" \
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/codex/hooks.json" "$cscripts") \
       '.hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + $h[0].hooks.UserPromptSubmit)' \
       "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
     echo "  hook            -> merged into $hooks (UserPromptSubmit, per turn)"
   fi
-  # gateguard + delivery-gate share the universal scripts with Claude; Codex's
-  # Stop payload and apply_patch PreToolUse are Claude-shaped, so the same code
-  # runs here (dialect sniffed at runtime).
-  mkdir -p "$HOME/.codex/scripts"
-  cp "$REPO_DIR/hooks/gateguard.js" "$HOME/.codex/scripts/gateguard.js"
-  cp "$REPO_DIR/hooks/delivery-gate.js" "$HOME/.codex/scripts/delivery-gate.js"
-  echo "  scripts         -> ~/.codex/scripts/{gateguard,delivery-gate}.js"
   if grep -q 'gateguard' "$hooks"; then
     echo "  gateguard hook  -- already present in hooks.json"
   else
     tmp="$(mktemp)"
-    jq --slurpfile h "$REPO_DIR/hooks/codex/pretooluse-gateguard.json" \
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/codex/pretooluse-gateguard.json" "$cscripts") \
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
       "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
     echo "  gateguard hook  -> merged into $hooks (PreToolUse on apply_patch; GATEGUARD_DISABLED=1 to turn off)"
@@ -328,7 +361,7 @@ install_codex() {
     echo "  delivery hook   -- already present in hooks.json"
   else
     tmp="$(mktemp)"
-    jq --slurpfile h "$REPO_DIR/hooks/codex/stop-delivery-gate.json" \
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/codex/stop-delivery-gate.json" "$cscripts") \
       '.hooks.Stop = ((.hooks.Stop // []) + $h[0].hooks.Stop)' \
       "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
     echo "  delivery hook   -> merged into $hooks (Stop; warn-only, DELIVERY_GATE_BLOCK=1 to enforce)"

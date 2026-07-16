@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.codex/scripts/gateguard.js\"",
+            "command": "node \"__SCRIPTS__/gateguard.js\"",
             "timeout": 10
           }
         ]

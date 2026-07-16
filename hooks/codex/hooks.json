@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat \"$HOME/.codex/core-rules.md\" \"$HOME/.codex/core-rules.local.md\" 2>/dev/null || true",
+            "command": "node \"__SCRIPTS__/core-rules-digest.js\"",
             "timeout": 5,
             "statusMessage": "Refreshing standing rules"
           }

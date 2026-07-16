@@ -26,15 +26,15 @@ this repo is their source of truth, and skills live across three harness dirs.
 
 ## Phase 1: Inventory (deterministic)
 
-Run from the repo root so `scan-rules.sh` finds `rules/`:
+Run from the repo root so `scan-rules.js` finds `rules/`:
 
 ```bash
-bash skills/rules-distill/scripts/scan-skills.sh ./skills   # installed skills + this repo's
-bash skills/rules-distill/scripts/scan-rules.sh             # indexes ./rules
+node skills/rules-distill/scripts/scan-skills.js ./skills   # installed skills + this repo's
+node skills/rules-distill/scripts/scan-rules.js             # indexes ./rules
 ```
 
-`scan-skills.sh` scans `~/.claude/skills`, `~/.copilot/skills`, and
-`~/.agents/skills` (whichever exist) plus any dirs you pass. `scan-rules.sh`
+`scan-skills.js` scans `~/.claude/skills`, `~/.copilot/skills`, and
+`~/.agents/skills` (whichever exist) plus any dirs you pass. `scan-rules.js`
 indexes the H2 headings of `rules/*.md`. Report a one-line summary
 (`Skills: N | Rules: M files, K headings`) before analysis.
 
@@ -78,7 +78,7 @@ before/after for revisions). Then:
 - **Never edit the rules automatically: always require approval.**
 - When editing `rules/core-rules.md`, keep the matching one-liner in sync with
   the fuller bullet in `rules/agent-guidelines.md` (they mirror each other).
-- After applying, remind the user to re-run `./install.sh all` so the digest and
+- After applying, remind the user to re-run `./install.sh all` (or `install.ps1 all` on Windows) so the digest and
   instruction managed blocks propagate to every harness (and to restart
   Copilot/Codex sessions for instruction-file changes).
 

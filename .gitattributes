@@ -1,0 +1,13 @@
+# Normalize line endings so a Windows checkout doesn't corrupt scripts.
+# Default: let git decide text vs binary and store LF in the repo.
+* text=auto
+
+# Runtime scripts must be LF everywhere: a CRLF shebang breaks bash, and the
+# Node hook scripts + JSON wiring are read on all platforms.
+*.sh   text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+
+# PowerShell is the Windows-native installer; keep it CRLF in the working tree.
+*.ps1  text eol=crlf

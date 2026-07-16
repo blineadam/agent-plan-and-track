@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/scripts/delivery-gate.js\""
+            "command": "node \"__SCRIPTS__/delivery-gate.js\""
           }
         ]
       }

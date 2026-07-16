@@ -55,7 +55,7 @@ that entire class of bug. Guessing a schema is never faster than looking.
 
 ## Claude Code enforcing hook (Claude-only)
 
-Manual installs (`./install.sh claude`) register a `PreToolUse` hook on
+Manual installs (`./install.sh claude`, or `install.ps1 claude` on Windows) register a `PreToolUse` hook on
 Edit/Write/MultiEdit/NotebookEdit, `~/.claude/scripts/gateguard.js`, that
 **denies the first edit to each file per session** with the fact demand above.
 The file is marked at deny time, so the retry (after presenting facts) always

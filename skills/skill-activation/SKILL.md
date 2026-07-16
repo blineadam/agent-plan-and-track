@@ -58,7 +58,7 @@ routing miss:
 
 ```bash
 # portable: swap the path for ~/.copilot/skills or ~/.codex/skills
-bash skills/skill-activation/scripts/run-activation-cases.sh --precheck ~/.claude/skills
+node skills/skill-activation/scripts/run-activation-cases.js --precheck ~/.claude/skills
 ```
 
 Flags each skill with `weak_router_signal: true` (description under
@@ -87,7 +87,7 @@ Cases live in `fixtures/activation-cases.jsonl`, one JSON object per line:
 List without spending (default):
 
 ```bash
-bash skills/skill-activation/scripts/run-activation-cases.sh --dry-run
+node skills/skill-activation/scripts/run-activation-cases.js --dry-run
 ```
 
 Then either capture traces yourself and verify them (free, reproducible), or let
@@ -95,11 +95,11 @@ the script drive the runs:
 
 ```bash
 # free: one stream-json trace per case id at TRACE_DIR/<id>.jsonl
-bash skills/skill-activation/scripts/run-activation-cases.sh --check TRACE_DIR
+node skills/skill-activation/scripts/run-activation-cases.js --check TRACE_DIR
 
 # billable: invoke claude -p per case, then check
 ACTIVATION_ALLOW_SPEND=1 \
-  bash skills/skill-activation/scripts/run-activation-cases.sh --run
+  node skills/skill-activation/scripts/run-activation-cases.js --run
 ```
 
 **Isolate `--run`.** Each case is a real, tool-executing `claude -p` process, and

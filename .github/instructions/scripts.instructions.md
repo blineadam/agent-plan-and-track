@@ -9,7 +9,7 @@ excludeAgent: "cloud-agent"
 
 Applies to the Node hook scripts under `hooks/` and every bash script
 (including `install.sh`). See `.ai-style-rules.md` (Golden Files: `gateguard.js`,
-`delivery-gate.js`, `scan-context.sh`) for full detail.
+`delivery-gate.js`, `install.sh`) for full detail.
 
 ## JS hooks
 

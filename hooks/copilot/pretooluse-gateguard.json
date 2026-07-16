@@ -4,7 +4,7 @@
     "preToolUse": [
       {
         "type": "command",
-        "bash": "node \"$HOME/.copilot/scripts/gateguard.js\" || echo '{\"permissionDecision\":\"allow\"}'",
+        "bash": "node \"__SCRIPTS__/gateguard.js\"",
         "timeoutSec": 10
       }
     ]

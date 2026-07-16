@@ -4,7 +4,7 @@
     "postToolUse": [
       {
         "type": "command",
-        "bash": "f=\"$HOME/.copilot/.core-rules-last\"; now=$(date +%s); last=$(cat \"$f\" 2>/dev/null || echo 0); if [ $((now - last)) -gt 600 ]; then echo \"$now\" > \"$f\"; printf '{\"additionalContext\": %s}' \"$(cat \"$HOME/.copilot/core-rules.md\" \"$HOME/.copilot/core-rules.local.md\" 2>/dev/null | jq -Rs .)\"; fi",
+        "bash": "node \"__SCRIPTS__/core-rules-digest.js\" --copilot",
         "timeoutSec": 10
       }
     ]

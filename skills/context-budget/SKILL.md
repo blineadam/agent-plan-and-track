@@ -41,7 +41,7 @@ as a *lazy-load candidate* only if the skill fires constantly.
 Run from the repo root so `./skills` is included alongside the installed dirs:
 
 ```bash
-bash skills/context-budget/scripts/scan-context.sh ./skills
+node skills/context-budget/scripts/scan-context.js ./skills
 ```
 
 It scans `~/.claude/skills`, `~/.copilot/skills`, `~/.agents/skills` (whichever
@@ -96,7 +96,8 @@ Present a summary table (`Component | Always-on tok | Lines | Bucket | Action`)
 sorted by always-on cost, then per-component detail for anything Lazy-load /
 Remove. **Never delete or edit config automatically: the user approves each
 change.** After applying trims to skills or rules, remind the user to re-run
-`./install.sh all` so the changes propagate to every harness.
+`./install.sh all` (or `install.ps1 all` on Windows) so the changes propagate to
+every harness.
 
 ## Claude-only addendum: MCP servers & agents
 
@@ -111,7 +112,7 @@ These live only in the Claude harness; gate any advice on them behind a
 - **Subagent definitions** (`~/.claude/agents/*.md`) add always-on routing text
   much like skill frontmatter: audit their descriptions the same way.
 
-`scan-context.sh` does **not** parse `.mcp.json` (schema cost isn't derivable
+`scan-context.js` does **not** parse `.mcp.json` (schema cost isn't derivable
 from line count); estimate MCP cost separately with the ~500 tok/tool heuristic.
 
 ## Design principles
