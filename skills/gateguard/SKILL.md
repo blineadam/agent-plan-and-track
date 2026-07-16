@@ -39,7 +39,7 @@ session don't need re-gating on later edits.
 
 Gathering these facts (importers, blast radius, schemas) is researcher-tier
 work: where this repo's tiered subagents are available, that investigation can
-be delegated per `[[efficient-frontier]]` and the returned evidence presented
+be delegated per [[efficient-frontier]] and the returned evidence presented
 here.
 
 ## Why the schema check matters

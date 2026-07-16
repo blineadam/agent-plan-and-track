@@ -43,7 +43,7 @@ indexes the H2 headings of `rules/*.md`. Report a one-line summary
 The rule files are small: pass their **full text** to the analysis; no grep
 pre-filtering. Group the skills into thematic clusters and analyze each cluster
 in its own subagent (keep the main context clean; this is researcher-tier work,
-so pick the tier per `[[efficient-frontier]]` where the roster is available). After all clusters return,
+so pick the tier per [[efficient-frontier]] where the roster is available). After all clusters return,
 merge candidates: dedupe overlapping principles, and re-check the "2+ skills"
 bar using evidence pooled across **all** clusters.
 

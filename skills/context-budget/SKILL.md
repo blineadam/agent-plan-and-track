@@ -89,7 +89,7 @@ Guidance:
 
 For a large audit, batch the components and analyze each batch in its own
 subagent (keep the main context clean; researcher-tier work, so pick the tier
-per `[[efficient-frontier]]` where the roster is available), then merge
+per [[efficient-frontier]] where the roster is available), then merge
 recommendations.
 
 ## Phase 3: Recommend & apply
