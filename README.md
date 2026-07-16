@@ -34,11 +34,23 @@ done, and turn any correction into a durable rule:
   refactor, a 3+ step fix, or resuming a repo that already has a
   `tasks/todo.md`). Writes a checklist, tracks it, and verifies before closing
   out.
+- **`plow-ahead`** (skill): kicks in when you're told to proceed autonomously
+  ("plow ahead," "use your best judgment," "don't stop"). Turns ordinary
+  ambiguity into stated assumptions, keeps moving, and stops only for a true
+  blocker, ending in a recap of decisions and residual risk.
 - **gateguard** (skill + enforcing hook, Claude/Codex/Copilot): before the
   first edit to a file, demand the facts: callers, blast radius, schemas,
   instead of guessing. The hook denies that first edit until you've presented
   them; the retry always passes. One script handles all three harnesses, and an
   env var can soften or disable it.
+- **`read-the-damn-docs`** (skill): kicks in before relying on memory for a
+  third-party API, library, or provider's current behavior. Forces a web
+  search for official docs first; complements gateguard's local investigation
+  with external verification.
+- **`efficient-frontier`** (skill): kicks in before delegating research,
+  coding, or testing to one of this repo's tiered subagents. Picks the tier
+  that fits the work and keeps handoffs self-contained, so the main session's
+  judgment stays reserved for what only it can do.
 - **delivery-gate** (enforcing hook only, Claude/Codex): a warn-only
   pre-finish Stop check ("did you verify? did you checkpoint?") backing the
   verify-before-done and capture-lesson rules at the harness layer. An env var
@@ -78,34 +90,50 @@ differs by harness:
 | --- | --- | --- |
 | Claude Code | `model: opusplan` | Opus in Plan mode, Sonnet for execution: a real per-phase model swap |
 | Claude Code | `switchModelsOnFlag: true` | Switches to another model on a safety-flagged message instead of stopping the session |
-| Codex | `plan_mode_reasoning_effort: high` | More reasoning in Plan mode only; the execution model and effort stay yours |
+| Codex | `plan_mode_reasoning_effort: xhigh` | More reasoning in Plan mode only; the execution model and effort stay yours |
 | Copilot | `model: auto` | Copilot routes each task to a fitting model (no fixed plan/execute split) |
 
 Install with `PT_KEEP_MODEL=1` to keep a machine's existing Claude and Copilot
 model settings (the model and `switchModelsOnFlag`) instead of overwriting them;
 the Codex plan-mode effort still updates.
 
-**Tiered subagents (Claude only)** install to `~/.claude/agents/`, each pinned
-to a model chosen for what the work needs, cheaper for routine delegation,
+**Tiered subagents (Claude and Codex)** install to `~/.claude/agents/` and,
+rendered to Codex's native TOML format, `~/.codex/agents/`, each pinned to a
+model/effort chosen for what the work needs, cheaper for routine delegation,
 stronger for judgment calls a same-topic skill can't guarantee a model tier for:
 
+- **`architect-reviewer`** (Fable, read-only) weighs a non-trivial design
+  decision before it's committed to: coupling, blast radius, simpler
+  alternatives. Never implements.
+- **`security-auditor`** (Fable, read-only) reviews security-sensitive code
+  (auth, injection, secrets) and reports exploit scenarios ranked by
+  severity. Never patches.
+- **`fable-advisor`** (Fable, read-only) gives an independent gut-check on a
+  decision at a commitment boundary, in under 300 words. Never implements.
+- **`planner`** (Fable, read-only) turns a non-trivial task into an ordered
+  implementation spec naming exact files, steps, and verification. Never
+  implements.
 - **`researcher`** (Sonnet, read-only) offloads exploration: map code, find
   callers, gather the facts an edit needs. Never writes.
-- **`mechanic`** (Haiku): already-decided mechanical edits; kicks anything that
-  needs a judgment call back to you.
 - **`debugger`** (Sonnet, read-only + Bash) reproduces a failure and traces it
   to root cause before any fix is attempted, handing back a failing
   regression test. Never edits code.
-- **`security-auditor`** (Opus, read-only) reviews security-sensitive code
-  (auth, injection, secrets) and reports exploit scenarios ranked by
-  severity. Never patches.
-- **`architect-reviewer`** (Opus, read-only) weighs a non-trivial design
-  decision before it's committed to: coupling, blast radius, simpler
-  alternatives. Never implements.
+- **`executor`** (Sonnet) carries out an already-written spec (the shape
+  `planner` produces): exact files, ordered steps, per-step verification.
+  Stops and reports on any spec gap instead of improvising.
+- **`mechanic`** (Haiku): already-decided mechanical edits; kicks anything that
+  needs a judgment call back to you.
+
+`model: fable` in an agent's frontmatter silently degrades to the session's
+default model if the account has no Fable access. Codex installs the same
+eight agents natively via rendered TOML: the model pin doesn't carry over
+there (an unset Codex `model` inherits the session's own), so the
+planner/executor split shows up only as `model_reasoning_effort` (xhigh vs.
+high) and `sandbox_mode` (read-only vs. workspace-write).
 
 Claude routes work to them automatically based on their descriptions; you can
-also invoke one explicitly ("use the researcher agent to…"). Copilot and Codex
-have no user-definable per-agent model pin, so tiered subagents are Claude-only.
+also invoke one explicitly ("use the researcher agent to…"). Copilot has no
+subagent concept at all, so tiered subagents install to Claude and Codex only.
 
 ## Install
 
@@ -152,8 +180,13 @@ skills/skill-activation/     routing regression: does the right skill fire? (sta
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
 skills/copilot-review-instructions/ generate Copilot PR-review instructions from a project's documented conventions (portable; Copilot-only output)
-agents/                      Claude-only tiered subagents: researcher (Sonnet), mechanic (Haiku),
-                              debugger (Sonnet), security-auditor (Opus), architect-reviewer (Opus)
+skills/plow-ahead/           autonomy contract for open-ended work: state assumptions, keep going,
+                              stop only for true blockers (portable)
+skills/efficient-frontier/   routing doctrine: which tiered subagent fits a piece of delegated work (portable)
+skills/read-the-damn-docs/   docs-first grounding before third-party API/version work (portable)
+agents/                      tiered subagents (Claude .md + rendered Codex TOML): architect-reviewer,
+                              security-auditor, fable-advisor, planner (Fable); researcher, debugger,
+                              executor (Sonnet); mechanic (Haiku)
 hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
 hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate
@@ -189,9 +222,17 @@ a skill, drop it in `skills/<name>/SKILL.md` (the `description` tells the agent
   after edits); the digest rides a throttled `postToolUse` hook (once per
   10 min, since Copilot has no prompt-submit injection). `"includeCoAuthoredBy":
   false` drops its trailer too.
-- **Codex** (`~/.codex`): the user `AGENTS.md` loads before project ones; skills
-  live in `~/.agents/skills/`. Run `codex` and press `2` to accept new hooks.
-  Recent builds add no attribution trailer.
+- **Codex** (`~/.codex`): the user `AGENTS.md` loads before project ones;
+  skills live in `~/.agents/skills/`, subagents render to
+  `~/.codex/agents/*.toml`. Run `codex` and press `2` to accept new hooks.
+  Recent builds add no attribution trailer. UNVERIFIED: named-agent invocation
+  via `spawn_agent` is unreliable everywhere as of this writing, not only in
+  SDK/MCP-driven sessions — recent reports (openai/codex#15250) reproduce it
+  on standalone Codex CLI and Codex Desktop too, where a requested custom
+  agent silently falls back to the parent's own model/effort/sandbox instead
+  of loading its TOML. Treat the rendered roster as forward-looking until
+  upstream fixes this; don't rely on it silently picking up the right
+  profile.
 
 To check any of them: start a session, get a few messages in, and ask *"what are
 your standing rules?"*

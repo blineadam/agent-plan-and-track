@@ -1,0 +1,60 @@
+---
+name: efficient-frontier
+description: Use when a task's research, coding, or testing work can be delegated to one of this repo's tiered subagents (planner, executor, researcher, mechanic, debugger, security-auditor, architect-reviewer, fable-advisor) instead of doing it all in the main session: before spawning any subagent, when picking which tier fits a piece of delegated work, or when reviewing what a subagent handed back.
+---
+
+# Efficient Frontier
+
+Use the main session's own reasoning where its judgment actually matters: architecture, prioritization, ambiguity resolution, risk calls, synthesis, and final review. Push repeatable, bounded, or token-heavy work down to whichever of this repo's subagents fits the work, so the main session's context and attention stay reserved for what only it can do.
+
+## The Roster
+
+Eight subagents, each pinned to a model tier that matches the cost of a missed judgment call (see `agents/*.md`):
+
+- **planner** (fable, read-only): writes the spec or plan before any code is touched.
+- **executor** (sonnet): implements a spec that's already been decided; not for open design decisions.
+- **researcher** (sonnet, read-only): gathers facts across many files, maps how something works, answers a bounded question.
+- **mechanic** (haiku): makes a mechanical edit that's already fully specified, no judgment calls.
+- **debugger** (sonnet, read-only): reproduces a failure and hands back a root cause plus a failing regression test; never fixes it.
+- **security-auditor** (fable, read-only): reviews security-sensitive changes for exploitable weakness; never patches.
+- **architect-reviewer** (fable, read-only): reviews a non-trivial design decision for tradeoffs and coupling; never implements.
+- **fable-advisor** (fable): a quick, under-300-word second opinion when a decision needs one more independent read, not a full review.
+
+## Workflow
+
+1. Identify the main-session-only decisions: architecture, prioritization, ambiguity resolution, risk, synthesis, and final review.
+2. Identify delegable work: research scans, repo inventory, search, docs extraction, log reduction, test-failure clustering, narrow coding against an already-decided spec, and mechanical edits.
+3. Pick the subagent whose tier matches the work's judgment cost, not the cheapest one that could technically do it.
+4. Spawn subagents for independent slices with clear ownership, bounded scope, and expected evidence, in parallel when the slices don't depend on each other.
+5. Require compact returns: findings, changed files, commands run, residual risk, stop conditions hit, and anything the main session must decide.
+6. Integrate and review the returns centrally before presenting the result.
+
+## Handoff Packets
+
+Write delegated prompts as self-contained packets. Assume the receiving agent has no memory of this conversation. Include: the repo path, the objective, the scope and what's explicitly out of scope, the relevant files or search targets, the expected return format, verification commands, and stop conditions.
+
+Useful stop conditions:
+
+- The live code doesn't match the assumption in the handoff.
+- A verification command fails twice after a reasonable fix or retry.
+- The work appears to need files outside the assigned scope.
+- The agent can't produce concrete evidence for its claim.
+
+## Review Loop
+
+Treat delegated output as evidence to weigh, not a verdict to rubber-stamp. Reopen the cited files that matter, skim high-risk diffs, and rerun or spot-check the verification before calling the work done. If two agents disagree, resolve it at the main-session layer instead of just taking the more confident-sounding answer.
+
+## Worked Example: Planner to Executor to Mechanic
+
+The default ladder for a spec-shaped task: `planner` (fable) writes the spec after reading the real code, then `executor` (sonnet) implements it end to end, then `mechanic` (haiku) sweeps whatever small, already-decided mechanical tail is left (renames, doc updates, repeated small edits) once the shape of the change is settled. Each tier only does the part its model cost is suited for: fable's judgment goes into the plan, sonnet's competence goes into building it, haiku's speed goes into the mop-up.
+
+## Guardrails
+
+- Don't delegate the work that's actually the immediate blocker; if the next step depends on an answer, get it directly instead of waiting on a round trip.
+- Don't send two agents to edit the same files at the same time.
+- Don't trust a subagent's conclusion blindly when the stakes are high; inspect the evidence that matters yourself.
+- Don't assume delegation always saves time. It pays off when the work is genuinely parallelizable or genuinely bounded, not as a reflex for everything.
+
+## Beyond Claude Code
+
+Copilot has no named-subagent concept: the equivalent is an ad hoc delegation prompt, or its generic `Agent`-style tool if one is available in that session. Codex has native subagents (its own `agents/*.md`-equivalent TOML files), so name-based delegation by role works there too, once that support lands.

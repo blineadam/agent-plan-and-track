@@ -21,14 +21,15 @@
     - hooks are merged only if not already installed (Claude/Codex); the Copilot
       hook files are repo-owned and overwritten, with a *.bak if one differed
     - managed defaults (Claude model=opusplan + switchModelsOnFlag, Copilot
-      model=auto, Codex plan_mode_reasoning_effort=high) are repo-owned and
+      model=auto, Codex plan_mode_reasoning_effort=xhigh) are repo-owned and
       OVERWRITTEN on every install. PT_KEEP_MODEL=1 keeps an existing per-machine
       model choice; a Copilot settings.json that isn't plain JSON is left alone.
 
   PARITY: this script and install.sh must stay in lockstep. Any change to the
-  managed surface (skills, agents, the core-rules digest, the instructions
-  managed block, hook wiring + __SCRIPTS__ substitution, model/effort defaults,
-  the TOML upsert) must be mirrored in both. See install.sh for the same note.
+  managed surface (skills, agents (both the Claude .md copies and the Codex
+  TOML rendering), the core-rules digest, the instructions managed block, hook
+  wiring + __SCRIPTS__ substitution, model/effort defaults, the TOML upsert)
+  must be mirrored in both. See install.sh for the same note.
 #>
 param([string]$Target)
 
@@ -137,6 +138,96 @@ function Copy-Agents($dest) {
     $names += $f.BaseName
   }
   if ($names.Count -gt 0) { Write-Host "  agents          -> $dest/{$($names -join ',')} (Claude-only)" }
+}
+
+# Read a single-line frontmatter value for $key out of $file's YAML
+# frontmatter block (between the first and second `---` line). Matches a line
+# starting with "<key>: " and returns the rest with at most one leading and
+# one trailing double quote stripped. Doesn't handle multi-line YAML blocks or
+# nested keys; every agents/*.md field this repo reads is a single physical
+# line, so that's not a real limitation here. Returns '' when not found.
+function Get-AgentFrontmatterField($file, $key) {
+  $prefix = "$key`: "
+  $fm = 0
+  foreach ($line in [System.IO.File]::ReadAllLines($file)) {
+    if ($line -match '^---\s*$') { $fm++; continue }
+    if ($fm -ne 1) { continue }
+    if ($line.StartsWith($prefix)) {
+      $val = $line.Substring($prefix.Length)
+      $val = $val -replace '^"', '' -replace '"$', ''
+      return $val
+    }
+  }
+  return ''
+}
+
+# Everything in $file after the closing `---` of its frontmatter block, with
+# exactly one leading blank line stripped (agents/*.md all have one, matching
+# the file body-vs-frontmatter separation the Codex TOML render needs raw).
+function Get-AgentBody($file) {
+  $fm = 0; $started = $false
+  $out = New-Object System.Collections.Generic.List[string]
+  foreach ($line in [System.IO.File]::ReadAllLines($file)) {
+    if ($line -match '^---\s*$') { $fm++; continue }
+    if ($fm -lt 2) { continue }
+    if (-not $started) {
+      $started = $true
+      if ($line -eq '') { continue }
+    }
+    $out.Add($line)
+  }
+  return ($out -join "`n")
+}
+
+# Escape a string for embedding in a basic double-quoted TOML string
+# (backslashes first, then double quotes, so an escaped quote isn't
+# re-escaped).
+function ConvertTo-TomlEscaped($s) {
+  return $s.Replace('\', '\\').Replace('"', '\"')
+}
+
+# Render one agents/*.md source into Codex-native TOML agent text. model is
+# left UNSET: Claude model names (fable/opus/sonnet/haiku) don't translate to
+# Codex's own model catalog, so the agent inherits whatever model the parent
+# session is running. developer_instructions uses a TOML literal
+# triple-single-quoted string so the body needs no escaping; same documented
+# tradeoff Set-TomlDefault takes on TOML string handling above, and none of
+# this repo's agent bodies contain a literal ''' to break it.
+function ConvertTo-CodexAgentToml($src) {
+  $name = Get-AgentFrontmatterField $src 'name'
+  $description = Get-AgentFrontmatterField $src 'description'
+  $effort = Get-AgentFrontmatterField $src 'effort'
+  $tools = Get-AgentFrontmatterField $src 'tools'
+  $sandboxMode = if ($tools -match 'Edit|Write') { 'workspace-write' } else { 'read-only' }
+  $body = Get-AgentBody $src
+  $lines = @(
+    "name = `"$(ConvertTo-TomlEscaped $name)`"",
+    "description = `"$(ConvertTo-TomlEscaped $description)`"",
+    "model_reasoning_effort = `"$effort`"",
+    "sandbox_mode = `"$sandboxMode`"",
+    "developer_instructions = '''",
+    $body,
+    "'''"
+  )
+  return ($lines -join "`n") + "`n"
+}
+
+# Codex-native mirror of Copy-Agents: same source (agents/*.md), rendered into
+# Codex's one-TOML-file-per-agent format at $dest/<name>.toml instead of
+# copied verbatim, since Codex has no Claude-style Markdown subagent file.
+# Every agents/*.md is rendered, so adding one needs no edit here. No-op if
+# the repo has no agents/ dir.
+function Copy-CodexAgents($dest) {
+  $agentsDir = Join-Path $RepoDir 'agents'
+  if (-not (Test-Path -LiteralPath $agentsDir)) { return }
+  New-Item -ItemType Directory -Force -Path $dest | Out-Null
+  $names = @()
+  foreach ($f in Get-ChildItem -LiteralPath $agentsDir -Filter '*.md' -File) {
+    $toml = ConvertTo-CodexAgentToml $f.FullName
+    [System.IO.File]::WriteAllText((Join-Path $dest "$($f.BaseName).toml"), $toml, $Utf8NoBom)
+    $names += $f.BaseName
+  }
+  if ($names.Count -gt 0) { Write-Host "  agents (codex)  -> $dest/{$($names -join ',')}" }
 }
 
 # Render a hook wiring template to text, replacing __SCRIPTS__ with the resolved
@@ -392,11 +483,12 @@ function Install-Codex {
   $codex = Join-Path $HomeDir '.codex'
   $scripts = Join-Path $codex 'scripts'
   Copy-Skills (Join-Path (Join-Path $HomeDir '.agents') 'skills')
+  Copy-CodexAgents (Join-Path $codex 'agents')
   Install-Digest (Join-Path $codex 'core-rules.md')
   Install-Instructions (Join-Path $codex 'AGENTS.md')
   # Plan-mode default, re-asserted each install: raise reasoning effort in Plan
   # mode only. Not gated by PT_KEEP_MODEL (that opt-out covers model settings).
-  Set-TomlDefault (Join-Path $codex 'config.toml') 'plan_mode_reasoning_effort' 'high'
+  Set-TomlDefault (Join-Path $codex 'config.toml') 'plan_mode_reasoning_effort' 'xhigh'
 
   $hooks = Join-Path $codex 'hooks.json'
   New-Item -ItemType Directory -Force -Path $codex | Out-Null

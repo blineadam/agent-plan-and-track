@@ -15,14 +15,15 @@
 #   - hooks are merged only if not already installed (Claude/Codex); the Copilot hook
 #     files are repo-owned and overwritten, with a *.bak backup if one differed
 #   - managed defaults (Claude model=opusplan + switchModelsOnFlag, Copilot
-#     model=auto, Codex plan_mode_reasoning_effort=high) are repo-owned and
+#     model=auto, Codex plan_mode_reasoning_effort=xhigh) are repo-owned and
 #     OVERWRITTEN on every install. PT_KEEP_MODEL=1 keeps an existing per-machine
 #     model choice; a Copilot settings.json jq can't round-trip is left untouched.
 #
 # PARITY: install.ps1 is the Windows (PowerShell) sibling of this script and must
-# stay in lockstep. Any change to the managed surface here (skills, agents, the
-# core-rules digest, the instructions managed block, hook wiring + __SCRIPTS__
-# substitution, model/effort defaults, the TOML upsert) must be mirrored there.
+# stay in lockstep. Any change to the managed surface here (skills, agents (both
+# the Claude .md copies and the Codex TOML rendering), the core-rules digest, the
+# instructions managed block, hook wiring + __SCRIPTS__ substitution, model/effort
+# defaults, the TOML upsert) must be mirrored there.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -83,6 +84,92 @@ copy_agents() {
     names="$names${names:+,}${name%.md}"
   done
   [ -n "$names" ] && echo "  agents          -> $dest/{$names} (Claude-only)"
+}
+
+# Read a single-line frontmatter value for $2 out of $1's YAML frontmatter
+# block (between the first and second `---` line). Matches a line starting
+# with "<key>: " and returns the rest with at most one leading and one
+# trailing double quote stripped. Doesn't handle multi-line YAML blocks or
+# nested keys; every agents/*.md field this repo reads is a single physical
+# line, so that's not a real limitation here. Returns '' when not found.
+frontmatter_field() {
+  local file="$1" key="$2"
+  awk -v prefix="$key: " '
+    /^---[[:space:]]*$/ { fm++; next }
+    fm != 1 { next }
+    index($0, prefix) == 1 {
+      val = substr($0, length(prefix) + 1)
+      sub(/^"/, "", val); sub(/"$/, "", val)
+      print val
+      exit
+    }
+  ' "$file"
+}
+
+# Everything in $1 after the closing `---` of its frontmatter block, with
+# exactly one leading blank line stripped (agents/*.md all have one, matching
+# the file body-vs-frontmatter separation the Codex TOML render needs raw).
+agent_body() {
+  awk '
+    /^---[[:space:]]*$/ { fm++; next }
+    fm < 2 { next }
+    fm == 2 { fm++; if ($0 == "") next }
+    { print }
+  ' "$1"
+}
+
+# Escape a string for embedding in a basic double-quoted TOML string
+# (backslashes first, then double quotes, so an escaped quote isn't
+# re-escaped).
+toml_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  printf '%s' "$s"
+}
+
+# Render one agents/*.md source ($1) into a Codex-native TOML agent file at
+# $2. model is left UNSET: Claude model names (fable/opus/sonnet/haiku) don't
+# translate to Codex's own model catalog, so the agent inherits whatever
+# model the parent session is running. developer_instructions uses a TOML
+# literal triple-single-quoted string so the body needs no escaping; same
+# documented tradeoff upsert_toml_default takes on TOML string handling
+# below, and none of this repo's agent bodies contain a literal ''' to break it.
+render_codex_agent() {
+  local src="$1" dest="$2" name description effort tools sandbox_mode
+  name="$(frontmatter_field "$src" name)"
+  description="$(frontmatter_field "$src" description)"
+  effort="$(frontmatter_field "$src" effort)"
+  tools="$(frontmatter_field "$src" tools)"
+  case "$tools" in
+    *Edit*|*Write*) sandbox_mode="workspace-write" ;;
+    *)              sandbox_mode="read-only" ;;
+  esac
+  {
+    printf 'name = "%s"\n' "$(toml_escape "$name")"
+    printf 'description = "%s"\n' "$(toml_escape "$description")"
+    printf 'model_reasoning_effort = "%s"\n' "$effort"
+    printf 'sandbox_mode = "%s"\n' "$sandbox_mode"
+    printf "developer_instructions = '''\n%s\n'''\n" "$(agent_body "$src")"
+  } > "$dest"
+}
+
+# Codex-native mirror of copy_agents: same source (agents/*.md), rendered into
+# Codex's one-TOML-file-per-agent format at $dest/<name>.toml instead of
+# copied verbatim, since Codex has no Claude-style Markdown subagent file.
+# Every agents/*.md is rendered, so adding one needs no edit here. No-op if
+# the repo has no agents/ dir.
+copy_codex_agents() {
+  local dest="$1" f name names=""
+  [ -d "$REPO_DIR/agents" ] || return 0
+  mkdir -p "$dest"
+  for f in "$REPO_DIR"/agents/*.md; do
+    [ -e "$f" ] || continue
+    name="$(basename "$f" .md)"
+    render_codex_agent "$f" "$dest/$name.toml"
+    names="$names${names:+,}$name"
+  done
+  [ -n "$names" ] && echo "  agents (codex)  -> $dest/{$names}"
 }
 
 # Write $1 (a temp file) back to $2, preserving a symlink at $2 instead of
@@ -323,13 +410,14 @@ install_copilot() {
 install_codex() {
   echo "Codex (user scope: ~/.codex; skills in ~/.agents/skills)"
   copy_skills "$HOME/.agents/skills"
+  copy_codex_agents "$HOME/.codex/agents"
   install_digest "$HOME/.codex/core-rules.md"
   install_instructions "$HOME/.codex/AGENTS.md"
   # Plan-mode default, re-asserted on every install: raise reasoning effort in
   # Plan mode only, leaving the execution model and effort untouched. Codex has no
   # plan-mode model swap (no opusplan analog), so effort is the only phase-specific
   # lever. Not gated by PT_KEEP_MODEL (that opt-out covers model settings only).
-  upsert_toml_default "$HOME/.codex/config.toml" "plan_mode_reasoning_effort" "high"
+  upsert_toml_default "$HOME/.codex/config.toml" "plan_mode_reasoning_effort" "xhigh"
   need_jq
   local hooks="$HOME/.codex/hooks.json" cscripts="$HOME/.codex/scripts" tmp
   mkdir -p "$HOME/.codex" "$cscripts"

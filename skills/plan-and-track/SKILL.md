@@ -11,7 +11,13 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
 
 1. Reconcile stale batches first: if `tasks/todo.md` exists, scan it for any batch that has BOTH a fully checked-off (`[x]`) `## Plan` checklist AND an existing `## Review` section, but is still shown at full detail. A checked Plan alone only proves implementation (step 6); the Review section is what proves verification/closeout (steps 9-10) actually happened, so both are required before compressing. Compress each matching batch down to one line summarizing the outcome (e.g. `Batch N: <title>: done <date>, PR #X` or, if there's no PR, `Batch N: <title>: done <date>. <one-clause summary>`). Leave any batch missing either signal at full detail, including a fully checked Plan with no Review section yet, since that means implementation finished but verification hasn't. This needs no external system (no GitHub/PR dependency): checklist and Review state already in `tasks/todo.md` is the only signal, so it works the same whether or not this project uses PRs. Once a batch is compressed it's a one-liner and this scan skips it on every future run, so the check stays cheap.
 2. Read `tasks/lessons.md` if it exists and apply any relevant lessons to the plan.
-3. Enter plan mode if not already in it. Write a detailed spec upfront to reduce ambiguity.
+3. Enter plan mode if not already in it. Write a detailed spec upfront to reduce ambiguity:
+   - **Hard-to-reverse bets first**: sequence the decisions that are costly to undo ahead of everything else.
+   - **Reuse before addition**: for each step, name what it reuses before what it adds.
+   - **No padding, no fake plans**: never pad a plan to look thorough; never ship a single-step "plan".
+   - **Batch clarifying questions**: ask 2-4 high-leverage questions together, not one at a time.
+
+   On Claude Code, spec drafting can be delegated to a `planner` subagent (Fable) and the finished checklist handed to an `executor` subagent (Sonnet) to implement. Codex renders the same roster natively, but named-agent invocation there is currently unreliable (see the Codex UNVERIFIED caveat in README.md) — don't rely on it silently loading the right profile until that's fixed upstream. Copilot has no subagent concept, so plan inline there.
 4. Write the plan to `tasks/todo.md` as a checklist:
 
    ```markdown
