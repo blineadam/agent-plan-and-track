@@ -54,7 +54,7 @@ Two installers kept in lockstep: `install.sh` (bash + jq, macOS/Linux) and `inst
 - `gateguard.js`: PreToolUse hook, all 3 harnesses. Blocks the first edit to a file until investigation (callers, blast radius, schemas) is demonstrated; the retry always passes.
 - `delivery-gate.js`: Stop hook, Claude/Codex only (Copilot has no Stop event). Warn-only pre-finish check backing verify-before-done/capture-lesson.
 - `hooks/claude/suggest-compact.js`: Claude-only nudge toward `/compact` at logical boundaries.
-- `hooks/claude/plan-gate.js`: PreToolUse hook, Claude only (Codex loads skills as instructions with no Skill tool event to stamp from, so a block there could never unlock; Copilot has no Skill tool and a fail-closed PreToolUse). Denies Edit/Write to `tasks/todo.md` until a plan-and-track Skill invocation has stamped the session; the Skill tool call itself writes the stamp.
+- `hooks/claude/plan-gate.js`: PreToolUse hook, Claude only (Codex loads skills as instructions with no Skill tool event to stamp from, so a block there could never unlock; Copilot has no Skill tool and a fail-closed PreToolUse). Denies Edit/Write/MultiEdit to `tasks/todo.md` until a plan-and-track Skill invocation has stamped the session; the Skill tool call itself writes the stamp. No subagent carve-out: a subagent's tool call shares its parent's session_id, so the same stamp check covers delegated writes too.
 
 ### Skills
 

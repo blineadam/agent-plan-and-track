@@ -22,10 +22,15 @@
  * the portable skill plus the digest line instead (the same portable-skill +
  * Claude-only-hook split as suggest-compact.js), so no dialect branching.
  *
- * FAIL OPEN everywhere else: subagent tool calls skip the gate (the parent
- * session owns it), malformed stdin exits 0, and if the state dir can't be
- * created the edit is ALLOWED with a stderr note, since the Skill branch
- * could never stamp on such a machine and a deny would loop forever.
+ * NO SUBAGENT CARVE-OUT: a subagent's tool call carries the same session_id
+ * as its parent (verified empirically), so the stamp check resolves to the
+ * same file either way. Exempting subagents (gateguard's precedent) would
+ * let the main session dodge the gate entirely by delegating the todo.md
+ * write to an executor/mechanic before ever invoking the Skill.
+ *
+ * FAIL OPEN everywhere else: malformed stdin exits 0, and if the state dir
+ * can't be created the edit is ALLOWED with a stderr note, since the Skill
+ * branch could never stamp on such a machine and a deny would loop forever.
  *
  * Config (env):
  *   PLANGATE_DISABLED  "1" turns the gate off entirely.
@@ -48,11 +53,6 @@ function readStdin() {
   } catch {
     return '';
   }
-}
-
-function isSubagent(input) {
-  const ids = [input.agent_id, input.agentId, input.parent_tool_use_id, input.parentToolUseId];
-  return ids.some((v) => typeof v === 'string' && v.trim());
 }
 
 // --- Per-session stamp: one empty file per session key ---
@@ -92,16 +92,17 @@ function pruneStaleState() {
 
 // --- Skill-call recognition ---
 
-// Does this Skill call name plan-and-track? Check the likely fields first (no
-// captured Skill PreToolUse payload existed when this was written), then fall
-// back to scanning every string value of tool_input: over-stamping merely
-// un-gates one session, while under-recognition would deadlock the gate.
+// Does this Skill call name plan-and-track? Exact match against the field the
+// Skill tool actually populates (`skill`), same convention the repo's own
+// trace parser uses (skills/skill-activation/scripts/run-activation-cases.js,
+// which reads only input.skill/input.name/arguments.skill). A substring or
+// whole-object scan would stamp on an unrelated Skill call that merely
+// mentions plan-and-track in a prompt or argument string.
 function namesPlanAndTrack(toolInput) {
   if (!toolInput || typeof toolInput !== 'object') return false;
-  for (const field of [toolInput.skill, toolInput.name, toolInput.command]) {
-    if (typeof field === 'string' && field.includes('plan-and-track')) return true;
-  }
-  return Object.values(toolInput).some((v) => typeof v === 'string' && v.includes('plan-and-track'));
+  if (toolInput.skill === 'plan-and-track') return true;
+  if (toolInput.name === 'plan-and-track') return true;
+  return !!(toolInput.arguments && toolInput.arguments.skill === 'plan-and-track');
 }
 
 // --- Messages ---
@@ -123,10 +124,6 @@ function main() {
 
   if (process.env.PLANGATE_DISABLED === '1') process.exit(0);
 
-  // Subagent calls: the parent session owns the gate (gateguard's precedent).
-  // A delegated executor without the Skill tool must never be deadlocked here.
-  if (isSubagent(input)) process.exit(0);
-
   const toolName = String(input.tool_name || '');
   const toolInput = input.tool_input || {};
 
@@ -144,10 +141,12 @@ function main() {
     process.exit(0);
   }
 
-  // Edit branch: gate tasks/todo.md writes on the stamp.
+  // Edit branch: gate tasks/todo.md writes on the stamp. Case-insensitive:
+  // install.ps1 deploys this hook on Windows, where NTFS treats
+  // tasks\todo.md and TASKS\TODO.MD as the same file.
   if (!EDIT_TOOLS.has(toolName)) process.exit(0);
   const norm = String(toolInput.file_path || '').replace(/\\/g, '/');
-  if (!/(^|\/)tasks\/todo\.md$/.test(norm)) process.exit(0);
+  if (!/(^|\/)tasks\/todo\.md$/i.test(norm)) process.exit(0);
 
   if (fs.existsSync(stampPath(input.session_id, input))) process.exit(0);
 
