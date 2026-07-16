@@ -17,7 +17,7 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
    - **No padding, no fake plans**: never pad a plan to look thorough; never ship a single-step "plan".
    - **Batch clarifying questions**: ask 2-4 high-leverage questions together, not one at a time.
 
-   When the tiered subagent roster is available, delegate per [[efficient-frontier]], which owns the roster and the tier-matching rules: on Claude Code, spec drafting goes to a `planner` subagent (Fable), which returns the spec as text for step 4 (it has no write tools), and the finished checklist to an `executor` subagent (Sonnet) to implement. Codex renders the same roster natively, but named-agent invocation there is currently unreliable (see the Codex UNVERIFIED caveat in README.md), so don't rely on it silently loading the right profile until that's fixed upstream. Copilot has no subagent concept, so plan inline there.
+   When the tiered subagent roster is available, delegate per [[efficient-frontier]], which owns the roster and the tier-matching rules: on Claude Code, spec drafting goes to a `planner` subagent, which returns the spec as text for step 4 (it has no write tools), and the finished checklist to an `executor` subagent to implement. Codex renders the same roster natively, but named-agent invocation there is currently unreliable (see the Codex UNVERIFIED caveat in README.md), so don't rely on it silently loading the right profile until that's fixed upstream. Copilot has no subagent concept, so plan inline there.
 4. Write the plan to `tasks/todo.md` as a checklist:
 
    ```markdown
