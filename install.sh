@@ -18,12 +18,16 @@
 #     model=auto, Codex plan_mode_reasoning_effort=xhigh) are repo-owned and
 #     OVERWRITTEN on every install. PT_KEEP_MODEL=1 keeps an existing per-machine
 #     model choice; a Copilot settings.json jq can't round-trip is left untouched.
+#   - the user's global git excludes file (whatever core.excludesfile already
+#     points to, or ~/.gitignore_global if unset) gets tasks/todo.md and
+#     tasks/lessons.md appended if missing, once per run regardless of target;
+#     skipped if git isn't installed
 #
 # PARITY: install.ps1 is the Windows (PowerShell) sibling of this script and must
 # stay in lockstep. Any change to the managed surface here (skills, agents (both
 # the Claude .md copies and the Codex TOML rendering), the core-rules digest, the
 # instructions managed block, hook wiring + __SCRIPTS__ substitution, model/effort
-# defaults, the TOML upsert) must be mirrored there.
+# defaults, the TOML upsert, the global gitignore entries) must be mirrored there.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -249,6 +253,47 @@ upsert_toml_default() {
   fi
 }
 
+# Ensure the user's *global* git excludes file ignores the per-project
+# tasks/todo.md and tasks/lessons.md scratch files the plan-and-track and
+# capture-lesson skills create in whatever repo they run in (not just this
+# one, so this belongs in the global excludes file, not this repo's own
+# .gitignore). No-op if git isn't installed: gh has no gitignore concept of
+# its own, so there's nothing to configure without git. Respects an existing
+# core.excludesfile instead of assuming ~/.gitignore_global, since git only
+# honors whatever that setting actually points to.
+install_global_gitignore() {
+  command -v git >/dev/null 2>&1 || {
+    echo "Global gitignore (skipped: git not found)"
+    return 0
+  }
+  echo "Global gitignore"
+  local target
+  target="$(git config --global --path core.excludesfile 2>/dev/null || true)"
+  if [ -z "$target" ]; then
+    target="$HOME/.gitignore_global"
+    git config --global core.excludesfile "$target"
+    echo "  core.excludesfile -> $target (was unset)"
+  else
+    echo "  core.excludesfile -> $target (existing)"
+  fi
+  mkdir -p "$(dirname "$target")"
+  [ -f "$target" ] || : > "$target"
+  if [ -s "$target" ] && [ -n "$(tail -c 1 "$target")" ]; then
+    echo >> "$target"
+  fi
+  local entry added=""
+  for entry in tasks/todo.md tasks/lessons.md; do
+    grep -qxF "$entry" "$target" 2>/dev/null && continue
+    echo "$entry" >> "$target"
+    added="$added${added:+, }$entry"
+  done
+  if [ -n "$added" ]; then
+    echo "  entries         -> added $added to $target"
+  else
+    echo "  entries         -- already present in $target"
+  fi
+}
+
 install_digest() {
   local dest="$1"
   mkdir -p "$(dirname "$dest")"
@@ -463,9 +508,16 @@ install_codex() {
 
 [ $# -eq 1 ] || usage
 case "$1" in
+  claude|copilot|codex|all) ;;
+  *)                        usage ;;
+esac
+
+install_global_gitignore
+echo
+
+case "$1" in
   claude)  install_claude ;;
   copilot) install_copilot ;;
   codex)   install_codex ;;
   all)     install_claude; echo; install_copilot; echo; install_codex ;;
-  *)       usage ;;
 esac

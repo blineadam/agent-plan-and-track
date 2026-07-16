@@ -24,12 +24,17 @@
       model=auto, Codex plan_mode_reasoning_effort=xhigh) are repo-owned and
       OVERWRITTEN on every install. PT_KEEP_MODEL=1 keeps an existing per-machine
       model choice; a Copilot settings.json that isn't plain JSON is left alone.
+    - the user's global git excludes file (whatever core.excludesfile already
+      points to, or ~/.gitignore_global if unset) gets tasks/todo.md and
+      tasks/lessons.md appended if missing, once per run regardless of target;
+      skipped if git isn't installed
 
   PARITY: this script and install.sh must stay in lockstep. Any change to the
   managed surface (skills, agents (both the Claude .md copies and the Codex
   TOML rendering), the core-rules digest, the instructions managed block, hook
-  wiring + __SCRIPTS__ substitution, model/effort defaults, the TOML upsert)
-  must be mirrored in both. See install.sh for the same note.
+  wiring + __SCRIPTS__ substitution, model/effort defaults, the TOML upsert,
+  the global gitignore entries) must be mirrored in both. See install.sh for
+  the same note.
 #>
 param([string]$Target)
 
@@ -297,6 +302,47 @@ function Set-TomlDefault($file, $key, $val) {
   }
 }
 
+# Ensure the user's *global* git excludes file ignores the per-project
+# tasks/todo.md and tasks/lessons.md scratch files the plan-and-track and
+# capture-lesson skills create in whatever repo they run in (not just this
+# one). No-op if git isn't installed: gh has no gitignore concept of its own.
+# Respects an existing core.excludesfile instead of assuming
+# ~/.gitignore_global, since git only honors whatever that setting points to.
+function Install-GlobalGitignore {
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "Global gitignore (skipped: git not found)"
+    return
+  }
+  Write-Host "Global gitignore"
+  $target = (git config --global --path core.excludesfile 2>$null)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($target)) {
+    $target = Join-Path $HomeDir '.gitignore_global'
+    git config --global core.excludesfile $target | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "  core.excludesfile -> failed to set, skipping"
+      return
+    }
+    Write-Host "  core.excludesfile -> $target (was unset)"
+  } else {
+    Write-Host "  core.excludesfile -> $target (existing)"
+  }
+  $dir = Split-Path -Parent $target
+  if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+  if (-not (Test-Path -LiteralPath $target)) { [System.IO.File]::WriteAllText($target, '', $Utf8NoBom) }
+  $content = [System.IO.File]::ReadAllText($target)
+  $lines = @([System.IO.File]::ReadAllLines($target))
+  $added = @($('tasks/todo.md', 'tasks/lessons.md') | Where-Object { $lines -cnotcontains $_ })
+  if ($added.Count -gt 0) {
+    if ($content.Length -gt 0 -and -not $content.EndsWith("`n")) {
+      Add-Content -LiteralPath $target -Value ''
+    }
+    foreach ($entry in $added) { Add-Content -LiteralPath $target -Value $entry }
+    Write-Host "  entries         -> added $($added -join ', ') to $target"
+  } else {
+    Write-Host "  entries         -- already present in $target"
+  }
+}
+
 function Install-Digest($dest) {
   $dir = Split-Path -Parent $dest
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -525,10 +571,14 @@ function Install-Codex {
   Write-Host "  done. Hooks need node at runtime. Start a new codex session to load."
 }
 
+if ($Target -notin @('claude', 'copilot', 'codex', 'all')) { Usage }
+
+Install-GlobalGitignore
+Write-Host ''
+
 switch ($Target) {
   'claude'  { Install-Claude }
   'copilot' { Install-Copilot }
   'codex'   { Install-Codex }
   'all'     { Install-Claude; Write-Host ''; Install-Copilot; Write-Host ''; Install-Codex }
-  default   { Usage }
 }
