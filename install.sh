@@ -355,6 +355,9 @@ install_claude() {
   # gateguard fact-forcing edit gate (shared universal script): + PreToolUse hook.
   cp "$REPO_DIR/hooks/gateguard.js" "$HOME/.claude/scripts/gateguard.js"
   echo "  gateguard script-> ~/.claude/scripts/gateguard.js"
+  # plan-gate plan-and-track enforcement (Claude-only script): + PreToolUse hook.
+  cp "$REPO_DIR/hooks/claude/plan-gate.js" "$HOME/.claude/scripts/plan-gate.js"
+  echo "  plan-gate script-> ~/.claude/scripts/plan-gate.js"
   need_jq
   local settings="$HOME/.claude/settings.json" tmp
   mkdir -p "$HOME/.claude"
@@ -403,6 +406,15 @@ install_claude() {
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
       "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  gateguard hook  -> merged into $settings (PreToolUse on edits; GATEGUARD_DISABLED=1 to turn off)"
+  fi
+  if grep -q 'plan-gate' "$settings"; then
+    echo "  plan-gate hook  -- already present in settings.json"
+  else
+    tmp="$(mktemp)"
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/claude/pretooluse-plan-gate.json" "$cscripts") \
+      '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
+      "$settings" > "$tmp" && write_back "$tmp" "$settings"
+    echo "  plan-gate hook  -> merged into $settings (PreToolUse on Skill+todo.md edits; PLANGATE_DISABLED=1 to turn off)"
   fi
   echo "  done. New Claude Code sessions pick this up automatically."
 }

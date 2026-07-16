@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Skill|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"__SCRIPTS__/plan-gate.js\""
+          }
+        ]
+      }
+    ]
+  }
+}

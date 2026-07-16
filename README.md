@@ -33,7 +33,8 @@ done, and turn any correction into a durable rule:
 - **`plan-and-track`** (skill): kicks in on multi-step work (a feature, a
   refactor, a 3+ step fix, or resuming a repo that already has a
   `tasks/todo.md`). Writes a checklist, tracks it, and verifies before closing
-  out.
+  out; backed by a Claude-only enforcing hook that blocks `tasks/todo.md`
+  writes until the skill has been invoked that session.
 - **`plow-ahead`** (skill): kicks in when you're told to proceed autonomously
   ("plow ahead," "use your best judgment," "don't stop"). Turns ordinary
   ambiguity into stated assumptions, keeps moving, and stops only for a true
@@ -60,7 +61,7 @@ done, and turn any correction into a durable rule:
 
 A harness that can't run a given hook still gets the rule as a skill: that's
 why Copilot (no Stop event) gets gateguard but not delivery-gate. Tuning knobs
-for both hooks live in their script headers under `hooks/`.
+for these hooks live in their script headers under `hooks/`.
 
 ## Maintenance skills
 
@@ -188,7 +189,7 @@ agents/                      tiered subagents (Claude .md + rendered Codex TOML)
                               executor (Sonnet); mechanic (Haiku)
 hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
-hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate
+hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate + plan-gate
 hooks/copilot/               Copilot wiring: throttled digest + gateguard
 hooks/codex/                 Codex wiring: digest + gateguard + delivery-gate
 install.sh                   per-tool installer
