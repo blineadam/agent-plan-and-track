@@ -124,16 +124,13 @@ stronger for judgment calls a same-topic skill can't guarantee a model tier for:
 - **`mechanic`** (Haiku): already-decided mechanical edits; kicks anything that
   needs a judgment call back to you.
 
-`model: fable` in an agent's frontmatter silently degrades to the session's
-default model if the account has no Fable access. Codex installs the same
-eight agents natively via rendered TOML: the model pin doesn't carry over
-there (an unset Codex `model` inherits the session's own), so the
-planner/executor split shows up only as `model_reasoning_effort` (xhigh vs.
-high) and `sandbox_mode` (read-only vs. workspace-write).
+If your account doesn't have Fable access, agents pinned to it just fall back
+to your normal model. Codex gets the same eight agents, but only the effort
+level and permissions carry over there, not the model tier.
 
-Claude routes work to them automatically based on their descriptions; you can
-also invoke one explicitly ("use the researcher agent to…"). Copilot has no
-subagent concept at all, so tiered subagents install to Claude and Codex only.
+Claude picks the right agent for the job automatically, or you can call one by
+name ("use the researcher agent to…"). Copilot has no concept of subagents, so
+these only install to Claude and Codex.
 
 ## Install
 
