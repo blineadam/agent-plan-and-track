@@ -46,7 +46,7 @@ Treat delegated output as evidence to weigh, not a verdict to rubber-stamp. Reop
 
 ## Worked Example: Planner to Executor to Mechanic
 
-The default ladder for a spec-shaped task: `planner` (fable) writes the spec after reading the real code, then `executor` (sonnet) implements it end to end, then `mechanic` (haiku) sweeps whatever small, already-decided mechanical tail is left (renames, doc updates, repeated small edits) once the shape of the change is settled. Each tier only does the part its model cost is suited for: fable's judgment goes into the plan, sonnet's competence goes into building it, haiku's speed goes into the mop-up.
+The default ladder for a spec-shaped task: `planner` writes the spec after reading the real code, then `executor` implements it end to end, then `mechanic` sweeps whatever small, already-decided mechanical tail is left (renames, doc updates, repeated small edits) once the shape of the change is settled. Each tier only does the part its cost is suited for: judgment goes into the plan, competence goes into building it, speed goes into the mop-up.
 
 ## Guardrails
 
