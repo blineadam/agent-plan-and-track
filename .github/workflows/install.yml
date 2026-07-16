@@ -83,7 +83,9 @@ jobs:
           $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home"
           New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null
           .\install.ps1 all
-          $out = (.\install.ps1 all | Out-String)
+          # install.ps1 reports via Write-Host (Information stream); 6>&1 folds
+          # that into the pipeline so Out-String can capture it for the assertion.
+          $out = (.\install.ps1 all 6>&1 | Out-String)
           Write-Host $out
           if ($out -notmatch 'digest hook\s+-- already present') {
             throw "digest hook not detected as already present on re-run"
