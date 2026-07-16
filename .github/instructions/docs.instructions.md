@@ -37,6 +37,26 @@ generated Copilot review-instruction files themselves. See
   tracker). Flag a hard dependency on one external tool unless it's
   optional/best-effort.
 
+## Subagent definition files
+
+- An `agents/*.md` file has frontmatter in a fixed field order: `name`,
+  `description`, `model`, `effort`, `tools`. Flag a file that omits a field or
+  reorders them.
+- The `description` must front-load a trigger clause ("Delegate here to ...",
+  "Use ... to ...") and include an explicit negative case ("not for routine
+  ...", "NOT for anything requiring ..."), so routing knows both when to reach
+  for the agent and when not to. Flag a bare capability summary that carries no
+  trigger clause or no negative case.
+- `model` and `effort` are pinned in lockstep and scaled to the cost of a
+  missed judgment call: `opus`+`xhigh` for high-stakes read-only review,
+  `sonnet`+`high` for research/diagnosis, `haiku`+`medium` for mechanical
+  no-judgment edits. Flag a mismatched pair (a cheap model with high effort, or
+  vice versa) and a pin whose rationale isn't stated inline in `description`.
+- `tools` is a bare comma-separated subset that should match the agent's
+  authority: read-only reviewers get `Read, Grep, Glob`; only an edit-capable
+  agent (e.g. `mechanic`) should carry `Edit`/`Write`. Flag a reviewer or
+  research agent granted write tools.
+
 ## Don't hand-edit installed copies
 
 - `rules/agent-guidelines.md` and `rules/core-rules.md` are the only source

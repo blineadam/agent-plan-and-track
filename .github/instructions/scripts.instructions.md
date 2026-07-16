@@ -1,5 +1,5 @@
 ---
-applyTo: "hooks/**/*.js,hooks/**/*.json,**/*.sh,install.sh"
+applyTo: "hooks/**/*.js,hooks/**/*.json,**/*.sh,install.sh,install.ps1,.gitattributes,.github/workflows/*.yml"
 excludeAgent: "cloud-agent"
 ---
 
@@ -55,6 +55,12 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   vs `bash`, `timeout` vs `timeoutSec`). Don't propose normalizing one
   dialect to match another: the differing shape is a harness contract, not
   an inconsistency.
+- The checked-in `hooks/<harness>/*.json` are pre-substitution templates: a
+  command references its script via a literal `__SCRIPTS__` placeholder
+  (`node "__SCRIPTS__/gateguard.js"`), which the installers bake into a
+  resolved absolute path at install time. Flag a hook JSON that hardcodes an
+  absolute path or a `$HOME` / `%USERPROFILE%` expansion instead of the
+  placeholder.
 
 ## File placement
 
@@ -66,9 +72,21 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   script into that harness's hook contract). Don't reject a harness-specific
   script under `hooks/<harness>/` as misplaced just because it isn't JSON.
 
-## install.sh defaults
+## Installers and cross-platform portability
 
 - A repo-owned managed default (model/effort settings, skill installs)
   should be overwritten on every install run, not guarded by
   set-if-absent, unless the target write is genuinely unsafe to clobber
   (e.g. a config file a JSON tool can't round-trip losslessly).
+- `install.sh` (bash + jq) and `install.ps1` (PowerShell, jq-free) are kept
+  in lockstep, each with a parity note in its header listing the managed
+  surface. Flag a PR that changes one installer's managed surface (a skill,
+  a hook wiring, a default, the digest) without the mirrored change to the
+  other.
+- `.gitattributes` forces LF on `*.sh` / `*.js` / `*.json` / `*.md` (a CRLF
+  shebang breaks bash; hook scripts and JSON are read on every platform) and
+  CRLF on `*.ps1` (the Windows-native installer). Flag a change that
+  normalizes `.ps1` to LF or forces CRLF onto the LF-required extensions.
+- CI (`.github/workflows/*.yml`) mirrors its assertions across a unix and a
+  windows job, matching the installer parity above. Flag a new assertion
+  added to only one of the two jobs.
