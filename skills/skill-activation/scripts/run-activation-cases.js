@@ -49,7 +49,7 @@ const DEFAULT_FIXTURES = path.join(SCRIPT_DIR, '..', 'fixtures', 'activation-cas
 const DESC_TOKEN_FLOOR = intEnv('DESC_TOKEN_FLOOR', 12);
 const DESC_CHAR_CEILING = intEnv('DESC_CHAR_CEILING', 700);
 // This repo's skill frontmatter convention is exactly `name` + `description`, nothing else.
-const SKILL_NAME_PATTERN = /^[a-z0-9-]+$/;
+const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 function intEnv(name, fallback) {
   const raw = process.env[name];
@@ -143,7 +143,7 @@ function modePrecheck(args) {
   if (!isDir(skillsDir)) die(`error: no skills dir at ${skillsDir}`);
   const files = findSkillMd(skillsDir).sort();
   if (files.length === 0) {
-    printJson({ skills: [], weak_count: 0 });
+    printJson({ skills: [], weak_count: 0, schema_issue_count: 0 });
     return;
   }
   const skills = files.map((f) => {

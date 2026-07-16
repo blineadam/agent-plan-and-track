@@ -48,14 +48,16 @@ generated Copilot review-instruction files themselves. See
   for the agent and when not to. Flag a bare capability summary that carries no
   trigger clause or no negative case.
 - `model` and `effort` are pinned in lockstep and scaled to the cost of a
-  missed judgment call: `opus`+`xhigh` for high-stakes read-only review,
-  `sonnet`+`high` for research/diagnosis, `haiku`+`medium` for mechanical
-  no-judgment edits. Flag a mismatched pair (a cheap model with high effort, or
-  vice versa) and a pin whose rationale isn't stated inline in `description`.
+  missed judgment call: `fable`+`xhigh` for high-stakes read-only review and
+  planning (`opus`+`xhigh` remains a valid pin but is currently unused),
+  `sonnet`+`high` for research/diagnosis/execution, `haiku`+`medium` for
+  mechanical no-judgment edits. Flag a mismatched pair (a cheap model with
+  high effort, or vice versa) and a pin whose rationale isn't stated inline
+  in `description`.
 - `tools` is a bare comma-separated subset that should match the agent's
   authority: read-only reviewers get `Read, Grep, Glob`; only an edit-capable
-  agent (e.g. `mechanic`) should carry `Edit`/`Write`. Flag a reviewer or
-  research agent granted write tools.
+  agent (e.g. `mechanic`, `executor`) should carry `Edit`/`Write`. Flag a
+  reviewer or planning agent granted write tools.
 
 ## Don't hand-edit installed copies
 

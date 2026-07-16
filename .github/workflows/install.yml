@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Tooling versions
         run: jq --version && node --version
       - name: Install twice (idempotent) into a scratch HOME
@@ -61,6 +64,10 @@ jobs:
           agent_toml_count="$(ls "$HOME/.codex/agents"/*.toml | wc -l | tr -d ' ')"
           [ "$agent_toml_count" = "$agent_md_count" ] \
             || { echo "FAIL: expected $agent_md_count Codex agent TOML files, found $agent_toml_count"; exit 1; }
+          # Each rendered TOML must actually parse and carry exactly the expected
+          # keys, with no stray Claude `model` key (existence/count alone doesn't
+          # prove the renderer emitted valid or complete output).
+          python3 -c "import glob, os, sys, tomllib; expected={'name','description','model_reasoning_effort','sandbox_mode','developer_instructions'}; files=sorted(glob.glob(os.path.join(sys.argv[1],'*.toml'))); assert files, 'no Codex agent TOML files found'; bad=[(f, sorted(tomllib.load(open(f,'rb')).keys())) for f in files if set(tomllib.load(open(f,'rb')).keys())!=expected]; assert not bad, f'bad TOML key sets: {bad}'; print(f'OK: validated TOML structure for {len(files)} rendered Codex agents')" "$HOME/.codex/agents"
       - name: Shared Node scripts run
         run: |
           set -euo pipefail
@@ -78,6 +85,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Tooling versions
         shell: powershell
         run: $PSVersionTable.PSVersion; node --version
@@ -137,6 +147,22 @@ jobs:
           $agentMdCount = (Get-ChildItem 'agents\*.md').Count
           $agentTomlCount = (Get-ChildItem "$H\.codex\agents\*.toml").Count
           if ($agentTomlCount -ne $agentMdCount) { throw "expected $agentMdCount Codex agent TOML files, found $agentTomlCount" }
+          # Each rendered TOML must actually parse and carry exactly the expected
+          # keys, with no stray Claude `model` key (existence/count alone doesn't
+          # prove the renderer emitted valid or complete output).
+          $validatorLines = @(
+            'import glob, os, sys, tomllib',
+            'expected = {"name", "description", "model_reasoning_effort", "sandbox_mode", "developer_instructions"}',
+            'files = sorted(glob.glob(os.path.join(sys.argv[1], "*.toml")))',
+            'assert files, "no Codex agent TOML files found"',
+            'bad = [(f, sorted(tomllib.load(open(f, "rb")).keys())) for f in files if set(tomllib.load(open(f, "rb")).keys()) != expected]',
+            'assert not bad, f"bad TOML key sets: {bad}"',
+            'print(f"OK: validated TOML structure for {len(files)} rendered Codex agents")'
+          )
+          $validatorPath = Join-Path $env:RUNNER_TEMP 'validate_codex_toml.py'
+          Set-Content -Path $validatorPath -Value $validatorLines -Encoding utf8
+          python $validatorPath "$H\.codex\agents"
+          if ($LASTEXITCODE -ne 0) { throw "Codex TOML validation failed" }
       - name: Shared Node scripts run
         shell: powershell
         run: |

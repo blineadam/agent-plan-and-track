@@ -225,9 +225,14 @@ a skill, drop it in `skills/<name>/SKILL.md` (the `description` tells the agent
 - **Codex** (`~/.codex`): the user `AGENTS.md` loads before project ones;
   skills live in `~/.agents/skills/`, subagents render to
   `~/.codex/agents/*.toml`. Run `codex` and press `2` to accept new hooks.
-  Recent builds add no attribution trailer. UNVERIFIED: named agents may not
-  be reachable via tool-backed `spawn_agent` in SDK/MCP-driven sessions
-  (openai/codex#15250); interactive CLI/IDE sessions are fine.
+  Recent builds add no attribution trailer. UNVERIFIED: named-agent invocation
+  via `spawn_agent` is unreliable everywhere as of this writing, not only in
+  SDK/MCP-driven sessions — recent reports (openai/codex#15250) reproduce it
+  on standalone Codex CLI and Codex Desktop too, where a requested custom
+  agent silently falls back to the parent's own model/effort/sandbox instead
+  of loading its TOML. Treat the rendered roster as forward-looking until
+  upstream fixes this; don't rely on it silently picking up the right
+  profile.
 
 To check any of them: start a session, get a few messages in, and ask *"what are
 your standing rules?"*
