@@ -38,7 +38,7 @@ Present the facts, then make the edit. Files you've already gated this
 session don't need re-gating on later edits.
 
 Gathering these facts (importers, blast radius, schemas) is researcher-tier
-work: where this repo's tiered subagents are available, that investigation can
+work: where the tiered subagent roster is available, that investigation can
 be delegated per [[efficient-frontier]] and the returned evidence presented
 here.
 
