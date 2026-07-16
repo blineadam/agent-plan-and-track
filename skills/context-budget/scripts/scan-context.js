@@ -30,10 +30,12 @@
  * INSTRUCTIONS_LINE_LIMIT (300).
  *
  * Environment:
- *   CONTEXT_BUDGET_SKILLS_DIRS  Colon-separated dirs to scan instead of the
- *                               default harness dirs (for testing).
- *   CONTEXT_BUDGET_CONFIG_DIRS  Colon-separated dirs to search for instruction
- *                               files + core-rules.md instead of the defaults.
+ *   CONTEXT_BUDGET_SKILLS_DIRS  Dirs to scan instead of the default harness
+ *                               dirs, separated by the platform list delimiter
+ *                               (`:` on POSIX, `;` on Windows). For testing.
+ *   CONTEXT_BUDGET_CONFIG_DIRS  Dirs to search for instruction files +
+ *                               core-rules.md instead of the defaults (same
+ *                               delimiter).
  *
  * Parity notes (differences from the .sh that are cosmetic and intentional):
  *   - Ordering. The .sh emits skills/configs in shell-glob order of temp files
@@ -103,10 +105,11 @@ function tokensFromText(text) {
 
 // The YAML frontmatter block (between the first two lines that are exactly
 // "---"), which is the always-on part of a skill. Mirrors the awk that prints
-// records while fm==1 and exits on the second "---". Line ending is exactly
-// "---" (a CRLF file would carry a trailing \r and not match, same as the .sh).
+// records while fm==1 and exits on the second "---". Split on \r?\n so a
+// CRLF-authored skill (common on Windows) still matches "---"; the .sh's awk
+// missed those and charged the whole file as body.
 function frontmatterText(content) {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   let fm = 0;
   const out = [];
   for (const line of lines) {
@@ -203,9 +206,11 @@ function byteCmp(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-// Split a colon-separated env list the way `IFS=':' read -a` does.
-function splitColon(value) {
-  return value.split(':');
+// Split an env dir-list on the platform list delimiter (`:` on POSIX like the
+// shell's `IFS=':'`, `;` on Windows) so a Windows absolute path such as
+// `C:\skills` is not split on its drive-letter colon.
+function splitPathList(value) {
+  return value.split(path.delimiter);
 }
 
 // hkey: classify a path/source string to the harness it belongs to. Mirrors the
@@ -258,11 +263,11 @@ function main() {
   // CONTEXT_BUDGET_SKILLS_DIRS overrides the defaults, then positional args are
   // always appended (matching `skills_dirs+=("$@")`).
   const skillsEnv = process.env.CONTEXT_BUDGET_SKILLS_DIRS;
-  let skillsDirs = skillsEnv ? splitColon(skillsEnv) : defaultSkillsDirs.slice();
+  let skillsDirs = skillsEnv ? splitPathList(skillsEnv) : defaultSkillsDirs.slice();
   skillsDirs = skillsDirs.concat(args);
 
   const configEnv = process.env.CONTEXT_BUDGET_CONFIG_DIRS;
-  const configDirs = configEnv ? splitColon(configEnv) : defaultConfigDirs.slice();
+  const configDirs = configEnv ? splitPathList(configEnv) : defaultConfigDirs.slice();
 
   // --- Skills ---
   // Build entries in the .sh's index order: for each existing, not-yet-seen dir

@@ -186,7 +186,10 @@ function findSkillMd(dir) {
 // two `---` lines), with the `description:` prefix stripped. Single-line only,
 // matching the original awk (no YAML folding).
 function frontmatterDescription(file) {
-  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  // Split on \r?\n so a CRLF-authored SKILL.md (common on Windows) still has its
+  // "---" fences and `description:` line recognized, not flagged weak with an
+  // empty description.
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
   let fm = 0;
   for (const line of lines) {
     if (line === '---') {
@@ -254,7 +257,9 @@ function modeCheckOrRun(mode, traceDirArg, fixturesArg) {
     // expect_skill is required (a case with no expect and no forbidden hit would
     // "pass" while testing nothing, a false negative).
     let invalid = '';
-    if (id === '' || id.includes('/') || id.includes('..')) {
+    // Reject both path separators (\ is a separator on Windows) plus `..`, so a
+    // case id can't escape the trace dir when interpolated into a trace path.
+    if (id === '' || id.includes('/') || id.includes('\\') || id.includes('..')) {
       invalid = `invalid id '${id}': path syntax not allowed`;
     } else if (expect === '') {
       invalid = `invalid case '${id}': missing required expect_skill`;

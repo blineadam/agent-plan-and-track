@@ -134,11 +134,14 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home"
           $H = $env:USERPROFILE
-          if ((node "$H\.claude\scripts\core-rules-digest.js").Length -eq 0) { throw "digest produced no output" }
-          node "$H\.copilot\scripts\core-rules-digest.js" --copilot | Out-Null
-          node skills\skill-activation\scripts\run-activation-cases.js --dry-run | Out-Null
-          node skills\skill-activation\scripts\run-activation-cases.js --precheck "$H\.claude\skills" | Out-Null
-          node skills\context-budget\scripts\scan-context.js .\skills | Out-Null
-          node skills\rules-distill\scripts\scan-rules.js | Out-Null
-          node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "a node script exited non-zero" }
+          # PowerShell does not turn a native nonzero exit into a terminating
+          # error, and each call overwrites $LASTEXITCODE, so check after every one.
+          function Assert-Node($label) { if ($LASTEXITCODE -ne 0) { throw "$label exited $LASTEXITCODE" } }
+          $digest = (node "$H\.claude\scripts\core-rules-digest.js" | Out-String); Assert-Node 'digest'
+          if ($digest.Trim().Length -eq 0) { throw "digest produced no output" }
+          node "$H\.copilot\scripts\core-rules-digest.js" --copilot | Out-Null; Assert-Node 'copilot digest'
+          node skills\skill-activation\scripts\run-activation-cases.js --dry-run | Out-Null; Assert-Node 'run-activation --dry-run'
+          node skills\skill-activation\scripts\run-activation-cases.js --precheck "$H\.claude\skills" | Out-Null; Assert-Node 'run-activation --precheck'
+          node skills\context-budget\scripts\scan-context.js .\skills | Out-Null; Assert-Node 'scan-context'
+          node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
+          node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'

@@ -100,8 +100,12 @@ write_back() {
 # exactly what Claude Code's Windows hook-resolution bugs mishandle. $2 stays
 # forward-slashed (node accepts forward slashes on Windows too, and it avoids
 # JSON backslash escaping); install.ps1 mirrors this substitution 1:1.
+# Uses bash literal replacement (not sed), so a home path containing sed-special
+# characters like '&', '|', or '\' can't corrupt the substituted JSON.
 render_hook() {
-  sed "s|__SCRIPTS__|$2|g" "$1"
+  local content
+  content="$(cat "$1")"
+  printf '%s\n' "${content//__SCRIPTS__/$2}"
 }
 
 # Set a repo-owned JSON default in a settings file (jq), overwriting on every
