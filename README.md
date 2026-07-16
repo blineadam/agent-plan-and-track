@@ -159,8 +159,10 @@ Idempotent. Re-runs re-assert the repo's intended state; your own content is kep
   (customize them in the repo, not in `~/.claude/agents/`).
 
 The macOS/Linux installer needs `jq`; `install.ps1` is jq-free. Both wire hooks
-that need `node` at runtime on every platform. Update later with `git pull` and
-the installer for your OS.
+that need `node` at runtime on every platform, so both check for it up front
+and exit with an install suggestion (`brew install node` / `winget install
+OpenJS.NodeJS.LTS`) if it's missing, before writing anything. Update later with
+`git pull` and the installer for your OS.
 
 ## Layout
 

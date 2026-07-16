@@ -44,6 +44,13 @@ need_jq() {
   command -v jq >/dev/null 2>&1 || { echo "error: jq is required (brew install jq)" >&2; exit 1; }
 }
 
+# All three harnesses wire hooks that shell out to `node <script>.js` at
+# runtime, so check once up front and fail before writing anything, rather
+# than letting a missing node surface later as a silent hook failure.
+need_node() {
+  command -v node >/dev/null 2>&1 || { echo "error: node is required (brew install node, or see https://nodejs.org)" >&2; exit 1; }
+}
+
 # Claude-only skills: installed by install_claude, skipped for the other
 # harnesses. Everything else under skills/ is portable and installs everywhere.
 CLAUDE_ONLY_SKILLS=("skill-comply")
@@ -512,6 +519,7 @@ case "$1" in
   *)                        usage ;;
 esac
 
+need_node
 install_global_gitignore
 echo
 

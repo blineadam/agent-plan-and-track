@@ -61,6 +61,16 @@ function Usage {
   exit 1
 }
 
+# All three harnesses wire hooks that shell out to `node <script>.js` at
+# runtime, so check once up front and fail before writing anything, rather
+# than letting a missing node surface later as a silent hook failure.
+function Confirm-Node {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    [Console]::Error.WriteLine("error: node is required (winget install OpenJS.NodeJS.LTS, or see https://nodejs.org)")
+    exit 1
+  }
+}
+
 # Write $content to a fresh temp file (UTF-8, no BOM) and return its path.
 function New-TempFileWith([string]$content) {
   $tmp = [System.IO.Path]::GetTempFileName()
@@ -573,6 +583,7 @@ function Install-Codex {
 
 if ($Target -notin @('claude', 'copilot', 'codex', 'all')) { Usage }
 
+Confirm-Node
 Install-GlobalGitignore
 Write-Host ''
 
