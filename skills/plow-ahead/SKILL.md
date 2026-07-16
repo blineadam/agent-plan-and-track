@@ -17,7 +17,7 @@ Treat the user's instruction as permission to continue through normal uncertaint
 - Prefer the smallest reversible choice that satisfies the request.
 - Use repo conventions, nearby patterns, local docs, tests, and existing product behavior as the decision source.
 - Keep working through normal test failures, missing context, implementation choices, and minor ambiguity.
-- Use subagents for independent research, implementation, or verification when parallel work can reduce idle time or improve coverage.
+- Use subagents for independent research, implementation, or verification when parallel work can reduce idle time or improve coverage; pick which tier per `[[efficient-frontier]]` when this repo's roster is available.
 - Do not pause merely to ask which reasonable option the user prefers. Pick one, record why, and keep going.
 
 ## Stop Conditions

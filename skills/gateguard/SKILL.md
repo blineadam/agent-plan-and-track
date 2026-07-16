@@ -37,6 +37,11 @@ Before **creating a new file**:
 Present the facts, then make the edit. Files you've already gated this
 session don't need re-gating on later edits.
 
+Gathering these facts (importers, blast radius, schemas) is researcher-tier
+work: where this repo's tiered subagents are available, that investigation can
+be delegated per `[[efficient-frontier]]` and the returned evidence presented
+here.
+
 ## Why the schema check matters
 
 The canonical failure: assuming ISO-8601 dates when the real data uses
