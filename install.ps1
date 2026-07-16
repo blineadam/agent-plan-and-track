@@ -314,27 +314,29 @@ function Install-GlobalGitignore {
     return
   }
   Write-Host "Global gitignore"
-  $target = (git config --global core.excludesfile 2>$null)
-  if ([string]::IsNullOrWhiteSpace($target)) {
+  $target = (git config --global --path core.excludesfile 2>$null)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($target)) {
     $target = Join-Path $HomeDir '.gitignore_global'
     git config --global core.excludesfile $target | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "  core.excludesfile -> failed to set, skipping"
+      return
+    }
     Write-Host "  core.excludesfile -> $target (was unset)"
   } else {
-    if ($target.StartsWith('~')) { $target = $HomeDir + $target.Substring(1) }
     Write-Host "  core.excludesfile -> $target (existing)"
   }
   $dir = Split-Path -Parent $target
   if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
   if (-not (Test-Path -LiteralPath $target)) { [System.IO.File]::WriteAllText($target, '', $Utf8NoBom) }
+  $content = [System.IO.File]::ReadAllText($target)
   $lines = @([System.IO.File]::ReadAllLines($target))
-  $added = @()
-  foreach ($entry in @('tasks/todo.md', 'tasks/lessons.md')) {
-    if ($lines -notcontains $entry) {
-      Add-Content -LiteralPath $target -Value $entry
-      $added += $entry
-    }
-  }
+  $added = @($('tasks/todo.md', 'tasks/lessons.md') | Where-Object { $lines -cnotcontains $_ })
   if ($added.Count -gt 0) {
+    if ($content.Length -gt 0 -and -not $content.EndsWith("`n")) {
+      Add-Content -LiteralPath $target -Value ''
+    }
+    foreach ($entry in $added) { Add-Content -LiteralPath $target -Value $entry }
     Write-Host "  entries         -> added $($added -join ', ') to $target"
   } else {
     Write-Host "  entries         -- already present in $target"

@@ -268,17 +268,19 @@ install_global_gitignore() {
   }
   echo "Global gitignore"
   local target
-  target="$(git config --global core.excludesfile 2>/dev/null || true)"
+  target="$(git config --global --path core.excludesfile 2>/dev/null || true)"
   if [ -z "$target" ]; then
     target="$HOME/.gitignore_global"
     git config --global core.excludesfile "$target"
     echo "  core.excludesfile -> $target (was unset)"
   else
-    target="${target/#\~/$HOME}"
     echo "  core.excludesfile -> $target (existing)"
   fi
   mkdir -p "$(dirname "$target")"
   [ -f "$target" ] || : > "$target"
+  if [ -s "$target" ] && [ -n "$(tail -c 1 "$target")" ]; then
+    echo >> "$target"
+  fi
   local entry added=""
   for entry in tasks/todo.md tasks/lessons.md; do
     grep -qxF "$entry" "$target" 2>/dev/null && continue
