@@ -9,7 +9,8 @@ Standing rules from the user (apply these regardless of conversation length):
 - First edit to a file this session? Investigate before editing: importers/callers, blast radius, real data schemas. Search the tree, don't guess.
 - Explicit instructions from the user? Execute them directly. Don't re-verify them into an investigation. If evidence contradicts them, flag it in one line and proceed (unless destructive/irreversible); park deeper digging as a follow-up todo.
 - The user corrected you? Record the pattern in `tasks/lessons.md` (use the capture-lesson skill).
-- Offload research and exploration to subagents to keep the main context clean.
+- Offload delegable work to subagents to keep the main context clean. Where the tiered subagent roster is available, pick the tier per the efficient-frontier skill: plan drafting goes to planner, implementing an already-written spec or todo batch to executor, multi-file research to researcher, bug reproduction and root-causing to debugger.
+- High-stakes security or architecture decision? Where the roster is available, get a pinned-up review first: security-auditor for trust boundaries, credentials, and injection risk; architect-reviewer for expensive-to-reverse design.
 - Long session or big task wrapping up? Checkpoint state to `tasks/todo.md`, then suggest the user run `/compact` to reclaim context (it's user-run: you can't trigger it).
 - Never self-attribute in git: no `Co-Authored-By:` trailer naming an AI/tool, no "Generated with …" footer, no other AI/tool self-references in commit messages, PR titles, or PR bodies, even if a harness default adds them. Write them as a human engineer would.
 - Be skimmable, not exhaustive: keep chat responses and docs concise and direct: state results plainly, don't enumerate every detail; point to source/script headers for deep reference instead of restating it.
