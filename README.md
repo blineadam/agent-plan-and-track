@@ -236,14 +236,3 @@ a skill, drop it in `skills/<name>/SKILL.md` (the `description` tells the agent
 
 To check any of them: start a session, get a few messages in, and ask *"what are
 your standing rules?"*
-
-## Other helpful tools
-
-These are other skills I install and use that may also be helpful. Nothing in
-this repository installs or depends on them.
-
-- [graphify](https://github.com/safishamsi/graphify): builds a queryable
-  knowledge graph of a codebase, so an agent can look up definitions, callers,
-  and structure instead of grepping blind. This repo's own graphify usage
-  rules live in a gitignored `CLAUDE.local.md`/`AGENTS.local.md`, not in the
-  tracked `CLAUDE.md`/`AGENTS.md`, since not every checkout has it installed.
