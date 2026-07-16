@@ -1,11 +1,11 @@
 ---
 name: efficient-frontier
-description: Use when a task's research, coding, or testing work can be delegated to one of this repo's tiered subagents (planner, executor, researcher, mechanic, debugger, security-auditor, architect-reviewer, fable-advisor) instead of doing it all in the main session: before spawning any subagent, when picking which tier fits a piece of delegated work, or when reviewing what a subagent handed back.
+description: Use when a task's research, coding, or testing work can be delegated to one of the tiered subagents (planner, executor, researcher, mechanic, debugger, security-auditor, architect-reviewer, fable-advisor) instead of doing it all in the main session: before spawning any subagent, when picking which tier fits a piece of delegated work, or when reviewing what a subagent handed back.
 ---
 
 # Efficient Frontier
 
-Use the main session's own reasoning where its judgment actually matters: architecture, prioritization, ambiguity resolution, risk calls, synthesis, and final review. Push repeatable, bounded, or token-heavy work down to whichever of this repo's subagents fits the work, so the main session's context and attention stay reserved for what only it can do.
+Use the main session's own reasoning where its judgment actually matters: architecture, prioritization, ambiguity resolution, risk calls, synthesis, and final review. Push repeatable, bounded, or token-heavy work down to whichever subagent fits the work, so the main session's context and attention stay reserved for what only it can do.
 
 ## The Roster
 
