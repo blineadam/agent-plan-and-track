@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.codex/scripts/delivery-gate.js\"",
+            "command": "node \"__SCRIPTS__/delivery-gate.js\"",
             "timeout": 15
           }
         ]

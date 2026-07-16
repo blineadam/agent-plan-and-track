@@ -112,7 +112,13 @@ have no user-definable per-agent model pin, so tiered subagents are Claude-only.
 ```sh
 git clone https://github.com/blineadam/agent-plan-and-track.git
 cd agent-plan-and-track
-./install.sh all        # or: claude | copilot | codex
+./install.sh all        # macOS/Linux; or: claude | copilot | codex
+```
+
+On Windows, run the PowerShell installer instead (same targets):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 all
 ```
 
 Idempotent. Re-runs re-assert the repo's intended state; your own content is kept:
@@ -127,7 +133,9 @@ Idempotent. Re-runs re-assert the repo's intended state; your own content is kep
   **subagents** are repo-owned like skills, kept in sync on each install
   (customize them in the repo, not in `~/.claude/agents/`).
 
-Requires `jq`. Update later with `git pull && ./install.sh all`.
+The macOS/Linux installer needs `jq`; `install.ps1` is jq-free. Both wire hooks
+that need `node` at runtime on every platform. Update later with `git pull` and
+the installer for your OS.
 
 ## Layout
 

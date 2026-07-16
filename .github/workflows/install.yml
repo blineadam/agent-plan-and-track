@@ -1,0 +1,147 @@
+name: installer smoke test
+
+# Verifies that both installers deploy a correct, idempotent file layout and that
+# the shared Node scripts run on each platform. Out of scope (no harness CLI on
+# the runners): whether Claude/Codex/Copilot actually load and fire the hooks at
+# session time. That is the manual smoke test noted in tasks/todo.md Phase E.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  unix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tooling versions
+        run: jq --version && node --version
+      - name: Install twice (idempotent) into a scratch HOME
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/scratch-home"; mkdir -p "$HOME"
+          ./install.sh all
+          out="$(./install.sh all)"
+          echo "$out"
+          echo "$out" | grep -q 'digest hook     -- already present' \
+            || { echo "FAIL: digest hook not detected as already present on re-run"; exit 1; }
+      - name: Assert layout, defaults, and hook wiring
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/scratch-home"
+          for f in \
+            "$HOME/.claude/scripts/core-rules-digest.js" \
+            "$HOME/.claude/scripts/gateguard.js" \
+            "$HOME/.claude/scripts/delivery-gate.js" \
+            "$HOME/.claude/scripts/suggest-compact.js" \
+            "$HOME/.codex/scripts/core-rules-digest.js" \
+            "$HOME/.copilot/scripts/core-rules-digest.js" \
+            "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md" \
+            "$HOME/.copilot/copilot-instructions.md"; do
+            test -f "$f" || { echo "FAIL: missing $f"; exit 1; }
+          done
+          [ "$(jq -r .model "$HOME/.claude/settings.json")" = "opusplan" ]
+          [ "$(jq -r .switchModelsOnFlag "$HOME/.claude/settings.json")" = "true" ]
+          [ "$(jq -r .model "$HOME/.copilot/settings.json")" = "auto" ]
+          grep -q 'plan_mode_reasoning_effort = "high"' "$HOME/.codex/config.toml"
+          grep -q 'agent-plan-and-track:begin' "$HOME/.claude/CLAUDE.md"
+          # No unresolved placeholder leaked into any installed config.
+          ! grep -rq '__SCRIPTS__' "$HOME/.claude" "$HOME/.codex" "$HOME/.copilot"
+          # The digest hook command points at a script that actually exists...
+          cmd="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].command' "$HOME/.claude/settings.json")"
+          echo "$cmd" | grep -q 'core-rules-digest.js'
+          f="$(echo "$cmd" | sed -E 's/^node "([^"]+)".*/\1/')"
+          test -f "$f" || { echo "FAIL: baked hook path does not exist: $f"; exit 1; }
+          # ...and it was merged exactly once (no double-merge across two installs).
+          n="$(jq '[.. | .command? // empty | select(test("core-rules-digest"))] | length' "$HOME/.claude/settings.json")"
+          [ "$n" = "1" ] || { echo "FAIL: expected 1 digest hook, found $n"; exit 1; }
+      - name: Shared Node scripts run
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/scratch-home"
+          node "$HOME/.claude/scripts/core-rules-digest.js" | grep -q . \
+            || { echo "FAIL: digest produced no output"; exit 1; }
+          node "$HOME/.copilot/scripts/core-rules-digest.js" --copilot >/dev/null
+          node skills/skill-activation/scripts/run-activation-cases.js --dry-run >/dev/null
+          node skills/skill-activation/scripts/run-activation-cases.js --precheck "$HOME/.claude/skills" >/dev/null
+          node skills/context-budget/scripts/scan-context.js ./skills >/dev/null
+          node skills/rules-distill/scripts/scan-rules.js >/dev/null
+          node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tooling versions
+        shell: powershell
+        run: $PSVersionTable.PSVersion; node --version
+      - name: Install twice (idempotent) into a scratch USERPROFILE
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home"
+          New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null
+          .\install.ps1 all
+          # install.ps1 reports via Write-Host (Information stream); 6>&1 folds
+          # that into the pipeline so Out-String can capture it for the assertion.
+          $out = (.\install.ps1 all 6>&1 | Out-String)
+          Write-Host $out
+          if ($out -notmatch 'digest hook\s+-- already present') {
+            throw "digest hook not detected as already present on re-run"
+          }
+      - name: Assert layout, defaults, and hook wiring
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home"
+          $H = $env:USERPROFILE
+          $need = @(
+            "$H\.claude\scripts\core-rules-digest.js",
+            "$H\.claude\scripts\gateguard.js",
+            "$H\.claude\scripts\delivery-gate.js",
+            "$H\.claude\scripts\suggest-compact.js",
+            "$H\.codex\scripts\core-rules-digest.js",
+            "$H\.copilot\scripts\core-rules-digest.js",
+            "$H\.claude\CLAUDE.md", "$H\.codex\AGENTS.md",
+            "$H\.copilot\copilot-instructions.md"
+          )
+          foreach ($f in $need) { if (-not (Test-Path -LiteralPath $f)) { throw "missing $f" } }
+          $s = Get-Content -Raw "$H\.claude\settings.json" | ConvertFrom-Json
+          if ($s.model -ne 'opusplan') { throw "model != opusplan" }
+          if ($s.switchModelsOnFlag -ne $true) { throw "switchModelsOnFlag != true" }
+          $c = (Get-Content -Raw "$H\.copilot\settings.json" | ConvertFrom-Json).model
+          if ($c -ne 'auto') { throw "copilot model != auto" }
+          if ((Get-Content -Raw "$H\.codex\config.toml") -notmatch 'plan_mode_reasoning_effort = "high"') { throw "codex effort missing" }
+          if ((Get-Content -Raw "$H\.claude\CLAUDE.md") -notmatch 'agent-plan-and-track:begin') { throw "managed block missing" }
+          # No unresolved placeholder leaked into any installed config.
+          $leak = Get-ChildItem -Recurse -File "$H\.claude","$H\.codex","$H\.copilot" |
+                  Select-String -SimpleMatch '__SCRIPTS__' -List
+          if ($leak) { throw "__SCRIPTS__ placeholder leaked into installed files" }
+          # Digest hook command points at a script that exists, merged exactly once.
+          $cmd = $s.hooks.UserPromptSubmit[0].hooks[0].command
+          if ($cmd -notmatch 'core-rules-digest\.js') { throw "digest command missing" }
+          $baked = ($cmd -replace '^node "([^"]+)".*', '$1')
+          if (-not (Test-Path -LiteralPath $baked)) { throw "baked hook path does not exist: $baked" }
+          # Only the digest hook command references the digest script, so a raw
+          # string count of 1 proves it was merged exactly once (no double-merge).
+          $raw = Get-Content -Raw "$H\.claude\settings.json"
+          $n = ([regex]::Matches($raw, 'core-rules-digest')).Count
+          if ($n -ne 1) { throw "expected 1 digest hook, found $n" }
+      - name: Shared Node scripts run
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home"
+          $H = $env:USERPROFILE
+          # PowerShell does not turn a native nonzero exit into a terminating
+          # error, and each call overwrites $LASTEXITCODE, so check after every one.
+          function Assert-Node($label) { if ($LASTEXITCODE -ne 0) { throw "$label exited $LASTEXITCODE" } }
+          $digest = (node "$H\.claude\scripts\core-rules-digest.js" | Out-String); Assert-Node 'digest'
+          if ($digest.Trim().Length -eq 0) { throw "digest produced no output" }
+          node "$H\.copilot\scripts\core-rules-digest.js" --copilot | Out-Null; Assert-Node 'copilot digest'
+          node skills\skill-activation\scripts\run-activation-cases.js --dry-run | Out-Null; Assert-Node 'run-activation --dry-run'
+          node skills\skill-activation\scripts\run-activation-cases.js --precheck "$H\.claude\skills" | Out-Null; Assert-Node 'run-activation --precheck'
+          node skills\context-budget\scripts\scan-context.js .\skills | Out-Null; Assert-Node 'scan-context'
+          node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
+          node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'

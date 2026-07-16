@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/scripts/gateguard.js\""
+            "command": "node \"__SCRIPTS__/gateguard.js\""
           }
         ]
       }
