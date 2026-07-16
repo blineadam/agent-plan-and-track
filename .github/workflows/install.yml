@@ -38,6 +38,7 @@ jobs:
             "$HOME/.claude/scripts/gateguard.js" \
             "$HOME/.claude/scripts/delivery-gate.js" \
             "$HOME/.claude/scripts/suggest-compact.js" \
+            "$HOME/.claude/scripts/plan-gate.js" \
             "$HOME/.codex/scripts/core-rules-digest.js" \
             "$HOME/.copilot/scripts/core-rules-digest.js" \
             "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md" \
@@ -116,6 +117,7 @@ jobs:
             "$H\.claude\scripts\gateguard.js",
             "$H\.claude\scripts\delivery-gate.js",
             "$H\.claude\scripts\suggest-compact.js",
+            "$H\.claude\scripts\plan-gate.js",
             "$H\.codex\scripts\core-rules-digest.js",
             "$H\.copilot\scripts\core-rules-digest.js",
             "$H\.claude\CLAUDE.md", "$H\.codex\AGENTS.md",

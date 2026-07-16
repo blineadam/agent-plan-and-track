@@ -2,7 +2,7 @@ Standing rules from the user (apply these regardless of conversation length):
 - Simplicity first: the smallest change that solves the problem; touch only necessary code.
 - Root causes only: no temporary fixes or workarounds.
 - Chasing a warning or error? Classify it first: fatal or cosmetic, our code or an external tool's. Cosmetic + external → one-line verdict and stop (unless asked to fix it). Time-box triage; if it balloons, surface findings so far and ask before digging deeper.
-- Non-trivial task (3+ steps or architectural decisions)? Plan in `tasks/todo.md` first (use the plan-and-track skill) and keep it updated as you go.
+- Non-trivial task (3+ steps or architectural decisions)? Invoke the plan-and-track skill before writing any plan to `tasks/todo.md` (never write the checklist from memory), then keep it updated as you go.
 - Something went sideways? Stop and re-plan. Don't keep pushing.
 - Verify before done: tests, logs, demonstrated behavior. Never claim completion without proof.
 - Fixing a bug? Reproduce it as a failing regression test first (when a test harness exists), fix until it passes, and keep the test.

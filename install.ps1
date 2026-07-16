@@ -455,6 +455,8 @@ function Install-Claude {
   Write-Host "  delivery script -> ~/.claude/scripts/delivery-gate.js"
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/gateguard.js') -Destination (Join-Path $scripts 'gateguard.js') -Force
   Write-Host "  gateguard script-> ~/.claude/scripts/gateguard.js"
+  Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/claude/plan-gate.js') -Destination (Join-Path $scripts 'plan-gate.js') -Force
+  Write-Host "  plan-gate script-> ~/.claude/scripts/plan-gate.js"
 
   $settings = Join-Path $base 'settings.json'
   New-Item -ItemType Directory -Force -Path $base | Out-Null
@@ -487,6 +489,12 @@ function Install-Claude {
   } else {
     Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-gateguard.json') $scriptsFwd
     Write-Host "  gateguard hook  -> merged into settings.json (PreToolUse on edits; GATEGUARD_DISABLED=1 to turn off)"
+  }
+  if ($raw.Contains('plan-gate')) {
+    Write-Host "  plan-gate hook  -- already present in settings.json"
+  } else {
+    Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-plan-gate.json') $scriptsFwd
+    Write-Host "  plan-gate hook  -> merged into settings.json (PreToolUse on Skill+todo.md edits; PLANGATE_DISABLED=1 to turn off)"
   }
   Write-Host "  done. New Claude Code sessions pick this up automatically."
 }
