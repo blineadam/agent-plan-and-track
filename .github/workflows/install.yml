@@ -44,7 +44,7 @@ jobs:
           [ "$(jq -r .model "$HOME/.claude/settings.json")" = "opusplan" ]
           [ "$(jq -r .switchModelsOnFlag "$HOME/.claude/settings.json")" = "true" ]
           [ "$(jq -r .model "$HOME/.copilot/settings.json")" = "auto" ]
-          grep -q 'plan_mode_reasoning_effort = "high"' "$HOME/.codex/config.toml"
+          grep -q 'plan_mode_reasoning_effort = "xhigh"' "$HOME/.codex/config.toml"
           grep -q 'agent-plan-and-track:begin' "$HOME/.claude/CLAUDE.md"
           # No unresolved placeholder leaked into any installed config.
           ! grep -rq '__SCRIPTS__' "$HOME/.claude" "$HOME/.codex" "$HOME/.copilot"
@@ -56,6 +56,11 @@ jobs:
           # ...and it was merged exactly once (no double-merge across two installs).
           n="$(jq '[.. | .command? // empty | select(test("core-rules-digest"))] | length' "$HOME/.claude/settings.json")"
           [ "$n" = "1" ] || { echo "FAIL: expected 1 digest hook, found $n"; exit 1; }
+          # Codex TOML agents: one rendered file per agents/*.md source.
+          agent_md_count="$(ls agents/*.md | wc -l | tr -d ' ')"
+          agent_toml_count="$(ls "$HOME/.codex/agents"/*.toml | wc -l | tr -d ' ')"
+          [ "$agent_toml_count" = "$agent_md_count" ] \
+            || { echo "FAIL: expected $agent_md_count Codex agent TOML files, found $agent_toml_count"; exit 1; }
       - name: Shared Node scripts run
         run: |
           set -euo pipefail
@@ -112,7 +117,7 @@ jobs:
           if ($s.switchModelsOnFlag -ne $true) { throw "switchModelsOnFlag != true" }
           $c = (Get-Content -Raw "$H\.copilot\settings.json" | ConvertFrom-Json).model
           if ($c -ne 'auto') { throw "copilot model != auto" }
-          if ((Get-Content -Raw "$H\.codex\config.toml") -notmatch 'plan_mode_reasoning_effort = "high"') { throw "codex effort missing" }
+          if ((Get-Content -Raw "$H\.codex\config.toml") -notmatch 'plan_mode_reasoning_effort = "xhigh"') { throw "codex effort missing" }
           if ((Get-Content -Raw "$H\.claude\CLAUDE.md") -notmatch 'agent-plan-and-track:begin') { throw "managed block missing" }
           # No unresolved placeholder leaked into any installed config.
           $leak = Get-ChildItem -Recurse -File "$H\.claude","$H\.codex","$H\.copilot" |
@@ -128,6 +133,10 @@ jobs:
           $raw = Get-Content -Raw "$H\.claude\settings.json"
           $n = ([regex]::Matches($raw, 'core-rules-digest')).Count
           if ($n -ne 1) { throw "expected 1 digest hook, found $n" }
+          # Codex TOML agents: one rendered file per agents/*.md source.
+          $agentMdCount = (Get-ChildItem 'agents\*.md').Count
+          $agentTomlCount = (Get-ChildItem "$H\.codex\agents\*.toml").Count
+          if ($agentTomlCount -ne $agentMdCount) { throw "expected $agentMdCount Codex agent TOML files, found $agentTomlCount" }
       - name: Shared Node scripts run
         shell: powershell
         run: |

@@ -34,6 +34,7 @@
  *
  * Tuning (env):
  *   DESC_TOKEN_FLOOR         words below which a description is a weak router signal (default 12)
+ *   DESC_CHAR_CEILING        chars past which a description is flagged overlong, informational only (default 700)
  *   ACTIVATION_ALLOW_SPEND   set to 1 to permit --run to call claude -p
  */
 'use strict';
@@ -46,6 +47,9 @@ const { spawnSync } = require('child_process');
 const SCRIPT_DIR = __dirname;
 const DEFAULT_FIXTURES = path.join(SCRIPT_DIR, '..', 'fixtures', 'activation-cases.jsonl');
 const DESC_TOKEN_FLOOR = intEnv('DESC_TOKEN_FLOOR', 12);
+const DESC_CHAR_CEILING = intEnv('DESC_CHAR_CEILING', 700);
+// This repo's skill frontmatter convention is exactly `name` + `description`, nothing else.
+const SKILL_NAME_PATTERN = /^[a-z0-9-]+$/;
 
 function intEnv(name, fallback) {
   const raw = process.env[name];
@@ -143,15 +147,39 @@ function modePrecheck(args) {
     return;
   }
   const skills = files.map((f) => {
-    const name = path.basename(path.dirname(f));
+    const folder = path.basename(path.dirname(f));
     const desc = frontmatterDescription(f);
     const words = desc.trim() === '' ? 0 : desc.trim().split(/\s+/).length;
     // A trigger clause is what drives routing: look for use/when/after/before/trigger.
     const hasTrigger = /(^|[^a-zA-Z])(use|when|after|before|trigger)([^a-zA-Z]|$)/i.test(desc);
     const weak = words < DESC_TOKEN_FLOOR || !hasTrigger;
-    return { skill: name, desc_words: words, has_trigger: hasTrigger, weak_router_signal: weak };
+    // Frontmatter-schema checks (adapted from BuilderIO's skill-schema lint): the
+    // `name` value should match its folder and be lowercase-kebab, and no key
+    // besides name/description should be present.
+    const meta = frontmatterMeta(f);
+    const nameMatchesFolder = meta.name === folder;
+    const namePatternOk = SKILL_NAME_PATTERN.test(meta.name);
+    const extraFrontmatterKeys = meta.keys.filter((k) => k !== 'name' && k !== 'description');
+    return {
+      skill: folder,
+      desc_words: words,
+      has_trigger: hasTrigger,
+      weak_router_signal: weak,
+      desc_chars: desc.trim().length,
+      desc_overlong: desc.trim().length > DESC_CHAR_CEILING,
+      name_matches_folder: nameMatchesFolder,
+      name_pattern_ok: namePatternOk,
+      extra_frontmatter_keys: extraFrontmatterKeys,
+    };
   });
-  printJson({ skills, weak_count: skills.filter((s) => s.weak_router_signal).length });
+  const schemaIssueCount = skills.filter(
+    (s) => !s.name_matches_folder || !s.name_pattern_ok || s.extra_frontmatter_keys.length > 0
+  ).length;
+  printJson({
+    skills,
+    weak_count: skills.filter((s) => s.weak_router_signal).length,
+    schema_issue_count: schemaIssueCount,
+  });
 }
 
 function isDir(p) {
@@ -202,6 +230,31 @@ function frontmatterDescription(file) {
     }
   }
   return '';
+}
+
+// The frontmatter `name:` value plus every top-level key present, single-line
+// `key:` pairs only (same no-YAML-folding assumption as frontmatterDescription).
+// Feeds the (a)/(b)/(c) schema checks in modePrecheck.
+function frontmatterMeta(file) {
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  let fm = 0;
+  let name = '';
+  const keys = [];
+  for (const line of lines) {
+    if (line === '---') {
+      fm++;
+      if (fm >= 2) break;
+      continue;
+    }
+    if (fm === 1) {
+      const m = /^([A-Za-z0-9_-]+):/.exec(line);
+      if (m) {
+        keys.push(m[1]);
+        if (m[1] === 'name') name = line.replace(/^name:[ \t]*/, '').trim();
+      }
+    }
+  }
+  return { name, keys };
 }
 
 // ---- Case-driven modes ------------------------------------------------------
