@@ -77,8 +77,9 @@ Outlook" sections.
 align with, crucial, delve, emphasizing, enduring, enhance, fostering,
 garner, highlight as a verb, interplay, intricate, key as an adjective,
 landscape and tapestry as abstract nouns, pivotal, showcase, testament,
-underscore as a verb, valuable, vibrant); copula avoidance
-("serves as/boasts/features" standing in for plain "is/has"); negative
+underscore as a verb, valuable, vibrant); copula avoidance ("serves
+as/stands as/marks/represents" and "boasts/features/offers" standing in
+for plain "is/has"); negative
 parallelisms ("it's not just X, it's Y") and tailing negations ("no
 guessing" tacked onto a sentence instead of a real clause); rule-of-three
 overuse forcing ideas into groups of three; elegant variation (cycling
