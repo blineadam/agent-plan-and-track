@@ -22,8 +22,9 @@ skimmable, no canned phrasing) already covers those directly.
 
 1. Scan the text for the patterns below.
 2. Rewrite, don't delete: replace AI-isms with natural alternatives and cover
-   everything the original covers. Preserve meaning and match the intended
-   register (formal, casual, technical).
+   everything the original covers; if the original has five paragraphs, the
+   rewrite has five. Preserve meaning and match the intended register
+   (formal, casual, technical).
 3. Add personality only when the content and voice call for it (see below);
    encyclopedic, technical, legal, or reference text stays neutral.
 
@@ -31,9 +32,10 @@ skimmable, no canned phrasing) already covers those directly.
 
 If given a writing sample, match it instead of the generic voice below:
 sentence-length pattern, word-choice level, how paragraphs open, punctuation
-habits, recurring phrases. If the sample uses short sentences and plain
-words, don't upgrade to "elements" and "components." No sample provided?
-Fall back to Personality and soul, below.
+habits, recurring phrases, how transitions are handled (explicit connectors
+or just starting the next point). If the sample uses short sentences and
+plain words, don't upgrade to "elements" and "components." No sample
+provided? Fall back to Personality and soul, below.
 
 ## Personality and soul
 
@@ -72,8 +74,10 @@ cited," unnamed "industry reports"); formulaic "Challenges and Future
 Outlook" sections.
 
 **Language and grammar**: overused AI vocabulary (actually, additionally,
-crucial, delve, fostering, garner, intricate, key, landscape, pivotal,
-showcase, tapestry, testament, underscore, vibrant); copula avoidance
+align with, crucial, delve, emphasizing, enduring, enhance, fostering,
+garner, highlight as a verb, interplay, intricate, key as an adjective,
+landscape and tapestry as abstract nouns, pivotal, showcase, testament,
+underscore as a verb, valuable, vibrant); copula avoidance
 ("serves as/boasts/features" standing in for plain "is/has"); negative
 parallelisms ("it's not just X, it's Y") and tailing negations ("no
 guessing" tacked onto a sentence instead of a real clause); rule-of-three
@@ -85,7 +89,8 @@ voice and subjectless fragments ("No configuration file needed").
 **Style and formatting**: em dashes and en dashes are a hard rule, not a
 "use sparingly" preference (also catch spaced ` — ` and double-hyphen ` -- `
 substitutes); replace with a period, comma, colon, or parentheses, in that
-rough order of preference. Boldface used mechanically on ordinary phrases.
+rough order of preference, or restructure the sentence. Boldface used
+mechanically on ordinary phrases.
 Inline-header vertical lists (`**Label:** sentence` bullets) where plain
 prose would read better. Title case in headings. Emojis decorating headings
 or bullets. Curly quotation marks in place of straight ones.
@@ -118,10 +123,15 @@ register, plain dry prose without other tells, formal vocabulary in general
 (only the specific words above are AI-coded), a letter-style greeting or
 sign-off, one isolated transition word, curly quotes alone (most editors
 auto-curl), one em dash alone, one short emphatic sentence, "honestly" or
-"look" used mid-sentence, unsourced claims (most of the web is unsourced).
-Look for clusters, not isolated tells: one em dash means nothing, but an em
-dash plus rule-of-three plus "vibrant tapestry" plus a "Challenges" section
-is a confession.
+"look" used mid-sentence, unsourced claims (most of the web is unsourced),
+correct or complex formatting (templates and visual editors produce clean
+output too). Look for clusters, not isolated tells: one em dash means
+nothing, but an em dash plus rule-of-three plus "vibrant tapestry" plus a
+"Challenges" section is a confession.
+
+Never rewrite watched phrases inside quotations, titles, proper names, or
+examples where the phrase is being discussed rather than used; secondhand
+text isn't yours to fix.
 
 Signs of real human writing, worth preserving rather than editing away:
 specific hard-to-fabricate detail, mixed feelings and unresolved tension,
