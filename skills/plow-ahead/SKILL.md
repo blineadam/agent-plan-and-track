@@ -18,18 +18,19 @@ Treat the user's instruction as permission to continue through normal uncertaint
 - Use repo conventions, nearby patterns, local docs, tests, and existing product behavior as the decision source.
 - Keep working through normal test failures, missing context, implementation choices, and minor ambiguity.
 - Use subagents for independent research, implementation, or verification when parallel work can reduce idle time or improve coverage; pick which tier per [[efficient-frontier]] when the tiered subagent roster is available.
-- Do not pause merely to ask which reasonable option the user prefers. Pick one, record why, and keep going.
+- Do not pause merely to ask which reasonable option the user prefers. Pick one, record why, and keep going. When a judgment call feels close enough to want a second opinion, delegate it to the `fable-advisor` subagent (Agent tool, `subagent_type: "fable-advisor"`) for an independent gut-check and continue, rather than blocking on the user.
 
 ## Stop Conditions
 
-Stop and ask only for true blockers:
+Stop and hand back to the user only for true blockers that need their authorization or private input, the calls `fable-advisor` cannot unblock:
 
 - Required credentials, secrets, accounts, paid services, or private data are unavailable.
 - The next step would be destructive, irreversible, or production-mutating.
 - The task requires an explicit branch operation, history rewrite, force push, or deletion that the user did not directly request.
 - Legal, safety, privacy, or security risk is high and cannot be reduced by a conservative local choice.
 - The user explicitly reserved a decision for themselves.
-- A verification failure repeats after reasonable investigation and the next fix would be speculative or broad.
+
+A verification failure that repeats after reasonable investigation, where the next fix would be speculative or broad, is a judgment call, not a user-authorization blocker: delegate it to the `fable-advisor` subagent (Agent tool, `subagent_type: "fable-advisor"`) for an independent read on whether to proceed, narrow scope, or stop, then continue rather than blocking on the user. `fable-advisor` advises only; it cannot authorize any of the blockers above, so those still go to the user.
 
 If blocked, leave a self-contained handoff: what was done, what blocks progress, what exact input is needed, and the next command or file to inspect.
 
