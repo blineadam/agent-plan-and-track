@@ -44,11 +44,23 @@
  * next to the session's stamp file) so a denied edit is never counted and
  * repeated denials can't inflate the total.
  *
+ * CONTENT LINT: once a session is stamped, tasks/todo.md writes still get a
+ * lighter check: every NEW unchecked step inside a `## Plan` section (not
+ * Review/Context/preamble) must end in an owner tag, e.g. `(executor)`,
+ * `(researcher)`, `(mechanic)`, or a reasoned `(main: <why>)`; a bare `(main)`
+ * or no tag at all is denied with a message the retry can self-correct from.
+ * Legacy untagged steps already on disk, and Review-section or non-Plan
+ * text, are never linted; only a step whose checkbox line is absent from the
+ * on-disk baseline counts as new. Runs only after the stamp check passes, via
+ * maybeLintTodoContent().
+ *
  * Config (env):
  *   PLANGATE_DISABLED        "1" turns the gate off entirely.
  *   PLANGATE_WARN            "1" demotes deny to a non-blocking warning.
  *   PLANGATE_SCOPE_THRESHOLD distinct-file count that trips the scope gate
  *                             (default 3).
+ *   PLANGATE_LINT_DISABLED   "1" turns off the tasks/todo.md content lint
+ *                             only (stamp gate and scope gate still apply).
  */
 'use strict';
 
@@ -218,6 +230,122 @@ function withSessionLock(sessionId, input, fn) {
   }
 }
 
+// --- Content lint: todo-step owner tags ---
+
+// Hardcoded rather than parsed from skills/efficient-frontier/SKILL.md (that
+// file is the human source of truth) at runtime: the repo checkout and the
+// installed layout disagree on relative paths, so there's no one path this
+// script could rely on to find it.
+const ROSTER = ['planner', 'executor', 'researcher', 'mechanic', 'debugger', 'security-auditor', 'architect-reviewer', 'fable-advisor'];
+const TIER_TAG_RE = new RegExp('\\((?:' + ROSTER.join('|') + ')(?::[^)]*)?\\)\\s*$', 'i');
+const MAIN_OK_RE = /\(main:\s*[^)\s][^)]*\)\s*$/i; // (main: <non-empty reason>)
+const MAIN_ANY_RE = /\(main(?::[^)]*)?\)\s*$/i; // any main tag, incl. bare/empty-reason
+
+// Simulates the post-edit tasks/todo.md content for Edit/Write/MultiEdit
+// without writing anything to disk. Returns null (skip the lint entirely) on
+// anything that would make the simulation a guess rather than exact: an
+// unreadable existing file, an old_string that's empty or not found in the
+// text it's applied against, or a tool this hook doesn't otherwise handle.
+function simulateResult(toolName, toolInput) {
+  const filePath = String((toolInput && toolInput.file_path) || '');
+  let baseline = '';
+  if (fs.existsSync(filePath)) {
+    try {
+      baseline = fs.readFileSync(filePath, 'utf8');
+    } catch {
+      return null; // unreadable: fail open on the lint
+    }
+  }
+
+  if (toolName === 'Write') {
+    return { baseline, result: String((toolInput && toolInput.content) || '') };
+  }
+
+  function applyOne(text, oldStr, newStr, replaceAll) {
+    if (!oldStr) return null;
+    if (replaceAll) {
+      if (!text.includes(oldStr)) return null;
+      return text.split(oldStr).join(String(newStr || ''));
+    }
+    const idx = text.indexOf(oldStr);
+    if (idx === -1) return null;
+    return text.slice(0, idx) + String(newStr || '') + text.slice(idx + oldStr.length);
+  }
+
+  if (toolName === 'Edit') {
+    const result = applyOne(baseline, toolInput.old_string, toolInput.new_string, toolInput.replace_all);
+    return result === null ? null : { baseline, result };
+  }
+
+  if (toolName === 'MultiEdit') {
+    const edits = Array.isArray(toolInput.edits) ? toolInput.edits : [];
+    let result = baseline;
+    for (const edit of edits) {
+      result = applyOne(result, edit && edit.old_string, edit && edit.new_string, edit && edit.replace_all);
+      if (result === null) return null;
+    }
+    return { baseline, result };
+  }
+
+  return null;
+}
+
+// New unchecked steps inside a `## Plan` section: a logical step is a
+// checkbox line plus its continuation lines, so a wrapped step's tag can sit
+// on the last continuation line rather than the checkbox line itself. Only
+// `- [ ]` lines start a step (checked-off `[x]`/`[X]` steps are never new
+// steps to tag); newness is decided on the checkbox line alone, right-trimmed
+// and compared against the same right-trimmed set from the on-disk baseline,
+// so touching only a legacy step's continuation line never counts as new.
+function collectNewUncheckedPlanSteps(baseline, result) {
+  const baselineLines = new Set(baseline.split('\n').map((l) => l.replace(/\s+$/, '')));
+  const resultLines = result.split('\n');
+
+  const steps = [];
+  let inPlan = false;
+  let i = 0;
+  while (i < resultLines.length) {
+    const line = resultLines[i];
+    const headerMatch = /^\s{0,3}#{1,6}\s+(.*)$/.exec(line);
+    if (headerMatch) {
+      inPlan = /^plan\b/i.test(headerMatch[1]);
+      i += 1;
+      continue;
+    }
+    if (inPlan && /^\s*[-*]\s+\[ \]\s/.test(line)) {
+      const firstLine = line.replace(/\s+$/, '');
+      const stepLines = [line];
+      let j = i + 1;
+      while (
+        j < resultLines.length &&
+        /^\s+\S/.test(resultLines[j]) &&
+        !/^\s*[-*]\s+\[[ xX]\]\s/.test(resultLines[j]) &&
+        !/^\s{0,3}#{1,6}\s+/.test(resultLines[j])
+      ) {
+        stepLines.push(resultLines[j]);
+        j += 1;
+      }
+      if (!baselineLines.has(firstLine)) {
+        steps.push({ firstLine, joined: stepLines.join(' ').replace(/\s+$/, '') });
+      }
+      i = j;
+      continue;
+    }
+    i += 1;
+  }
+  return steps;
+}
+
+// Tag verdict for one new step's joined (single-space-joined, right-trimmed)
+// text. MAIN_OK_RE first so a reasoned `(main: ...)` always passes before the
+// broader MAIN_ANY_RE gets a chance to flag it as bare.
+function stepTagViolation(joined) {
+  if (MAIN_OK_RE.test(joined)) return null;
+  if (MAIN_ANY_RE.test(joined)) return 'bare-main';
+  if (TIER_TAG_RE.test(joined)) return null;
+  return 'untagged';
+}
+
 // --- Messages ---
 
 function gateMsg() {
@@ -231,6 +359,22 @@ function scopeMsg(threshold) {
   return [
     `[PlanGate] This session has touched ${threshold} distinct files without a plan: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this edit.`,
     '(PLANGATE_SCOPE_THRESHOLD sets the file-count trigger, default 3; PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
+  ].join('\n');
+}
+
+function lintMsg(offenders) {
+  // firstLine already carries its own "- [ ]" marker, so indent only: a
+  // second leading "- " here would print as a double bullet.
+  const shown = offenders.slice(0, 3).map((o) => {
+    const text = o.firstLine.length > 100 ? o.firstLine.slice(0, 100) + '...' : o.firstLine;
+    return `  ${text}`;
+  });
+  if (offenders.length > 3) shown.push(`  ...and ${offenders.length - 3} more`);
+  return [
+    '[PlanGate] New plan steps in tasks/todo.md need an owner tag at end of step:',
+    ...shown,
+    'Tag each step with who carries it out: implementation defaults to (executor), research to (researcher), mechanical tails to (mechanic); also valid: (planner), (debugger), (security-auditor), (architect-reviewer), (fable-advisor), each optionally with a reason like (executor: <why>). Tagging (main) is the exception and must carry a one-clause reason in the tag itself, e.g. (main: needs user sign-off mid-step); "main already has the context" does not qualify. Retry the same write with tags added.',
+    '(PLANGATE_LINT_DISABLED=1 turns off this lint; PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
   ].join('\n');
 }
 
@@ -254,6 +398,23 @@ function emitGateDecision(msg) {
         },
       })
     );
+  }
+}
+
+// Runs only once the stamp check has already passed. Skips outright when
+// PLANGATE_LINT_DISABLED=1, and the whole body is wrapped in try/catch so any
+// simulation/lint error fails open (allows the edit) rather than wedging the
+// gate, consistent with this file's fail-open philosophy everywhere else.
+function maybeLintTodoContent(toolName, toolInput) {
+  if (process.env.PLANGATE_LINT_DISABLED === '1') return;
+  try {
+    const sim = simulateResult(toolName, toolInput);
+    if (!sim) return;
+    const steps = collectNewUncheckedPlanSteps(sim.baseline, sim.result);
+    const offenders = steps.filter((s) => stepTagViolation(s.joined));
+    if (offenders.length) emitGateDecision(lintMsg(offenders));
+  } catch {
+    /* fail open: any simulation/lint error allows the edit */
   }
 }
 
@@ -293,7 +454,10 @@ function main() {
 
   // tasks/todo.md gate: unchanged behavior, own message.
   if (/(^|\/)tasks\/todo\.md$/i.test(norm)) {
-    if (fs.existsSync(stamp)) process.exit(0);
+    if (fs.existsSync(stamp)) {
+      maybeLintTodoContent(toolName, toolInput); // may emitGateDecision(lintMsg(...))
+      process.exit(0);
+    }
     try {
       fs.mkdirSync(STATE_DIR, { recursive: true });
     } catch {
