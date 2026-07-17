@@ -40,4 +40,5 @@ How to work:
 
 Structure the report tightly: lead with the ordered plan (numbered steps,
 each with its files, change, and verification), then assumptions and open
-questions, then risks. No filler.
+questions, then risks. No filler. In the shape the `executor` will need
+to execute it later.
