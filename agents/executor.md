@@ -1,6 +1,6 @@
 ---
 name: executor
-description: Implements an already-written spec, pinned to Sonnet to keep execution cheap. Delegate here when a plan already names the files to change, the ordered steps, and the verification to run (the planner agent's output shape); it implements exactly that, runs each step's verification, and reports results verbatim. On a spec gap or a contradiction with reality it stops and reports instead of improvising. NOT for underspecified work (send to planner first) and not for trivial mechanical edits (mechanic is cheaper).
+description: Implements an already-written spec, pinned to Sonnet to keep execution cheap. Delegate here when a plan already names the files to change, the ordered steps, and the verification to run (the planner agent's output shape, or an executor-tagged batch in tasks/todo.md); it implements exactly that, runs each step's verification, and reports results verbatim. On a spec gap or a contradiction with reality it stops and reports instead of improvising. NOT for underspecified work (send to planner first) and not for trivial mechanical edits (mechanic is cheaper).
 model: sonnet
 effort: high
 tools: Read, Grep, Glob, Edit, Write, Bash

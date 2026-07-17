@@ -17,22 +17,23 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
    - **No padding, no fake plans**: never pad a plan to look thorough; never ship a single-step "plan".
    - **Batch clarifying questions**: ask 2-4 high-leverage questions together, not one at a time.
 
-   When the tiered subagent roster is available, delegate per [[efficient-frontier]], which owns the roster and the tier-matching rules: on Claude Code, ensure spec drafting goes to the `planner` subagent, which returns the spec as text for step 4 (it has no write tools). During implementation (step 6), the main session dispatches each checklist step to the subagent tier named by its tag rather than handing the whole checklist to one subagent, falling back to handling the step in the main session itself whenever it's tagged `main` or the roster is unavailable. Codex renders the same roster natively, but named-agent invocation there is currently unreliable (see the Codex UNVERIFIED caveat in README.md), so don't rely on it silently loading the right profile until that's fixed upstream. Copilot has no subagent concept, so plan inline there.
-4. Write the plan to `tasks/todo.md` as a checklist, tagging each step with who carries it out: a roster tier per [[efficient-frontier]] (`researcher`, `executor`, `mechanic`, ...), or `main` when the step needs the main session's own judgment or delegation wouldn't pay. Decide this at plan time, not mid-implementation:
+   When the tiered subagent roster is available, delegate per [[efficient-frontier]], which owns the roster and the tier-matching rules. On Claude Code, drafting happens inside plan mode, and plan mode's own workflow suggests a generic `Plan` agent for its design phase: launch the roster's `planner` there instead (Agent tool, `subagent_type: "planner"`). It reads the real tree and returns the spec as text (it has no write tools); that returned spec is what goes into the plan file and step 4. Codex renders the same roster natively, but named-agent invocation there is currently unreliable (see the Codex UNVERIFIED caveat in README.md), so don't rely on it silently loading the right profile until that's fixed upstream. Copilot has no subagent concept, so plan inline there.
+4. Write the plan to `tasks/todo.md` as a checklist, tagging each step with who carries it out. Default the tags, don't deliberate them: implementation steps get `executor`, research steps `researcher`, mechanical tails `mechanic` (per [[efficient-frontier]]). Tagging a step `main` is the exception and must carry a one-clause reason in the tag itself; "the main session already has the context" doesn't qualify, since delegation pays in context preservation even when the delegate runs the same model tier. Decide this at plan time, not mid-implementation:
 
    ```markdown
    # <Task name>
 
    ## Plan
    - [ ] Step 1 ... (researcher)
-   - [ ] Step 2 ... (main)
+   - [ ] Step 2 ... (executor)
+   - [ ] Step 3 ... (main: needs user sign-off mid-step)
    ```
 
 5. Check in with the user on the plan before starting implementation (skip only if running autonomously).
 
 ## During implementation
 
-6. Dispatch each step to the subagent tier named by its tag (or handle it in the main session if tagged `main`), per [[efficient-frontier]]. Mark items `[x]` as they complete. Give a high-level, one-line summary of each change as you go. If a step's real completion depends on something outside the agent's own actions (a PR merge, a deploy, external sign-off), leave it unchecked until that's actually confirmed, not just when the agent's own part (e.g. opening the PR) is done. Step 1's reconciliation scan requires both a fully checked-off Plan and a `## Review` section, so checking off Plan items alone can't trigger a premature compression, but still avoid marking a step done before its real completion is confirmed.
+6. Dispatch contiguous same-tier steps as one batch to the tier their tag names, per [[efficient-frontier]]; handle a step in the main session only when it's tagged `main` or the roster is unavailable. An `executor` handoff is cheap because the spec is already on disk: point it at the file ("implement steps X-Y of Batch N in tasks/todo.md", plus the repo path, what's out of scope, and stop conditions) rather than re-serializing the plan into the prompt. Mark items `[x]` as they complete. Give a high-level, one-line summary of each change as you go. If a step's real completion depends on something outside the agent's own actions (a PR merge, a deploy, external sign-off), leave it unchecked until that's actually confirmed, not just when the agent's own part (e.g. opening the PR) is done. Step 1's reconciliation scan requires both a fully checked-off Plan and a `## Review` section, so checking off Plan items alone can't trigger a premature compression, but still avoid marking a step done before its real completion is confirmed.
 7. If something goes sideways: STOP immediately, re-plan in `tasks/todo.md`, then continue. Don't keep pushing a failing approach.
 8. Keep changes minimal: impact only the code the plan requires.
 
