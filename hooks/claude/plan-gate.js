@@ -137,7 +137,10 @@ function filesDir(sessionId, input) {
 }
 
 function fileMarkerPath(sessionId, input, norm) {
-  const hash = crypto.createHash('sha256').update(norm).digest('hex').slice(0, 32);
+  // Lowercased: NTFS (and case-insensitive-by-default APFS) treat differently
+  // cased paths as the same file; hashing the raw case would let a session
+  // double-count C:/repo/a.js and c:/repo/A.js as two distinct files.
+  const hash = crypto.createHash('sha256').update(norm.toLowerCase()).digest('hex').slice(0, 32);
   return path.join(filesDir(sessionId, input), hash);
 }
 
@@ -146,6 +149,72 @@ function distinctFileCount(sessionId, input) {
     return fs.readdirSync(filesDir(sessionId, input)).length;
   } catch {
     return 0;
+  }
+}
+
+// Validated PLANGATE_SCOPE_THRESHOLD: a positive integer, else the default.
+// Same shape as intEnv in gateguard.js/delivery-gate.js, but with a floor of
+// 1 (0 would deny before any file is ever edited, which isn't a threshold).
+function scopeThreshold() {
+  const raw = process.env.PLANGATE_SCOPE_THRESHOLD;
+  if (raw === undefined || raw === '') return 3;
+  const n = Number.parseInt(raw, 10);
+  return Number.isInteger(n) && n >= 1 ? n : 3;
+}
+
+// Serialize the count-check-write critical section per session: Claude can
+// issue multiple Edit/Write tool calls whose PreToolUse hooks run
+// concurrently, and a plain read-count-then-decide has a TOCTOU window where
+// two racing edits each see a stale count and both cross the threshold
+// unblocked. Exclusive lockfile creation is atomic at the OS level, so at
+// most one PreToolUse invocation per session runs the section at a time.
+// Bounded spin-wait with Atomics.wait (a real blocking sleep, not a busy
+// spin); on timeout or any lock error, fail open and run unlocked rather
+// than deny or hang, consistent with this file's fail-open philosophy.
+function withSessionLock(sessionId, input, fn) {
+  const lockPath = stampPath(sessionId, input) + '.lock';
+  const deadline = Date.now() + 1000;
+  let fd = null;
+  try {
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    for (;;) {
+      try {
+        fd = fs.openSync(lockPath, 'wx');
+        break;
+      } catch (err) {
+        if (!err || err.code !== 'EEXIST') break; // unexpected error: run unlocked
+        try {
+          // Reclaim a lock abandoned by a crashed hook process instead of
+          // waiting out the full deadline on every subsequent call.
+          if (Date.now() - fs.statSync(lockPath).mtimeMs > 5000) {
+            fs.unlinkSync(lockPath);
+            continue;
+          }
+        } catch {
+          /* lock vanished between the failed open and this stat; retry */
+        }
+        if (Date.now() >= deadline) break;
+        try {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+        } catch {
+          /* Atomics.wait unavailable: retry immediately instead of sleeping */
+        }
+      }
+    }
+  } catch {
+    /* STATE_DIR unwritable: run unlocked, same as everywhere else in this file */
+  }
+  try {
+    return fn();
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+        fs.unlinkSync(lockPath);
+      } catch {
+        /* best effort release */
+      }
+    }
   }
 }
 
@@ -241,30 +310,30 @@ function main() {
   // the threshold without a stamp. No-op for exempt paths or once stamped.
   if (!norm || isScopeExempt(norm) || fs.existsSync(stamp)) process.exit(0);
 
-  const threshold = Number(process.env.PLANGATE_SCOPE_THRESHOLD) || 3;
-  const marker = fileMarkerPath(input.session_id, input, norm);
-  const alreadyCounted = fs.existsSync(marker);
-  const wouldBeCount = alreadyCounted ? distinctFileCount(input.session_id, input) : distinctFileCount(input.session_id, input) + 1;
+  withSessionLock(input.session_id, input, () => {
+    const threshold = scopeThreshold();
+    const marker = fileMarkerPath(input.session_id, input, norm);
+    const alreadyCounted = fs.existsSync(marker);
+    const wouldBeCount = alreadyCounted ? distinctFileCount(input.session_id, input) : distinctFileCount(input.session_id, input) + 1;
 
-  if (wouldBeCount >= threshold) {
-    try {
-      fs.mkdirSync(STATE_DIR, { recursive: true });
-    } catch {
-      process.stderr.write('[PlanGate] state dir could not be created; allowing the edit.\n');
-      process.exit(0);
+    if (wouldBeCount >= threshold) {
+      emitGateDecision(scopeMsg(threshold));
+      // A real deny must not record the marker (it would inflate the count
+      // on retry). PLANGATE_WARN=1 lets the edit proceed, so it falls
+      // through and gets the same marker as any other allowed edit.
+      if (process.env.PLANGATE_WARN !== '1') return;
     }
-    emitGateDecision(scopeMsg(threshold));
-    process.exit(0);
-  }
 
-  // Allowed: record this file so a future edit doesn't re-count it, and
-  // repeated denials of an unrecorded file never inflate the total.
-  try {
-    fs.mkdirSync(filesDir(input.session_id, input), { recursive: true });
-    fs.writeFileSync(marker, '');
-  } catch {
-    /* best effort: worst case a later edit re-checks the same file */
-  }
+    // Allowed (or warned-but-proceeding): record this file so a future edit
+    // doesn't re-count it, and repeated denials of an unrecorded file never
+    // inflate the total.
+    try {
+      fs.mkdirSync(filesDir(input.session_id, input), { recursive: true });
+      fs.writeFileSync(marker, '');
+    } catch {
+      /* best effort: worst case a later edit re-checks the same file */
+    }
+  });
   process.exit(0);
 }
 
