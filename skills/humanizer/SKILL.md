@@ -1,6 +1,6 @@
 ---
 name: humanizer
-description: Strip AI-writing tells (promotional puffery, filler, rule-of-three, chatbot artifacts, em/en dashes) from prose and restore a natural human voice with real personality. Use BEFORE finalizing user-facing prose that goes beyond a quick chat reply: README sections, docs, PR descriptions, blog posts, long-form writing. Extends the core writing-voice rule (no emoji, no em dash) with the full pattern catalog and voice/personality guidance; skip it for terse chat replies or code comments, which the core rule already covers directly.
+description: Strip AI-writing tells (promotional puffery, filler, rule-of-three, chatbot artifacts, em/en dashes) from prose and restore a natural human voice with real personality. Use BEFORE finalizing user-facing prose that goes beyond a quick chat reply: README sections, docs, PR descriptions, PR comments, blog posts, long-form writing. Extends the core writing-voice rule (no emoji, no em dash) with the full pattern catalog and voice/personality guidance; skip it for terse chat replies or code comments, which the core rule already covers directly.
 ---
 
 # Humanizer
@@ -13,7 +13,7 @@ format; see the source for the full pattern list and worked examples.
 ## When this fires
 
 Any user-facing prose that will be read outside the immediate chat turn:
-README sections, docs, commit/PR descriptions, blog-style or long-form
+README sections, docs, commit/PR descriptions, PR comments, blog-style or long-form
 writing, a rewrite of someone else's draft. Not needed for a quick chat reply
 or a code comment: the core writing-voice rule (no emoji, no em dash,
 skimmable, no canned phrasing) already covers those directly.

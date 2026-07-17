@@ -36,6 +36,13 @@ generated Copilot review-instruction files themselves. See
   over querying a specific external system (GitHub, a CI, a ticket
   tracker). Flag a hard dependency on one external tool unless it's
   optional/best-effort.
+- A skill's body follows one of two shapes: a pure checklist (numbered or
+  bulleted H2 sections in strict execution order, like `plan-and-track`) or a
+  judgment/reference skill (reference or definitional H2 sections up front,
+  with the actual procedure confined to one distinctly named subsection, like
+  `humanizer`'s `## Process`, `plow-ahead`'s `## Work Loop`, or
+  `read-the-damn-docs`'s `## Required Workflow`). Flag a skill whose procedure
+  is scattered across the file with no named section to anchor it.
 
 ## Subagent definition files
 

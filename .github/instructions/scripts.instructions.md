@@ -29,6 +29,12 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `session_id`), which stay snake_case to match the payload.
 - `require` ordering: alphabetical, Node core modules only, no external npm
   dependencies.
+- A `PreToolUse` hook denies once and marks the file checked so a retry
+  passes (`gateguard.js`'s pattern), unless it intentionally gates on an
+  external unlock event outside its own control, in which case repeated
+  denial is by design and must say so explicitly in the hook's own header
+  comment (`plan-gate.js`, unlocked only by a `plan-and-track` Skill
+  invocation). Flag a hook that denies repeatedly with no stated rationale.
 
 ## Shell scripts
 
@@ -90,3 +96,16 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 - CI (`.github/workflows/*.yml`) mirrors its assertions across a unix and a
   windows job, matching the installer parity above. Flag a new assertion
   added to only one of the two jobs.
+- `install.sh` and `install.ps1` mirror function-for-function, but a
+  PowerShell name is never a literal case-transform of its bash counterpart:
+  it's renamed to the nearest approved Verb-Noun cmdlet verb (e.g.
+  `upsert_toml_default` becomes `Set-TomlDefault`, not `Upsert-TomlDefault`).
+  Flag a PowerShell helper named by transforming the bash name's casing
+  instead of picking a real cmdlet verb.
+- Rendering a Codex agent's TOML (`render_codex_agent` /
+  `ConvertTo-CodexAgentToml`) must leave `model` unset rather than
+  translating it: Claude's model tiers (`fable`/`opus`/`sonnet`/`haiku`) have
+  no Codex equivalent, so an unset key lets Codex inherit the session's own
+  model. Only `effort` → `model_reasoning_effort` and `tools` →
+  `sandbox_mode` translate. Flag a PR that adds a model-tier translation
+  table here.

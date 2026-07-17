@@ -234,7 +234,7 @@ a skill, drop it in `skills/<name>/SKILL.md` (the `description` tells the agent
   `~/.codex/agents/*.toml`. Run `codex` and press `2` to accept new hooks.
   Recent builds add no attribution trailer. UNVERIFIED: named-agent invocation
   via `spawn_agent` is unreliable everywhere as of this writing, not only in
-  SDK/MCP-driven sessions — recent reports (openai/codex#15250) reproduce it
+  SDK/MCP-driven sessions: recent reports (openai/codex#15250) reproduce it
   on standalone Codex CLI and Codex Desktop too, where a requested custom
   agent silently falls back to the parent's own model/effort/sandbox instead
   of loading its TOML. Treat the rendered roster as forward-looking until
