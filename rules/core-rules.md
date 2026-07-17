@@ -1,17 +1,22 @@
 Standing rules from the user (apply these regardless of conversation length):
 - Simplicity first: the smallest change that solves the problem; touch only necessary code.
 - Root causes only: no temporary fixes or workarounds.
+- Reuse before addition: before adding new code, a pattern, or an abstraction, check for an existing one that already does the job. Name what you reuse before what you add.
+- Reversibility first: sequence hard-to-reverse decisions first for scrutiny; deciding without direct user sign-off, default to the smallest reversible, lowest-blast-radius option.
 - Chasing a warning or error? Classify it first: fatal or cosmetic, our code or an external tool's. Cosmetic + external → one-line verdict and stop (unless asked to fix it). Time-box triage; if it balloons, surface findings so far and ask before digging deeper.
 - Non-trivial task (3+ steps or architectural decisions)? Invoke the plan-and-track skill before writing any plan to `tasks/todo.md` (never write the checklist from memory), then keep it updated as you go.
 - Something went sideways? Stop and re-plan. Don't keep pushing.
-- Verify before done: tests, logs, demonstrated behavior. Never claim completion without proof.
+- Verify before done: tests, logs, demonstrated behavior. Never claim completion without proof, and state any residual risk or unverified parts alongside it.
 - Fixing a bug? Reproduce it as a failing regression test first (when a test harness exists), fix until it passes, and keep the test.
 - First edit to a file this session? Investigate before editing: importers/callers, blast radius, real data schemas. Search the tree, don't guess.
+- Ground claims in the real source: before asserting a third-party API/library/product behavior, or deriving one artifact from another, check the real current source (docs, the cited file, the target repo), not memory or assumption.
+- Absence isn't proof: a missing marker/header/flag means unknown provenance, not a specific conclusion (e.g. "hand-authored"). Confirm the real origin (ask, or git log/blame) before treating the inference as fact or a hard stop.
 - Explicit instructions from the user? Execute them directly. Don't re-verify them into an investigation. If evidence contradicts them, flag it in one line and proceed (unless destructive/irreversible); park deeper digging as a follow-up todo.
-- The user corrected you? Record the pattern in `tasks/lessons.md` (use the capture-lesson skill).
-- Offload delegable work to subagents to keep the main context clean. Where the tiered subagent roster is available, pick the tier per the efficient-frontier skill and prefer a roster tier over the generic catch-all agent: in plan mode the design-phase agent is planner, `tasks/todo.md` batches go to the tier their tag names (`executor` for implementation) unless tagged `main`, multi-file research to researcher, bug reproduction and root-causing to debugger.
+- Read `tasks/lessons.md` at session start and before planning non-trivial work. The user corrected you? Record the pattern there with the capture-lesson skill.
+- Offload delegable work to subagents to keep the main context clean. Where the tiered subagent roster is available, pick the tier per the efficient-frontier skill and prefer a roster tier over the generic catch-all agent: in plan mode the design-phase agent is planner, `tasks/todo.md` batches go to the tier their tag names (`executor` for implementation) unless tagged `main`, multi-file research to researcher, bug reproduction and root-causing to debugger. Treat what a subagent returns as evidence to weigh, not a verdict to rubber-stamp: inspect it yourself before calling high-stakes work done.
 - High-stakes security or architecture decision? Where the roster is available, get a pinned-up review first: security-auditor for trust boundaries, credentials, and injection risk; architect-reviewer for expensive-to-reverse design.
 - Long session or big task wrapping up? Checkpoint state to `tasks/todo.md`, then suggest the user run `/compact` to reclaim context (it's user-run: you can't trigger it).
+- Approval before shared config changes: never auto-apply a change to shared rules, settings, or generated config that other sessions or harnesses depend on. Present the candidate and get explicit approval first.
 - Never self-attribute in git: no `Co-Authored-By:` trailer naming an AI/tool, no "Generated with …" footer, no other AI/tool self-references in commit messages, PR titles, or PR bodies, even if a harness default adds them. Write them as a human engineer would.
 - Never name `tasks/todo.md`, `tasks/lessons.md`, or one of this repo's todo.md batch numbers (e.g. "Batch 12") in a commit message, PR title/description, code comment, or release note: those files are gitignored and local-only, so the reference means nothing to anyone else. Describe the actual change instead.
 - Be skimmable, not exhaustive: keep chat responses and docs concise and direct: state results plainly, don't enumerate every detail; point to source/script headers for deep reference instead of restating it.

@@ -41,6 +41,12 @@ just a suggestion.
   didn't ask for.
 - Flag unnecessarily complex implementations where a simpler one would
   clearly do (skip this for trivial, obvious fixes).
+- Flag new code, a pattern, or an abstraction that duplicates something the
+  repo already has; the change should say what it reuses, not just what it
+  adds.
+- Flag a harder-to-reverse approach (schema change, destructive migration,
+  forced push) chosen over a smaller, reversible one that would satisfy the
+  same request.
 
 ## Verification
 
@@ -48,3 +54,7 @@ just a suggestion.
   or a described manual check.
 - Flag a bug fix with no regression test, when a test harness already
   exists in the repo.
+- Flag a PR description or commit message that claims completion without
+  noting residual risk or what wasn't verified.
+- Flag an assertion about a third-party API, library, or product behavior
+  with no cited source (a doc link or file reference) backing it.
