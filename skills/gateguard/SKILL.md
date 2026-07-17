@@ -1,6 +1,6 @@
 ---
 name: gateguard
-description: Fact-forcing gate for file edits. Before the first edit to any file in a session, present concrete investigation (importers/callers, affected API, real data schemas, the user's verbatim instruction) instead of guessing. Use when editing unfamiliar files, fixing bugs in an existing codebase, or when AI edits keep breaking callers or mis-assuming data formats. Claude Code installs enforce this with a PreToolUse hook.
+description: Fact-forcing gate for file edits. Before the first edit to any file in a session, present concrete investigation (importers/callers, affected API, real data schemas, the user's verbatim instruction) instead of guessing. Use when editing unfamiliar files, fixing bugs in an existing codebase, or when AI edits keep breaking callers or mis-assuming data formats. Installs enforce this with a PreToolUse hook on all three harnesses.
 ---
 
 # GateGuard: Investigate Before You Edit
@@ -11,8 +11,8 @@ imports this module" forces a real search, and the investigation itself
 changes the edit that follows.
 
 Adapted from the ECC `gateguard` skill. The fact protocol below is
-harness-agnostic guidance; Claude Code installs additionally get an enforcing
-`PreToolUse` hook (`gateguard.js`): see the end.
+harness-agnostic guidance; installs additionally get an enforcing
+`PreToolUse` hook (`gateguard.js`) on all three harnesses: see the end.
 
 ## The protocol
 
@@ -61,13 +61,17 @@ that entire class of bug. Guessing a schema is never faster than looking.
   `tasks/lessons.md`) and similar scratch files have no importers or schemas;
   don't burn a round-trip on them.
 
-## Claude Code enforcing hook (Claude-only)
+## Enforcing hook (all three harnesses)
 
-Manual installs (`./install.sh claude`, or `install.ps1 claude` on Windows) register a `PreToolUse` hook on
-Edit/Write/MultiEdit/NotebookEdit, `~/.claude/scripts/gateguard.js`, that
-**denies the first edit to each file per session** with the fact demand above.
-The file is marked at deny time, so the retry (after presenting facts) always
-passes: a file can never be denied twice, and the gate can't loop.
+Installs (`./install.sh <target>`, or `install.ps1 <target>` on Windows)
+register a `PreToolUse` hook running the same shared `gateguard.js` script on
+every harness; the script detects each harness's wire dialect at runtime.
+Claude Code's wiring matches Edit/Write/MultiEdit/NotebookEdit and Codex's
+matches `apply_patch`; Copilot's hook contract has no matcher, so the script
+filters for edit tools itself. It **denies the first edit to each file per
+session** with the fact demand above. The file is marked at deny time, so the
+retry (after presenting facts) always passes: a file can never be denied
+twice, and the gate can't loop.
 
 Skipped automatically: subagent tool calls, `.claude/settings*.json` (so hook
 repair is never blocked), and `tasks/todo.md` / `tasks/lessons.md`.
@@ -83,8 +87,10 @@ Tune via environment variables:
   fact block before condensing to one line to avoid repetitive context
   (default 3).
 
-Copilot and Codex have no tool-deny event, so they rely on the protocol above
-plus the investigate-before-editing line in the rules digest.
+Copilot's PreToolUse contract is fail-closed, so the script's failure path
+emits an explicit allow decision there; Claude Code and Codex share the same
+hook payload shape. All three harnesses also get the
+investigate-before-editing line in the rules digest.
 
 Deliberately not ported from ECC: the destructive-Bash and routine-Bash gates; Claude Code's own permission system already covers destructive commands,
 and a once-per-session gate on the first Bash call is friction without signal.
