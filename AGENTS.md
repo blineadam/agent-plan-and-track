@@ -12,7 +12,7 @@ This repo's implicit conventions are captured in `.ai-style-rules.md` at the pro
 
 ## Local additions
 
-If this checkout has an `AGENTS.local.md` next to this file, read it too: it holds machine-local tooling instructions (e.g. graphify) that aren't checked in because not every checkout has that tooling installed.
+If this checkout has an `AGENTS.local.md` next to this file, read it too: it holds machine-local tooling instructions that aren't checked in because not every checkout has that tooling installed.
 
 ## Commands
 
