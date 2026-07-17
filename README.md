@@ -34,7 +34,9 @@ done, and turn any correction into a durable rule:
   refactor, a 3+ step fix, or resuming a repo that already has a
   `tasks/todo.md`). Writes a checklist, tracks it, and verifies before closing
   out; backed by a Claude-only enforcing hook that blocks `tasks/todo.md`
-  writes until the skill has been invoked that session.
+  writes until the skill has been invoked that session, and lints new plan
+  steps for an owner tag (implementation defaults to executor; main needs a
+  stated reason).
 - **`plow-ahead`** (skill): kicks in when you're told to proceed autonomously
   ("plow ahead," "use your best judgment," "don't stop"). Turns ordinary
   ambiguity into stated assumptions, keeps moving, and stops only for a true
