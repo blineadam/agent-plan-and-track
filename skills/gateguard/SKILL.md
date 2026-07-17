@@ -26,6 +26,9 @@ Before the **first edit to any file in a session**, present these facts:
    names, structure, and date/number formats (use redacted or synthetic
    values, never raw production data).
 4. **The instruction**: quote the user's current instruction verbatim.
+5. **Scope**: is this part of a 3+ step or architectural task? If so, point
+   to the tasks/todo.md plan (or invoke plan-and-track first). If this edit
+   doesn't need one, say why.
 
 Before **creating a new file**:
 
