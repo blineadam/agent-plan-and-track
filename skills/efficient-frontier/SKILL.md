@@ -12,7 +12,7 @@ Use the main session's own reasoning where its judgment actually matters: archit
 Eight subagents, each pinned to a model tier that matches the cost of a missed judgment call (see `agents/*.md`):
 
 - **planner** (read-only): drafts the spec or plan before any code is touched and returns it as text; the caller persists it (e.g. to tasks/todo.md).
-- **executor**: implements a spec that's already been decided; not for open design decisions. A tier-tagged batch in `tasks/todo.md` is a valid spec shape: point executor at the file instead of inlining the plan.
+- **executor**: implements a spec that's already been decided; not for open design decisions. An `executor`-tagged batch in `tasks/todo.md` is a valid spec shape: point executor at the file instead of inlining the plan.
 - **researcher** (read-only): gathers facts across many files, maps how something works, answers a bounded question.
 - **mechanic**: makes a mechanical edit that's already fully specified, no judgment calls.
 - **debugger** (read-only): reproduces a failure and hands back a root cause plus a failing regression test; never fixes it.
