@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   release:
@@ -28,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           sha="$(git rev-parse HEAD)"
-          conclusion="$(gh run list --commit "$sha" --workflow install.yml \
+          conclusion="$(gh run list --commit "$sha" --workflow install.yml --branch main \
             --json conclusion --jq '.[0].conclusion // empty')"
           [ "$conclusion" = "success" ] || {
             echo "FAIL: installer smoke test is not green for $sha (got: ${conclusion:-no run})"
