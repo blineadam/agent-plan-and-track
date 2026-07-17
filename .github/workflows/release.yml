@@ -1,0 +1,47 @@
+name: release
+
+# Creates a GitHub Release when a version tag (v*.*.*) is pushed. This repo has
+# no build artifacts: a release is the tag plus notes auto-generated from merged
+# PRs, a known-good snapshot users can pin with `git checkout vX.Y.Z` before
+# running the installer. Single ubuntu job by design: creating a release is
+# platform-independent, unlike install.yml's mirrored unix/windows assertions.
+# Tag only commits already green on main; the guard below refuses to release a
+# commit the installer smoke test hasn't passed. If the smoke test is still
+# running when the tag lands, wait for green and re-run this workflow from the
+# Actions tab.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert the tagged commit passed the installer smoke test
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          conclusion="$(gh run list --commit "$sha" --workflow install.yml \
+            --json conclusion --jq '.[0].conclusion // empty')"
+          [ "$conclusion" = "success" ] || {
+            echo "FAIL: installer smoke test is not green for $sha (got: ${conclusion:-no run})"
+            echo "Wait for install.yml to pass on this commit, then re-run this workflow."
+            exit 1
+          }
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME already exists -- nothing to do"
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" --generate-notes

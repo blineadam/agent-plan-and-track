@@ -172,7 +172,10 @@ configure hooks that require Node.js at runtime, so they check for it first and
 exit with an installation suggestion, such as `brew install node` or
 `winget install OpenJS.NodeJS.LTS`, before writing any files.
 
-To update later, run `git pull`, then rerun the installer for your operating system.
+To update later, run `git pull`, then rerun the installer for your operating
+system. The installer deploys whatever is checked out: normally the latest
+`main`, but tagged releases (`vX.Y.Z`, on the Releases tab) are known-good
+snapshots you can pin with `git checkout v1.0.0` before installing.
 
 ## Layout
 
