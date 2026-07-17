@@ -32,9 +32,23 @@
  * can't be created the edit is ALLOWED with a stderr note, since the Skill
  * branch could never stamp on such a machine and a deny would loop forever.
  *
+ * SCOPE GATE: a session that never touches tasks/todo.md at all still needs
+ * catching (a competing-pressure prompt like "just hack it in" can skip
+ * planning and go straight to source edits). Once a session's distinct
+ * edited-file count reaches PLANGATE_SCOPE_THRESHOLD (default 3, since a
+ * one- or two-file fix-plus-its-test is legitimately plan-free) without a
+ * plan-and-track stamp, every further Edit/Write/MultiEdit is denied the
+ * same hard way as the tasks/todo.md gate. "3+ distinct files" is the
+ * observable proxy for the "3+ steps" core rule a hook can actually measure.
+ * Marker files record each *allowed* edit's normalized path (sha256-keyed,
+ * next to the session's stamp file) so a denied edit is never counted and
+ * repeated denials can't inflate the total.
+ *
  * Config (env):
- *   PLANGATE_DISABLED  "1" turns the gate off entirely.
- *   PLANGATE_WARN      "1" demotes deny to a non-blocking warning.
+ *   PLANGATE_DISABLED        "1" turns the gate off entirely.
+ *   PLANGATE_WARN            "1" demotes deny to a non-blocking warning.
+ *   PLANGATE_SCOPE_THRESHOLD distinct-file count that trips the scope gate
+ *                             (default 3).
  */
 'use strict';
 
@@ -105,6 +119,36 @@ function namesPlanAndTrack(toolInput) {
   return !!(toolInput.arguments && toolInput.arguments.skill === 'plan-and-track');
 }
 
+// --- Scope gate: distinct edited-file count, same stamp, sibling markers ---
+
+// Paths the scope count ignores: tasks/todo.md (already gated on its own),
+// tasks/lessons.md and .claude/settings*.json (rule-forced/hook-repair
+// edits, mirroring gateguard's isBuiltinExempt). Case-insensitive: NTFS
+// treats these paths case-insensitively, same rationale as the todo.md gate.
+function isScopeExempt(norm) {
+  return (
+    /(^|\/)tasks\/(todo|lessons)\.md$/i.test(norm) ||
+    /(^|\/)\.claude\/settings(?:\.[^/]+)?\.json$/i.test(norm)
+  );
+}
+
+function filesDir(sessionId, input) {
+  return stampPath(sessionId, input) + '.files';
+}
+
+function fileMarkerPath(sessionId, input, norm) {
+  const hash = crypto.createHash('sha256').update(norm).digest('hex').slice(0, 32);
+  return path.join(filesDir(sessionId, input), hash);
+}
+
+function distinctFileCount(sessionId, input) {
+  try {
+    return fs.readdirSync(filesDir(sessionId, input)).length;
+  } catch {
+    return 0;
+  }
+}
+
 // --- Messages ---
 
 function gateMsg() {
@@ -112,6 +156,36 @@ function gateMsg() {
     '[PlanGate] Writes to tasks/todo.md are gated: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this edit.',
     '(PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
   ].join('\n');
+}
+
+function scopeMsg(threshold) {
+  return [
+    `[PlanGate] This session has touched ${threshold} distinct files without a plan: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this edit.`,
+    '(PLANGATE_SCOPE_THRESHOLD sets the file-count trigger, default 3; PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
+  ].join('\n');
+}
+
+function emitGateDecision(msg) {
+  if (process.env.PLANGATE_WARN === '1') {
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          additionalContext: msg + '\n(Warn-only mode: the edit proceeds.)',
+        },
+      })
+    );
+  } else {
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: msg,
+        },
+      })
+    );
+  }
 }
 
 function main() {
@@ -141,43 +215,55 @@ function main() {
     process.exit(0);
   }
 
-  // Edit branch: gate tasks/todo.md writes on the stamp. Case-insensitive:
-  // install.ps1 deploys this hook on Windows, where NTFS treats
-  // tasks\todo.md and TASKS\TODO.MD as the same file.
+  // Edit branch. Case-insensitive throughout: install.ps1 deploys this hook
+  // on Windows, where NTFS treats tasks\todo.md and TASKS\TODO.MD (etc.) as
+  // the same file.
   if (!EDIT_TOOLS.has(toolName)) process.exit(0);
   const norm = String(toolInput.file_path || '').replace(/\\/g, '/');
-  if (!/(^|\/)tasks\/todo\.md$/i.test(norm)) process.exit(0);
+  const stamp = stampPath(input.session_id, input);
 
-  if (fs.existsSync(stampPath(input.session_id, input))) process.exit(0);
-
-  try {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-  } catch {
-    // Unwritable state dir: the Skill branch could never stamp, so a deny
-    // here would loop forever. Fail open with a note.
-    process.stderr.write('[PlanGate] state dir could not be created; allowing the edit.\n');
+  // tasks/todo.md gate: unchanged behavior, own message.
+  if (/(^|\/)tasks\/todo\.md$/i.test(norm)) {
+    if (fs.existsSync(stamp)) process.exit(0);
+    try {
+      fs.mkdirSync(STATE_DIR, { recursive: true });
+    } catch {
+      // Unwritable state dir: the Skill branch could never stamp, so a deny
+      // here would loop forever. Fail open with a note.
+      process.stderr.write('[PlanGate] state dir could not be created; allowing the edit.\n');
+      process.exit(0);
+    }
+    emitGateDecision(gateMsg());
     process.exit(0);
   }
 
-  if (process.env.PLANGATE_WARN === '1') {
-    process.stdout.write(
-      JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          additionalContext: gateMsg() + '\n(Warn-only mode: the edit proceeds.)',
-        },
-      })
-    );
-  } else {
-    process.stdout.write(
-      JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny',
-          permissionDecisionReason: gateMsg(),
-        },
-      })
-    );
+  // Scope gate: deny once the session's distinct edited-file count reaches
+  // the threshold without a stamp. No-op for exempt paths or once stamped.
+  if (!norm || isScopeExempt(norm) || fs.existsSync(stamp)) process.exit(0);
+
+  const threshold = Number(process.env.PLANGATE_SCOPE_THRESHOLD) || 3;
+  const marker = fileMarkerPath(input.session_id, input, norm);
+  const alreadyCounted = fs.existsSync(marker);
+  const wouldBeCount = alreadyCounted ? distinctFileCount(input.session_id, input) : distinctFileCount(input.session_id, input) + 1;
+
+  if (wouldBeCount >= threshold) {
+    try {
+      fs.mkdirSync(STATE_DIR, { recursive: true });
+    } catch {
+      process.stderr.write('[PlanGate] state dir could not be created; allowing the edit.\n');
+      process.exit(0);
+    }
+    emitGateDecision(scopeMsg(threshold));
+    process.exit(0);
+  }
+
+  // Allowed: record this file so a future edit doesn't re-count it, and
+  // repeated denials of an unrecorded file never inflate the total.
+  try {
+    fs.mkdirSync(filesDir(input.session_id, input), { recursive: true });
+    fs.writeFileSync(marker, '');
+  } catch {
+    /* best effort: worst case a later edit re-checks the same file */
   }
   process.exit(0);
 }
