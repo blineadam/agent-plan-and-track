@@ -148,8 +148,10 @@ asides and self-corrections.
 3. Ask "what still makes this obviously AI-generated?" and note any
    remaining tells.
 4. Revise into a final rewrite that addresses them. Before finishing, scan
-   specifically for `—` and `–`: either one means the pass isn't done.
+   the prose you wrote (not preserved quotations) specifically for `—` and
+   `–`: either one means the pass isn't done.
 
-For a rewrite of existing text, hand back the draft, the brief still-AI
-notes, and the final version. For fresh writing, just apply this as a
-checklist and write it clean the first time.
+Keep the draft and the still-AI notes as your own working process; hand back
+the final version, noting only what changed, unless the user asks to see the
+editorial breakdown. For fresh writing, just apply this as a checklist and
+write it clean the first time.

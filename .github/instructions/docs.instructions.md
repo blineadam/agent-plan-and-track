@@ -39,10 +39,12 @@ generated Copilot review-instruction files themselves. See
 - A skill's body follows one of two shapes: a pure checklist (numbered or
   bulleted H2 sections in strict execution order, like `plan-and-track`) or a
   judgment/reference skill (reference or definitional H2 sections up front,
-  with the actual procedure confined to one distinctly named subsection, like
-  `humanizer`'s `## Process`, `plow-ahead`'s `## Work Loop`, or
-  `read-the-damn-docs`'s `## Required Workflow`). Flag a skill whose procedure
-  is scattered across the file with no named section to anchor it.
+  ending in a late, distinctly named procedure subsection, like `humanizer`'s
+  `## Process`, `plow-ahead`'s `## Work Loop`, or `read-the-damn-docs`'s
+  `## Required Workflow`; a short top-level framing section stating output
+  requirements, like humanizer's `## Task`, doesn't count as a second
+  competing procedure). Flag a skill whose procedure is scattered across the
+  file with no named section to anchor it.
 
 ## Subagent definition files
 

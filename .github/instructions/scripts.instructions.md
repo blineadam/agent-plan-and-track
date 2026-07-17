@@ -96,12 +96,13 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 - CI (`.github/workflows/*.yml`) mirrors its assertions across a unix and a
   windows job, matching the installer parity above. Flag a new assertion
   added to only one of the two jobs.
-- `install.sh` and `install.ps1` mirror function-for-function, but a
-  PowerShell name is never a literal case-transform of its bash counterpart:
-  it's renamed to the nearest approved Verb-Noun cmdlet verb (e.g.
-  `upsert_toml_default` becomes `Set-TomlDefault`, not `Upsert-TomlDefault`).
-  Flag a PowerShell helper named by transforming the bash name's casing
-  instead of picking a real cmdlet verb.
+- `install.sh` and `install.ps1` mirror function-for-function, and the
+  PowerShell name always uses an approved Verb-Noun cmdlet verb. When the
+  bash verb already maps onto one, the mirror looks like a case-transform
+  (`copy_agents` → `Copy-Agents`, since `Copy` is itself approved) and that's
+  fine; only flag a PowerShell helper whose verb isn't a real cmdlet verb at
+  all (an unapproved bash verb like `upsert` must be replaced, e.g.
+  `upsert_toml_default` → `Set-TomlDefault`, not `Upsert-TomlDefault`).
 - Rendering a Codex agent's TOML (`render_codex_agent` /
   `ConvertTo-CodexAgentToml`) must leave `model` unset rather than
   translating it: Claude's model tiers (`fable`/`opus`/`sonnet`/`haiku`) have
