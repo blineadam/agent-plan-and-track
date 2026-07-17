@@ -58,6 +58,12 @@ done, and turn any correction into a durable rule:
   can make it block.
 - **`capture-lesson`** (skill): kicks in whenever you correct the agent,
   turning the correction into a durable rule in `tasks/lessons.md`.
+- **`humanizer`** (skill, adapted from [blader/humanizer](https://github.com/blader/humanizer)):
+  kicks in before finalizing longer user-facing prose (README sections,
+  docs, PR descriptions, blog-style writing). Strips AI-writing tells (em
+  dashes, promotional puffery, filler, rule-of-three, chatbot artifacts) and
+  restores a natural voice with real personality, extending the core
+  writing-voice rule's short version.
 
 A harness that can't run a given hook still gets the rule as a skill: that's
 why Copilot (no Stop event) gets gateguard but not delivery-gate. Tuning knobs
@@ -172,6 +178,7 @@ rules/agent-guidelines.md    the short instructions file (constant constraints)
 rules/core-rules.md          one-paragraph digest the hooks re-inject
 skills/plan-and-track/       plan → track → verify workflow (tasks/todo.md)
 skills/capture-lesson/       turn every user correction into a rule (tasks/lessons.md)
+skills/humanizer/            strip AI-writing tells, restore a natural voice (portable)
 skills/rules-distill/        distill cross-cutting skill principles into rules (portable)
 skills/strategic-compact/    when to /compact at logical boundaries (portable)
 skills/context-budget/       audit always-on context cost, flag bloat (portable)
@@ -227,7 +234,7 @@ a skill, drop it in `skills/<name>/SKILL.md` (the `description` tells the agent
   `~/.codex/agents/*.toml`. Run `codex` and press `2` to accept new hooks.
   Recent builds add no attribution trailer. UNVERIFIED: named-agent invocation
   via `spawn_agent` is unreliable everywhere as of this writing, not only in
-  SDK/MCP-driven sessions — recent reports (openai/codex#15250) reproduce it
+  SDK/MCP-driven sessions: recent reports (openai/codex#15250) reproduce it
   on standalone Codex CLI and Codex Desktop too, where a requested custom
   agent silently falls back to the parent's own model/effort/sandbox instead
   of loading its TOML. Treat the rendered roster as forward-looking until

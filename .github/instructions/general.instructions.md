@@ -20,6 +20,10 @@ just a suggestion.
   cadence unless a short list is genuinely the clearest format.
 - Avoid canned phrases like "this means X," "inflection point," or "here's
   the takeaway."
+- In longer prose (README sections, docs, PR descriptions), flag promotional
+  puffery ("boasts," "stands as a testament"), rule-of-three padding, and
+  copula avoidance ("serves as" instead of "is") as AI-writing tells, the
+  same way an em dash or emoji would be flagged.
 
 ## Git and PR hygiene
 
