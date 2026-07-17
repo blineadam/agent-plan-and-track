@@ -24,6 +24,14 @@ match each kind of rule to a mechanism that keeps it alive:
 | Procedures (plan, capture lessons) | **Skills** | Loaded just-in-time, at the recent end of context, when triggered |
 | The core rules themselves | **Hooks** re-injecting a digest | Harness-enforced repetition, immune to attention decay |
 
+Simpler setups promise the same thing, and they look simpler because they
+are: usually an `agents/` directory plus a paragraph of instructions, one
+harness, and nothing that checks whether the rules still hold an hour into a
+session. They demo well and drift silently. The extra weight here is
+enforcement, which exists because the drift was measured (`skill-comply` and
+`skill-activation` do the measuring), and three-harness portability, which is
+most of the installer's bulk and none of the session behavior.
+
 ## The everyday workflow
 
 These are the ones you hit every session, roughly in the order you hit them:
@@ -73,18 +81,37 @@ for these hooks live in their script headers under `hooks/`.
 
 ## Maintenance skills
 
-Skills that maintain the rules and skills themselves (adapted from
-[affaan-m/ecc](https://github.com/affaan-m/ecc)) rather than the everyday
+Skills that maintain the rules and skills themselves rather than the everyday
 coding workflow above. Portable where it's safe, Claude-only where the
-mechanism is genuinely Claude-native.
+mechanism is genuinely Claude-native. Most are adapted from
+[affaan-m/ecc](https://github.com/affaan-m/ecc); `skill-activation` and
+`copilot-review-instructions` were built in this repo.
+
+### Building and testing skills
+
+For writing a new skill or rule and checking that it actually works:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
 | **`rules-distill`** | Finds principles recurring across your skills that aren't rules yet, and proposes promoting them. | All 3 |
-| **`strategic-compact`** | Guides you to `/compact` at logical boundaries instead of mid-task; backed by a Claude-only enforcing hook that nudges you there. | All 3 |
-| **`context-budget`** | Audits always-on context cost and flags what's too big. | All 3 |
 | **`skill-comply`** | Measures whether a fresh agent actually follows a given rule. | Claude only |
 | **`skill-activation`** | Tests whether the *right* skill fires for a prompt: routing regression, sibling to `skill-comply`. | All 3 (runtime check is Claude-only) |
+
+### Session and context upkeep
+
+For keeping a live session and the always-on config healthy:
+
+| Skill | What it does | Where |
+| --- | --- | --- |
+| **`strategic-compact`** | Guides you to `/compact` at logical boundaries instead of mid-task; backed by a Claude-only enforcing hook that nudges you there. | All 3 |
+| **`context-budget`** | Audits always-on context cost and flags what's too big. | All 3 |
+
+### Generated docs for agents
+
+For turning a project's conventions into documentation other agents consume:
+
+| Skill | What it does | Where |
+| --- | --- | --- |
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
 | **`copilot-review-instructions`** | Generates path-scoped `.github/instructions/*.instructions.md` PR-review directives from a project's documented conventions (style rules, instructions file, README, docs). | All 3 (Copilot-only output) |
 
