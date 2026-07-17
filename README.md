@@ -26,10 +26,11 @@ match each kind of rule to a mechanism that keeps it alive:
 
 Simpler setups promise the same thing, and they look simpler because they
 are: usually an `agents/` directory plus a paragraph of instructions, one
-harness, and nothing that checks whether the rules still hold an hour into a
-session. They demo well and drift silently. The extra weight here is
-enforcement, which exists because the drift was measured (`skill-comply` and
-`skill-activation` do the measuring), and three-harness portability, which is
+harness, and no way to tell whether any of it is actually followed. They
+demo well and drift silently. The extra weight here is two things.
+Enforcement exists because this repo actually checks (`skill-comply`
+measures whether a rule is really followed, `skill-activation` whether the
+right skill fires) and the checks found gaps. Three-harness portability is
 most of the installer's bulk and none of the session behavior.
 
 ## The everyday workflow
