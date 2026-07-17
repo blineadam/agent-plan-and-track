@@ -46,6 +46,12 @@
  *                           (`*` within a segment, `**` across, `?` one char).
  *   GATEGUARD_FULL_DENIALS  denials per session that get the full fact block
  *                           before condensing to one line (default 3).
+ *
+ * STAMP SCOPING: a session that already invoked plan-and-track (Claude's
+ * plan-gate hook stamps it) did its fact-forcing at plan time, so gateguard
+ * allows silently for that session instead of gating each file again. The
+ * stamp only ever exists where plan-gate runs, so Codex and Copilot sessions
+ * (plan-gate isn't installed there) see byte-identical behavior to before.
  */
 'use strict';
 
@@ -255,9 +261,9 @@ function isSubagent(input) {
 // would let a file be denied twice. The denial ordinal is simply the number
 // of markers already in the session dir.
 
-function sessionDir(sessionId, input) {
+function sessionKey(sessionId, input) {
   const sid = String(sessionId || '').trim();
-  const key = /^[a-zA-Z0-9_-]{1,64}$/.test(sid)
+  return /^[a-zA-Z0-9_-]{1,64}$/.test(sid)
     ? sid
     : 'k' +
       crypto
@@ -265,7 +271,25 @@ function sessionDir(sessionId, input) {
         .update(String((input && input.transcript_path) || (input && input.cwd) || process.cwd()))
         .digest('hex')
         .slice(0, 24);
-  return path.join(STATE_DIR, key);
+}
+
+function sessionDir(sessionId, input) {
+  return path.join(STATE_DIR, sessionKey(sessionId, input));
+}
+
+// Plan-gate's stamp dir (hooks/claude/plan-gate.js). Key derivation is
+// byte-identical to sessionKey() above (plan-gate.js's own comment says so),
+// so this reads the same key both hooks would derive independently.
+const PLAN_GATE_STATE_DIR = path.join(os.tmpdir(), 'claude-plan-gate');
+
+function hasPlanStamp(input) {
+  try {
+    return fs.existsSync(
+      path.join(PLAN_GATE_STATE_DIR, sessionKey(input.session_id || input.sessionId, input))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function markerPath(dir, filePath) {
@@ -413,6 +437,13 @@ function main() {
   // there's nothing to gate.
   const gatable = edits.filter((e) => !isBuiltinExempt(e.path) && !isEnvExempt(e.path));
   if (gatable.length === 0) {
+    emitAllow(dialect);
+    process.exit(0);
+  }
+
+  // A plan-and-track stamp for this session means the fact-forcing already
+  // happened at plan time: allow silently, no marker claimed.
+  if (hasPlanStamp(input)) {
     emitAllow(dialect);
     process.exit(0);
   }
