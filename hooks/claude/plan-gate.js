@@ -298,17 +298,37 @@ function simulateResult(toolName, toolInput) {
 // and compared against the same right-trimmed set from the on-disk baseline,
 // so touching only a legacy step's continuation line never counts as new.
 function collectNewUncheckedPlanSteps(baseline, result) {
-  const baselineLines = new Set(baseline.split('\n').map((l) => l.replace(/\s+$/, '')));
+  // A multiset, not a Set: todo.md accumulates historical batches, so two
+  // unrelated steps (old and new) can share identical checkbox text. Each
+  // baseline occurrence exempts at most one matching result occurrence from
+  // being "new"; a genuinely new copy beyond what the baseline had still
+  // counts, even if its text collides with an old, already-tagged step.
+  const baselineCounts = new Map();
+  for (const l of baseline.split('\n').map((l) => l.replace(/\s+$/, ''))) {
+    baselineCounts.set(l, (baselineCounts.get(l) || 0) + 1);
+  }
   const resultLines = result.split('\n');
 
   const steps = [];
   let inPlan = false;
+  // The heading level `## Plan` itself was opened at, so a deeper heading
+  // (e.g. `### Phase 1` nested under it) doesn't leave the Plan section;
+  // only a heading at the same or shallower level does.
+  let planLevel = null;
   let i = 0;
   while (i < resultLines.length) {
     const line = resultLines[i];
-    const headerMatch = /^\s{0,3}#{1,6}\s+(.*)$/.exec(line);
+    const headerMatch = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
     if (headerMatch) {
-      inPlan = /^plan\b/i.test(headerMatch[1]);
+      const level = headerMatch[1].length;
+      const title = headerMatch[2];
+      if (/^plan\b/i.test(title)) {
+        inPlan = true;
+        planLevel = level;
+      } else if (planLevel === null || level <= planLevel) {
+        inPlan = false;
+        planLevel = null;
+      }
       i += 1;
       continue;
     }
@@ -325,7 +345,10 @@ function collectNewUncheckedPlanSteps(baseline, result) {
         stepLines.push(resultLines[j]);
         j += 1;
       }
-      if (!baselineLines.has(firstLine)) {
+      const remaining = baselineCounts.get(firstLine) || 0;
+      if (remaining > 0) {
+        baselineCounts.set(firstLine, remaining - 1);
+      } else {
         steps.push({ firstLine, joined: stepLines.join(' ').replace(/\s+$/, '') });
       }
       i = j;
