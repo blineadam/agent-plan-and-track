@@ -24,14 +24,12 @@ match each kind of rule to a mechanism that keeps it alive:
 | Procedures (plan, capture lessons) | **Skills** | Loaded just-in-time, at the recent end of context, when triggered |
 | The core rules themselves | **Hooks** re-injecting a digest | Harness-enforced repetition, immune to attention decay |
 
-Simpler setups promise the same thing, and they look simpler because they
-are: usually an `agents/` directory plus a paragraph of instructions, one
-harness, and no way to tell whether any of it is actually followed. They
-demo well and drift silently. The extra weight here is two things.
-Enforcement exists because this repo actually checks (`skill-comply`
-measures whether a rule is really followed, `skill-activation` whether the
-right skill fires) and the checks found gaps. Three-harness portability is
-most of the installer's bulk and none of the session behavior.
+The extra weight here buys two concrete things. Enforcement exists because
+this repo actually checks it: `skill-comply` measures whether a rule is
+really followed, `skill-activation` measures whether the right skill fires,
+and both have found and fixed real gaps in past runs. Three-harness
+portability is most of the installer's bulk and none of the session
+behavior, so it doesn't add runtime cost once a session starts.
 
 ## The everyday workflow
 
