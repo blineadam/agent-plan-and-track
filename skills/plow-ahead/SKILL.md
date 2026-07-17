@@ -18,7 +18,7 @@ Treat the user's instruction as permission to continue through normal uncertaint
 - Use repo conventions, nearby patterns, local docs, tests, and existing product behavior as the decision source.
 - Keep working through normal test failures, missing context, implementation choices, and minor ambiguity.
 - Use subagents for independent research, implementation, or verification when parallel work can reduce idle time or improve coverage; pick which tier per [[efficient-frontier]] when the tiered subagent roster is available.
-- Do not pause merely to ask which reasonable option the user prefers. Pick one, record why, and keep going. When a judgment call feels close enough to want a second opinion, delegate it to the `fable-advisor` subagent (Agent tool, `subagent_type: "fable-advisor"`) for an independent gut-check and continue, rather than blocking on the user.
+- Do not pause merely to ask which reasonable option the user prefers. Pick one, record why, and keep going. When a judgment call feels close enough to want a second opinion and the tiered subagent roster is available (per [[efficient-frontier]]), delegate it to the `fable-advisor` subagent for an independent gut-check, weigh it, and continue; without the roster, apply the Decision Rules below inline and continue.
 
 ## Stop Conditions
 
@@ -30,7 +30,7 @@ Stop and hand back to the user only for true blockers that need their authorizat
 - Legal, safety, privacy, or security risk is high and cannot be reduced by a conservative local choice.
 - The user explicitly reserved a decision for themselves.
 
-A verification failure that repeats after reasonable investigation, where the next fix would be speculative or broad, is a judgment call, not a user-authorization blocker: delegate it to the `fable-advisor` subagent (Agent tool, `subagent_type: "fable-advisor"`) for an independent read on whether to proceed, narrow scope, or stop, then continue rather than blocking on the user. `fable-advisor` advises only; it cannot authorize any of the blockers above, so those still go to the user.
+A verification failure that repeats after reasonable investigation, where the next fix would be speculative or broad, is a judgment call, not a user-authorization blocker. When the tiered subagent roster is available (per [[efficient-frontier]]), delegate it to the `fable-advisor` subagent for an independent read on whether to proceed, narrow scope, or stop, and follow that read; without the roster, make the same call inline using the Decision Rules below. A read of proceed or narrow scope means keep going; a read of stop means treat it as a stop condition and hand back to the user below. `fable-advisor` advises only; it cannot itself authorize continuing past any of the blockers above.
 
 If blocked, leave a self-contained handoff: what was done, what blocks progress, what exact input is needed, and the next command or file to inspect.
 
