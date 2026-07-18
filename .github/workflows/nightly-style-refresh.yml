@@ -1,0 +1,249 @@
+name: nightly style refresh
+
+# Runs unattended nightly against main: a headless Claude Code session
+# re-runs /inherit-legacy-style then /copilot-review-instructions (see
+# skills/inherit-legacy-style and skills/copilot-review-instructions), a
+# mechanical step opens a PR if either produced drift, requests a GitHub
+# Copilot review, a second headless session triages findings and edits
+# files, a mechanical step commits that fix and comments on the PR, then a
+# mechanical step squash-merges behind a diff-allowlist guard.
+#
+# GH_TOKEN is deliberately not in job-level env. Neither Claude session ever
+# holds it: each runs with --dangerously-skip-permissions but no ability to
+# push, open a PR, or call the GitHub API, so prompt-injected repository
+# content it reads can change files in the working tree but can't use `gh`
+# or `git push` to touch anything else. Only the mechanical bash steps
+# (preflight, commit-and-open-PR, review-request/poll, fetch-review,
+# commit-fix-and-comment, guard, merge) declare GH_TOKEN themselves. A
+# Claude session hands its output to the next mechanical step as a plain
+# file under $RUNNER_TEMP (outside the git working tree, so it can never
+# land in a commit) rather than acting on GitHub directly. The diff-allowlist
+# guard -- the PR may only touch .ai-style-rules.md and
+# .github/instructions/*.instructions.md -- is a second, independent backstop
+# on top of that token scoping.
+#
+# Permission mode: sessions run with --dangerously-skip-permissions (fully
+# unattended, no human to approve tool calls). Anthropic's own docs recommend
+# `dontAsk` mode plus an explicit allowlist for CI instead
+# (https://code.claude.com/docs/en/permission-modes), and warn that
+# bypassPermissions "offers no protection against prompt injection or
+# unintended actions." Bypass is used here anyway because it was explicitly
+# requested; the token-scoping and diff-allowlist guard above are the actual
+# backstops, independent of permission mode.
+#
+# Review-wait is a bounded poll loop in this same job (not a second
+# pull_request_review-triggered workflow): a PR opened with the default
+# GITHUB_TOKEN doesn't trigger other workflow runs, so an event-driven split
+# would silently never fire. If the poll step fails (no Copilot review within
+# 15 minutes), the run goes red and the PR is left open for a human -- that
+# is the intended degrade path, not a bug.
+#
+# install.sh wires this repo's own PreToolUse hooks into the runner's
+# ~/.claude/settings.json; PLANGATE_DISABLED and GATEGUARD_DISABLED are set
+# for every Claude step below because both hooks are designed to block an
+# unattended session (plan-gate expects a plan-and-track Skill invocation
+# that never happens headlessly; gateguard expects a human retry).
+#
+# A stuck PR from a prior night (poll timeout, or a run that failed after
+# opening the PR) makes the next night's preflight step skip entirely until
+# a human closes or merges it.
+
+on:
+  schedule:
+    - cron: "43 5 * * *" # off-peak minute; GitHub delays exact top-of-hour crons
+  workflow_dispatch: # manual trigger for testing
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: nightly-style-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    if: github.repository == 'blineadam/agent-plan-and-track'
+    timeout-minutes: 45
+    env:
+      BRANCH: bot/style-refresh-${{ github.run_id }}
+      CLAUDE_CODE_VERSION: "2.1.214"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0 # inherit-legacy-style diffs recorded-fingerprint..HEAD; shallow breaks that
+
+      - name: Preflight -- skip if a prior nightly PR is still open, or nothing changed
+        id: preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          open="$(gh pr list --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("bot/style-refresh-"))] | length')"
+          if [ "$open" != "0" ]; then
+            echo "a prior nightly PR is still open; skipping"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          fp="$(sed -n 's/^Commit fingerprint: `\([0-9a-f]*\)`.*/\1/p' .ai-style-rules.md)"
+          if [ -n "$fp" ]; then
+            # exclude commits that only touch the style-artifact allowlist: the
+            # bot's own prior squash commit always advances HEAD past $fp, so
+            # without this exclusion the skip condition below could never fire
+            # again after the first successful refresh
+            count="$(git rev-list "$fp"..HEAD --count -- . ':!.ai-style-rules.md' ':!.github/instructions')"
+            if [ "$count" = "0" ]; then
+              echo "no source commits since style fingerprint $fp; skipping"
+              echo "skip=1" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "skip=0" >> "$GITHUB_OUTPUT"
+
+      - name: Install Claude Code CLI
+        if: steps.preflight.outputs.skip == '0'
+        run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      - name: Deploy repo skills and hooks to the runner's HOME
+        if: steps.preflight.outputs.skip == '0'
+        run: ./install.sh all
+
+      - name: Configure git identity
+        if: steps.preflight.outputs.skip == '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Refresh style artifacts (Claude session 1)
+        if: steps.preflight.outputs.skip == '0'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PLANGATE_DISABLED: "1"
+          GATEGUARD_DISABLED: "1"
+        run: |
+          set -euo pipefail
+          claude -p --dangerously-skip-permissions "You are running unattended in CI on a fresh checkout of main. No user is available: never ask a question or wait for input, and never invent an answer to a question you'd normally ask a user -- defer it instead as described below. You have no GitHub token: don't run git or gh commands, and don't try to.
+
+          Run /inherit-legacy-style. It will detect incremental-update mode itself. If a strong-signal conflict would normally trigger its one-question-at-a-time protocol, do not guess: leave that convention uncaptured and note it under a 'Deferred conflicts' heading you'll include in the summary below. Decline its offer to add soft/hard persistence wiring (this repo already references .ai-style-rules.md from AGENTS.md). If it offers to invoke /copilot-review-instructions, accept; otherwise run /copilot-review-instructions yourself afterward -- both of its preconditions already hold in this repo.
+
+          Hard boundary: only .ai-style-rules.md and .github/instructions/*.instructions.md may change. If anything else changed, revert it before finishing.
+
+          If \`git status --porcelain\` is empty when both skills are done, print the single line NO_CHANGES and stop -- do not write a summary file.
+
+          Otherwise, write a file at \"$RUNNER_TEMP/pr-summary.md\": its first line is a one-line PR title describing the change (no AI/tool self-attribution), then a blank line, then a PR body summarizing the actual drift captured plus any deferred conflicts (also with no AI/tool self-attribution anywhere). Then stop -- a later step in this workflow handles committing, pushing, and opening the PR."
+
+      - name: Commit changes and open a PR
+        id: pr
+        if: steps.preflight.outputs.skip == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "has_pr=0" >> "$GITHUB_OUTPUT"
+            echo "no changes from Claude session 1"
+            exit 0
+          fi
+          summary="$RUNNER_TEMP/pr-summary.md"
+          if [ ! -s "$summary" ]; then
+            echo "session 1 left uncommitted changes but no summary file; aborting" >&2
+            exit 1
+          fi
+          title="$(head -n1 "$summary")"
+          git checkout -b "$BRANCH"
+          git add .ai-style-rules.md .github/instructions/*.instructions.md
+          git commit -m "$title"
+          git push -u origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" --title "$title" --body-file <(tail -n +2 "$summary")
+          number="$(gh pr view "$BRANCH" --json number --jq .number)"
+          echo "has_pr=1" >> "$GITHUB_OUTPUT"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Request Copilot review and wait for it
+        if: steps.pr.outputs.has_pr == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr="${{ steps.pr.outputs.number }}"
+          gh api "repos/${{ github.repository }}/pulls/$pr/requested_reviewers" \
+            -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
+          for i in $(seq 1 30); do
+            done_count="$(gh api "repos/${{ github.repository }}/pulls/$pr/reviews" \
+              --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length')"
+            [ "$done_count" -gt 0 ] && exit 0
+            sleep 30
+          done
+          echo "Copilot review did not land within 15 minutes; leaving PR #$pr open" >&2
+          exit 1
+
+      - name: Fetch Copilot's review for session 2
+        if: steps.pr.outputs.has_pr == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr="${{ steps.pr.outputs.number }}"
+          {
+            echo "## Reviews"
+            gh api "repos/${{ github.repository }}/pulls/$pr/reviews"
+            echo "## Review comments"
+            gh api "repos/${{ github.repository }}/pulls/$pr/comments"
+          } > "$RUNNER_TEMP/copilot-review.json"
+
+      - name: Address the review (Claude session 2)
+        if: steps.pr.outputs.has_pr == '1'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PLANGATE_DISABLED: "1"
+          GATEGUARD_DISABLED: "1"
+        run: |
+          set -euo pipefail
+          claude -p --dangerously-skip-permissions "You are running unattended in CI, continuing work on branch $BRANCH (already checked out). No user is available: never ask a question or wait for input. You have no GitHub token: don't run git or gh commands, and don't try to.
+
+          Read Copilot's completed review from the file \"$RUNNER_TEMP/copilot-review.json\" (already fetched: a JSON dump of the PR's reviews, then its review comments). Judge each finding against this repo's real conventions (.ai-style-rules.md, AGENTS.md, and whatever source the finding concerns), not generic style preference.
+
+          Fix the valid findings by editing files directly. Hard boundary: only .ai-style-rules.md and .github/instructions/*.instructions.md may change.
+
+          Write a file at \"$RUNNER_TEMP/deferred-findings.md\" listing each finding you did not act on, with a one-line reason (leave the file empty, or don't create it, if you acted on everything). Then stop -- a later step in this workflow handles committing, pushing, and commenting on the PR."
+
+      - name: Commit the review fix and comment on the PR
+        if: steps.pr.outputs.has_pr == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .ai-style-rules.md .github/instructions/*.instructions.md
+            git commit -m "Address Copilot review feedback on PR #$PR_NUMBER"
+            git push
+          fi
+          deferred="$RUNNER_TEMP/deferred-findings.md"
+          if [ -s "$deferred" ]; then
+            gh pr comment "$PR_NUMBER" --body-file "$deferred"
+          fi
+
+      - name: Guard -- the PR only touches the style-artifact allowlist
+        if: steps.pr.outputs.has_pr == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$BRANCH"
+          bad="$(git diff --name-only "origin/main...origin/$BRANCH" \
+            | grep -Ev '^(\.ai-style-rules\.md|\.github/instructions/[^/]+\.instructions\.md)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "PR touches files outside the style allowlist:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+
+      - name: Squash-merge and delete the branch
+        if: steps.pr.outputs.has_pr == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge "${{ steps.pr.outputs.number }}" --squash --delete-branch

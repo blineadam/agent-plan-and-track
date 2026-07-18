@@ -1,5 +1,5 @@
 ---
-applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,README.md,.github/instructions/**/*.md"
+applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md"
 excludeAgent: "cloud-agent"
 ---
 
@@ -7,9 +7,9 @@ excludeAgent: "cloud-agent"
 
 # Docs review instructions
 
-Applies to shared rule files, skill docs, agent docs, the README, and the
-generated Copilot review-instruction files themselves. See
-`.ai-style-rules.md` for the full convention set.
+Applies to shared rule files, skill docs, agent docs, `docs/` reference
+pages, the README, and the generated Copilot review-instruction files
+themselves. See `.ai-style-rules.md` for the full convention set.
 
 ## Tool-agnostic shared rules
 
@@ -45,6 +45,16 @@ generated Copilot review-instruction files themselves. See
   requirements, like humanizer's `## Task`, doesn't count as a second
   competing procedure). Flag a skill whose procedure is scattered across the
   file with no named section to anchor it.
+- A skill vendored wholesale from an external repo (e.g. `canvas-design`,
+  `frontend-design`, `theme-factory`, from `anthropics/skills`) must carry an
+  HTML comment right after its frontmatter naming the source URL, the exact
+  edits made (not a vague "lightly edited"), and pointing at a sibling
+  `LICENSE.txt` with the upstream license text. Flag a vendored skill missing
+  either the attribution comment or the `LICENSE.txt`, and flag a skill whose
+  license forbids redistribution (check the license text, don't assume) if
+  it's vendored under `skills/` at all rather than fetched live at install
+  time, the way `install-office-skills.sh` handles the restricted
+  `docx`/`pdf`/`pptx`/`xlsx` skills.
 
 ## Subagent definition files
 
@@ -98,3 +108,8 @@ generated Copilot review-instruction files themselves. See
 - Keep table cells to one line. Don't append a footnote paragraph after a
   table to hold nuance that doesn't fit a cell.
 - Prefer plain prose over dense nested bullets.
+- Exhaustive reference content (a full per-item table, a complete roster
+  with per-entry descriptions) belongs in its own page under `docs/`, one
+  topic per file, with README linking to it rather than inlining it. Flag a
+  README section that's grown into that shape as a candidate for extraction
+  instead of proposing further in-place trimming.

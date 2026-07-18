@@ -1,5 +1,5 @@
 ---
-applyTo: "hooks/**/*.js,hooks/**/*.json,**/*.sh,install.sh,install.ps1,.gitattributes,.github/workflows/*.yml"
+applyTo: "hooks/**/*.js,hooks/**/*.json,**/*.sh,install.sh,install.ps1,install-office-skills.ps1,.gitattributes,.github/workflows/*.yml"
 excludeAgent: "cloud-agent"
 ---
 
@@ -35,6 +35,18 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   denial is by design and must say so explicitly in the hook's own header
   comment (`plan-gate.js`, unlocked only by a `plan-and-track` Skill
   invocation). Flag a hook that denies repeatedly with no stated rationale.
+- A hook maintaining a counter or other state across concurrent
+  invocations (multiple `PreToolUse` calls can fire back to back in the
+  same session) must guard the read-check-write sequence with a lock, not
+  a plain read-then-write (`plan-gate.js`'s `withSessionLock`: an exclusive
+  lockfile, a bounded wait, stale-lock reclaim, and fail-open on any lock
+  error). Flag a new stateful counter with no such guard.
+- A hook that needs to know a file edit's resulting content (to lint it)
+  should simulate the edit in memory against the on-disk baseline, never
+  write a probe to disk, and skip the check entirely (fail open) rather
+  than guess when the simulation can't be exact (e.g. an `old_string` that
+  doesn't match). Flag a lint that writes a temp file to check content, or
+  that guesses at a result it can't derive exactly.
 
 ## Shell scripts
 
@@ -50,6 +62,10 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   ...) for a gate: those are assumed always present.
 - Use `mktemp -d` for scratch space with a matching `trap ... EXIT` cleanup.
 - Build JSON via `jq -n --arg` / `--argjson`, not string concatenation.
+- When a script shells out to a third-party CLI via `npx`, pin its exact
+  version (`skills@1.5.19`, not `skills@latest`) and check the CLI's own
+  minimum-runtime requirement before invoking it. Flag an unpinned `npx
+  <tool>@latest` in a new script.
 - `snake_case` for local variables and functions. Top-level script
   constants (computed-once paths, thresholds, config arrays) use
   `SCREAMING_SNAKE_CASE`, matching env-var-tunable settings.

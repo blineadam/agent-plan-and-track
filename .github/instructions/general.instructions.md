@@ -14,7 +14,8 @@ just a suggestion.
 
 ## Writing voice
 
-- No emoji anywhere: chat, docs, tables, commit messages, PR descriptions.
+- No emoji anywhere: chat, docs, tables, commit messages, PR descriptions,
+  PR comments.
 - No em dash character in prose. Use a comma, colon, or a separate sentence.
 - Natural, human tone. Not combative, not overly corrective, no listicle
   cadence unless a short list is genuinely the clearest format.
@@ -30,6 +31,11 @@ just a suggestion.
 - No AI self-attribution in commits or PRs: no `Co-Authored-By:` trailer
   naming an AI/tool, no "Generated with ..." footer, no other AI/tool
   self-reference in commit messages, PR titles, or PR bodies.
+- Flag a commit message, PR title/description, code comment, or release
+  note that names `tasks/todo.md`, `tasks/lessons.md`, or a todo.md batch
+  number (e.g. "Batch 12"). Those files are gitignored and local-only, so
+  the reference is a dead pointer for anyone without the author's working
+  tree; the change should be described on its own terms instead.
 
 ## Scope discipline
 
@@ -50,6 +56,14 @@ just a suggestion.
 - Flag a harder-to-reverse approach (schema change, destructive migration,
   forced push) chosen over a smaller, reversible one that would satisfy the
   same request.
+- Flag a PR whose description picks one reading of an ambiguous source
+  request without saying so: it should name the plausible interpretations
+  and which one the change takes, not resolve the ambiguity silently.
+- Flag a PR that edits a shared rule, setting, or generated config another
+  session or harness depends on (`rules/*.md`, hook wiring JSON, installer
+  defaults) with no rationale or approval trail in the description; these
+  should read as deliberate and reviewed, not a silent edit riding along
+  with unrelated work.
 
 ## Verification
 
@@ -61,3 +75,7 @@ just a suggestion.
   noting residual risk or what wasn't verified.
 - Flag an assertion about a third-party API, library, or product behavior
   with no cited source (a doc link or file reference) backing it.
+- Flag a claim of a file's origin or authorship (e.g. "hand-authored,"
+  "AI-generated") based only on the absence of a marker or header. Absence
+  is evidence of unknown provenance, not proof of a specific origin; the PR
+  should confirm it via `git log`/`git blame` or by asking, not infer it.
