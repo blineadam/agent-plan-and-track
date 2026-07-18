@@ -125,11 +125,9 @@ design and document-creation work rather than the coding workflow above:
 | **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults. | All 3 |
 | **`theme-factory`** | Applies one of ten curated color/font themes (or generates a new one) to a slide deck or other artifact for consistent styling. | All 3 |
 
-The source repo also has `docx`, `pdf`, `pptx`, and `xlsx` skills, but their
-license forbids redistributing them outside Anthropic's own Services, so this
-repo doesn't vendor them. `./install-office-skills.sh` (or `.ps1` on Windows)
-fetches those four live from anthropics/skills instead of copying them in;
-see [Install](#install).
+The source repo also has `docx`, `pdf`, `pptx`, and `xlsx` skills. Their
+license doesn't allow vendoring them here, so they're not in the table above:
+run the separate installer under [Install](#install) if you want them too.
 
 ## Model defaults
 
@@ -220,12 +218,22 @@ system. The installer deploys whatever is checked out: normally the latest
 `main`, but tagged releases (`vX.Y.Z`, on the Releases tab) are known-good
 snapshots you can pin with `git checkout v1.0.0` before installing.
 
-Optionally, `./install-office-skills.sh` (or `install-office-skills.ps1` on
-Windows) installs the `docx`/`pdf`/`pptx`/`xlsx` skills mentioned above. It's
-separate from the main installer since it needs `npx`/network access and
-shells out to the third-party [`skills`](https://github.com/vercel-labs/skills)
-CLI to fetch straight from anthropics/skills; it detects which of Claude
-Code, Codex, and Copilot are present and installs to those only.
+Want the `docx`, `pdf`, `pptx`, and `xlsx` skills too? Their license doesn't
+allow vendoring them in this repo, so they're not part of the install above.
+Run the separate installer instead:
+
+```sh
+./install-office-skills.sh              # macOS/Linux
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install-office-skills.ps1   # Windows
+```
+
+It detects which of Claude Code, Codex, and Copilot are on the machine and
+installs to those only, fetching straight from anthropics/skills via the
+third-party [`skills`](https://github.com/vercel-labs/skills) CLI (needs
+`npx`/network access).
 
 The installer is per-machine; each project still needs its own context. On
 first use in a new repository with Claude Code, run Claude's built-in `/init`,

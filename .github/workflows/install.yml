@@ -235,10 +235,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 failed with exit code $LASTEXITCODE" }
           .\install-office-skills.ps1   # rerun: must not fail merging over its own prior output
           if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 (rerun) failed with exit code $LASTEXITCODE" }
-          $H = $env:USERPROFILE
-          foreach ($h in @('.claude', '.agents', '.copilot')) {
+          $baseDir = $env:USERPROFILE
+          foreach ($harness in @('.claude', '.agents', '.copilot')) {
             foreach ($s in @('docx', 'pdf', 'pptx', 'xlsx')) {
-              $p = "$H\$h\skills\$s\SKILL.md"
+              $p = "$baseDir\$harness\skills\$s\SKILL.md"
               if (-not (Test-Path -LiteralPath $p)) { throw "missing $p" }
             }
           }
