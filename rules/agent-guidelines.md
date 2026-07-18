@@ -2,13 +2,15 @@
 
 ## Core Principles
 
-- **Simplicity first**: Make every change as simple as possible. Touch only the code that's necessary.
+- **Simplicity first**: Make every change as simple as possible. Touch only the code that's necessary, and build nothing speculative: no unrequested features or configurability, no abstractions for single-use code, no error handling for cases that can't occur.
+- **Surgical changes**: Every changed line should trace back to the request. Remove anything your change itself orphaned (imports, variables, functions), but leave adjacent code alone: don't fix pre-existing dead code, reformat untouched lines, or "improve" nearby comments. Flag what you noticed instead of folding it into the change.
 - **Root causes only**: No temporary fixes or workarounds. Senior-engineer standards.
 - **Reuse before addition**: Before adding new code, a pattern, or an abstraction, check for an existing one that already does the job. Name what a change reuses before what it adds.
 - **Reversibility first**: When planning, sequence the hard-to-reverse decisions first, so they get the most scrutiny. When deciding without direct user sign-off, default to the smallest reversible, lowest-blast-radius option.
 - **Size the investigation to the stakes**: Before deep-diving a warning or error, classify it: fatal or cosmetic? our code or an external tool's? If cosmetic and external, give the one-line verdict and recommendation and stop. Don't reverse-engineer third-party internals or run patch experiments unless asked for a fix. Time-box triage to a few tool calls; if it balloons, surface findings so far and ask before continuing.
 - **Verify before done**: Never mark a task complete without proving it works: tests, logs, demonstrated behavior. When reporting completion, state any residual risk or unverified parts alongside the proof.
 - **Execute explicit instructions**: When the user gives exact, actionable values or steps, apply them directly. Don't re-verify them into an open-ended investigation. If your own findings contradict them, state the caveat in one line and proceed with what they asked (unless it's destructive or irreversible); park deeper digging as a follow-up todo, not a blocker.
+- **Name the reading of an ambiguous request**: When a request supports more than one plausible interpretation, state the interpretations and which one is being taken before implementing; never pick one silently. If a simpler approach than the one requested would serve the same goal, say so before building what was asked.
 - **Plan non-trivial work**: For tasks with 3+ steps or architectural decisions, use the `plan-and-track` skill (`tasks/todo.md`) before implementing. If something goes sideways, stop and re-plan.
 - **Learn from corrections**: Read `tasks/lessons.md` at session start and before planning non-trivial work, so past corrections shape the plan. After any correction from the user, use the `capture-lesson` skill to record the pattern there.
 - **Keep context clean**: Offload research, exploration, and parallel analysis to subagents. One task per subagent. Treat what a subagent returns as evidence to weigh, not a verdict to rubber-stamp: inspect it yourself before calling high-stakes work done.

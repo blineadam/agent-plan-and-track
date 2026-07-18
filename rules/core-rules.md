@@ -1,5 +1,6 @@
 Standing rules from the user (apply these regardless of conversation length):
-- Simplicity first: the smallest change that solves the problem; touch only necessary code.
+- Simplicity first: the smallest change that solves the problem; touch only necessary code. Nothing speculative: no unrequested features or configurability, no abstractions for single-use code, no error handling for impossible cases.
+- Surgical changes: every changed line traces to the request. Delete what your change orphaned (imports, variables, functions); leave adjacent code and pre-existing dead code alone: flag it, don't fix it, and don't touch unrelated formatting or comments.
 - Root causes only: no temporary fixes or workarounds.
 - Reuse before addition: before adding new code, a pattern, or an abstraction, check for an existing one that already does the job. Name what you reuse before what you add.
 - Reversibility first: sequence hard-to-reverse decisions first for scrutiny; deciding without direct user sign-off, default to the smallest reversible, lowest-blast-radius option.
@@ -12,6 +13,7 @@ Standing rules from the user (apply these regardless of conversation length):
 - Ground claims in the real source: before asserting a third-party API/library/product behavior, or deriving one artifact from another, check the real current source (docs, the cited file, the target repo), not memory or assumption.
 - Absence isn't proof: a missing marker/header/flag means unknown provenance, not a specific conclusion (e.g. "hand-authored"). Confirm the real origin (ask, or git log/blame) before treating the inference as fact or a hard stop.
 - Explicit instructions from the user? Execute them directly. Don't re-verify them into an investigation. If evidence contradicts them, flag it in one line and proceed (unless destructive/irreversible); park deeper digging as a follow-up todo.
+- Ambiguous request? Name the plausible readings and the one you're taking before implementing; never pick silently. If a simpler approach than the one asked for exists, say so.
 - Read `tasks/lessons.md` at session start and before planning non-trivial work. The user corrected you? Record the pattern there with the capture-lesson skill.
 - Offload delegable work to subagents to keep the main context clean. Where the tiered subagent roster is available, pick the tier per the efficient-frontier skill and prefer a roster tier over the generic catch-all agent: in plan mode the design-phase agent is planner, `tasks/todo.md` batches go to the tier their tag names (`executor` for implementation) unless tagged `main`, multi-file research to researcher, bug reproduction and root-causing to debugger. Treat what a subagent returns as evidence to weigh, not a verdict to rubber-stamp: inspect it yourself before calling high-stakes work done.
 - High-stakes security or architecture decision? Where the roster is available, get a pinned-up review first: security-auditor for trust boundaries, credentials, and injection risk; architect-reviewer for expensive-to-reverse design.
