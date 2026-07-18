@@ -96,14 +96,18 @@ jobs:
           # own detection/dispatch logic deterministically. Reads --agent from its
           # own args and routes to the same directories the real skills CLI uses:
           # claude-code -> ~/.claude/skills, codex/github-copilot -> the shared
-          # ~/.agents/skills.
+          # ~/.agents/skills. Requires -g so a future regression that drops the
+          # global flag from the real script fails this test instead of passing.
           agent=""
+          global=false
           while [ $# -gt 0 ]; do
             case "$1" in
               --agent) agent="$2"; shift 2 ;;
+              -g) global=true; shift ;;
               *) shift ;;
             esac
           done
+          $global || { echo "stub: expected -g (global install) but it was not passed" >&2; exit 1; }
           case "$agent" in
             claude-code) dest="$HOME/.claude/skills" ;;
             codex|github-copilot) dest="$HOME/.agents/skills" ;;
@@ -239,19 +243,33 @@ jobs:
           # own detection/dispatch logic deterministically. Reads --agent from its
           # own args and routes to the same directories the real skills CLI uses:
           # claude-code -> %USERPROFILE%\.claude\skills, codex/github-copilot -> the
-          # shared %USERPROFILE%\.agents\skills.
+          # shared %USERPROFILE%\.agents\skills. Requires -g so a future regression
+          # that drops the global flag from the real script fails this test instead
+          # of passing.
           @'
           @echo off
           set AGENT=
+          set GLOBAL=0
           :parse
           if "%~1"=="" goto afterparse
           if "%~1"=="--agent" (
             set AGENT=%~2
             shift
+            shift
+            goto parse
+          )
+          if "%~1"=="-g" (
+            set GLOBAL=1
+            shift
+            goto parse
           )
           shift
           goto parse
           :afterparse
+          if not "%GLOBAL%"=="1" (
+            echo stub: expected -g (global install) but it was not passed 1>&2
+            exit /b 1
+          )
           if "%AGENT%"=="claude-code" (
             set DEST=%USERPROFILE%\.claude\skills
           ) else if "%AGENT%"=="codex" (
