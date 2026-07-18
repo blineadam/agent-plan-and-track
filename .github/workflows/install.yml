@@ -81,6 +81,34 @@ jobs:
           node skills/context-budget/scripts/scan-context.js ./skills >/dev/null
           node skills/rules-distill/scripts/scan-rules.js >/dev/null
           node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
+      - name: Office skills installer (stubbed fetch, no network)
+        run: |
+          set -euo pipefail
+          stub_bin="$RUNNER_TEMP/office-stub-bin"
+          mkdir -p "$stub_bin"
+          cat > "$stub_bin/npx" <<'STUB'
+          #!/usr/bin/env bash
+          # Fakes `npx skills add ...`'s output shape without hitting the network, so
+          # this test exercises install-office-skills.sh's own detection/fetch/fan-out/
+          # cleanup logic deterministically.
+          for s in docx pdf pptx xlsx; do
+            mkdir -p ".agents/skills/$s"
+            printf -- '---\nname: %s\ndescription: stub\n---\n# stub\n' "$s" > ".agents/skills/$s/SKILL.md"
+          done
+          STUB
+          chmod +x "$stub_bin/npx"
+          printf '#!/usr/bin/env bash\n' > "$stub_bin/claude"; chmod +x "$stub_bin/claude"
+          printf '#!/usr/bin/env bash\n' > "$stub_bin/codex"; chmod +x "$stub_bin/codex"
+          export HOME="$RUNNER_TEMP/scratch-home-office"; mkdir -p "$HOME/.copilot"
+          export PATH="$stub_bin:$PATH"
+          ./install-office-skills.sh
+          ./install-office-skills.sh   # rerun: must not fail merging over its own prior output
+          for h in .claude .agents .copilot; do
+            for s in docx pdf pptx xlsx; do
+              test -f "$HOME/$h/skills/$s/SKILL.md" \
+                || { echo "FAIL: missing $HOME/$h/skills/$s/SKILL.md"; exit 1; }
+            done
+          done
 
   windows:
     runs-on: windows-latest
@@ -182,3 +210,35 @@ jobs:
           node skills\context-budget\scripts\scan-context.js .\skills | Out-Null; Assert-Node 'scan-context'
           node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
           node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'
+      - name: Office skills installer (stubbed fetch, no network)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stubBin = Join-Path $env:RUNNER_TEMP 'office-stub-bin'
+          New-Item -ItemType Directory -Force -Path $stubBin | Out-Null
+          # Fakes `npx skills add ...`'s output shape without hitting the network, so
+          # this test exercises install-office-skills.ps1's own detection/fetch/
+          # fan-out/cleanup logic deterministically.
+          @'
+          @echo off
+          for %%s in (docx pdf pptx xlsx) do (
+            mkdir ".agents\skills\%%s" 2>nul
+            echo stub> ".agents\skills\%%s\SKILL.md"
+          )
+          '@ | Set-Content -Path (Join-Path $stubBin 'npx.cmd') -Encoding ascii
+          '@echo off' | Set-Content -Path (Join-Path $stubBin 'claude.cmd') -Encoding ascii
+          '@echo off' | Set-Content -Path (Join-Path $stubBin 'codex.cmd') -Encoding ascii
+          $env:PATH = "$stubBin;$env:PATH"
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-office"
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.copilot" | Out-Null
+          .\install-office-skills.ps1
+          if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 failed with exit code $LASTEXITCODE" }
+          .\install-office-skills.ps1   # rerun: must not fail merging over its own prior output
+          if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 (rerun) failed with exit code $LASTEXITCODE" }
+          $baseDir = $env:USERPROFILE
+          foreach ($harness in @('.claude', '.agents', '.copilot')) {
+            foreach ($s in @('docx', 'pdf', 'pptx', 'xlsx')) {
+              $p = "$baseDir\$harness\skills\$s\SKILL.md"
+              if (-not (Test-Path -LiteralPath $p)) { throw "missing $p" }
+            }
+          }

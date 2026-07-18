@@ -23,6 +23,7 @@ There is no build/lint/test suite in the traditional sense. The relevant command
 - `node skills/context-budget/scripts/scan-context.js`: estimate always-on context cost (skills + instruction files + rules digest) and flag oversized components.
 - `node skills/rules-distill/scripts/scan-rules.js` / `scan-skills.js`: index this repo's rules and inventory installed skills, feeding a `rules-distill` run.
 - To sanity-check a change by hand: install it, start a fresh session in the target harness, and ask "what are your standing rules?"
+- `./install-office-skills.sh` (or `install-office-skills.ps1` on Windows): opt-in, detects which of Claude Code, Codex, and Copilot are present and fetches the `docx`/`pdf`/`pptx`/`xlsx` skills live from anthropics/skills for those only, via `npx skills add` (needs network/npx). Separate from `install.sh` because these 4 skills' upstream license forbids vendoring them in this repo.
 
 ## Architecture
 
