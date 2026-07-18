@@ -161,3 +161,11 @@ it's Claude-only, add it to `CLAUDE_ONLY_SKILLS` in `install.sh`.
 For per-harness quirks (how each tool loads the digest, restart
 requirements, known caveats), see
 [docs/models.md](docs/models.md#per-tool-notes).
+
+## Nightly style refresh
+
+A scheduled workflow keeps this repo's own style artifacts current: it
+re-runs `/inherit-legacy-style` and `/copilot-review-instructions` against
+`main`, opens a PR with any drift, has Copilot review it, and squash-merges
+once the review is addressed. Details are in the header of
+[`.github/workflows/nightly-style-refresh.yml`](.github/workflows/nightly-style-refresh.yml).

@@ -1,0 +1,179 @@
+name: nightly style refresh
+
+# Runs unattended nightly against main: a headless Claude Code session
+# re-runs /inherit-legacy-style then /copilot-review-instructions (see
+# skills/inherit-legacy-style and skills/copilot-review-instructions), opens
+# a PR if either produced drift, requests a GitHub Copilot review, has a
+# second headless session triage and fix valid findings, then squash-merges
+# behind a mechanical diff-allowlist guard. That guard -- the PR may only
+# touch .ai-style-rules.md and .github/instructions/*.instructions.md -- is
+# the actual safety rail here, independent of the permission mode below.
+#
+# Permission mode: sessions run with --dangerously-skip-permissions (fully
+# unattended, no human to approve tool calls). Anthropic's own docs recommend
+# `dontAsk` mode plus an explicit allowlist for CI instead, since bypass
+# offers no protection against prompt injection; bypass is used here anyway
+# because it was explicitly requested, with the diff-allowlist guard as the
+# actual backstop regardless of permission mode.
+#
+# Review-wait is a bounded poll loop in this same job (not a second
+# pull_request_review-triggered workflow): a PR opened with the default
+# GITHUB_TOKEN doesn't trigger other workflow runs, so an event-driven split
+# would silently never fire. If the poll step fails (no Copilot review within
+# 15 minutes), the run goes red and the PR is left open for a human -- that
+# is the intended degrade path, not a bug.
+#
+# Reviewer-request/poll/merge are mechanical bash, not Claude actions: they
+# need zero judgment and a script can't pick the wrong merge strategy.
+# Everything requiring judgment (what changed, whether a review comment is
+# valid) runs inside a Claude session instead.
+#
+# install.sh wires this repo's own PreToolUse hooks into the runner's
+# ~/.claude/settings.json; PLANGATE_DISABLED and GATEGUARD_DISABLED are set
+# for every Claude step below because both hooks are designed to block an
+# unattended session (plan-gate expects a plan-and-track Skill invocation
+# that never happens headlessly; gateguard expects a human retry).
+#
+# A stuck PR from a prior night (poll timeout, or a run that failed after
+# opening the PR) makes the next night's preflight step skip entirely until
+# a human closes or merges it.
+
+on:
+  schedule:
+    - cron: "43 5 * * *" # off-peak minute; GitHub delays exact top-of-hour crons
+  workflow_dispatch: # manual trigger for testing
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: nightly-style-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    if: github.repository == 'blineadam/agent-plan-and-track'
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: bot/style-refresh-${{ github.run_id }}
+      CLAUDE_CODE_VERSION: "2.1.214"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0 # inherit-legacy-style diffs recorded-fingerprint..HEAD; shallow breaks that
+
+      - name: Preflight -- skip if a prior nightly PR is still open, or nothing changed
+        id: preflight
+        run: |
+          set -euo pipefail
+          open="$(gh pr list --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("bot/style-refresh-"))] | length')"
+          if [ "$open" != "0" ]; then
+            echo "a prior nightly PR is still open; skipping"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          fp="$(sed -n 's/^Commit fingerprint: `\([0-9a-f]*\)`.*/\1/p' .ai-style-rules.md)"
+          if [ -n "$fp" ] && [ "$(git rev-list "$fp"..HEAD --count)" = "0" ]; then
+            echo "no commits since style fingerprint $fp; skipping"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=0" >> "$GITHUB_OUTPUT"
+
+      - name: Install Claude Code CLI
+        if: steps.preflight.outputs.skip == '0'
+        run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      - name: Deploy repo skills and hooks to the runner's HOME
+        if: steps.preflight.outputs.skip == '0'
+        run: ./install.sh all
+
+      - name: Configure git identity
+        if: steps.preflight.outputs.skip == '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Refresh style artifacts and open a PR (Claude session 1)
+        if: steps.preflight.outputs.skip == '0'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PLANGATE_DISABLED: "1"
+          GATEGUARD_DISABLED: "1"
+        run: |
+          set -euo pipefail
+          claude -p --dangerously-skip-permissions "You are running unattended in CI on a fresh checkout of main. No user is available: never ask a question or wait for input, and never invent an answer to a question you'd normally ask a user -- defer it instead as described below.
+
+          Run /inherit-legacy-style. It will detect incremental-update mode itself. If a strong-signal conflict would normally trigger its one-question-at-a-time protocol, do not guess: leave that convention uncaptured and note it under a 'Deferred conflicts' heading you'll include in the PR body later. Decline its offer to add soft/hard persistence wiring (this repo already references .ai-style-rules.md from AGENTS.md). If it offers to invoke /copilot-review-instructions, accept; otherwise run /copilot-review-instructions yourself afterward -- both of its preconditions already hold in this repo.
+
+          Hard boundary: only .ai-style-rules.md and .github/instructions/*.instructions.md may change. If anything else changed, revert it before committing.
+
+          If \`git status --porcelain\` is empty when both skills are done, print the single line NO_CHANGES and stop -- do not create a branch, commit, or PR.
+
+          Otherwise: run \`git checkout -b \"$BRANCH\"\`, commit the changes (describe the actual drift captured; do not add any AI/tool attribution trailer or footer to the commit message), run \`git push -u origin \"$BRANCH\"\`, then run \`gh pr create --base main --head \"$BRANCH\"\` with a title describing the change and a body summarizing the drift plus any deferred conflicts (also with no AI/tool self-attribution anywhere in the title or body). Do not request any reviewers and do not merge -- a later step in this workflow handles both."
+
+      - name: Detect whether a PR was opened
+        id: pr
+        if: steps.preflight.outputs.skip == '0'
+        run: |
+          set -euo pipefail
+          if n="$(gh pr view "$BRANCH" --json number --jq .number 2>/dev/null)"; then
+            echo "has_pr=1" >> "$GITHUB_OUTPUT"
+            echo "number=$n" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pr=0" >> "$GITHUB_OUTPUT"
+            echo "no PR opened (no drift tonight)"
+          fi
+
+      - name: Request Copilot review and wait for it
+        if: steps.pr.outputs.has_pr == '1'
+        run: |
+          set -euo pipefail
+          pr="${{ steps.pr.outputs.number }}"
+          gh api "repos/${{ github.repository }}/pulls/$pr/requested_reviewers" \
+            -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
+          for i in $(seq 1 30); do
+            done_count="$(gh api "repos/${{ github.repository }}/pulls/$pr/reviews" \
+              --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length')"
+            [ "$done_count" -gt 0 ] && exit 0
+            sleep 30
+          done
+          echo "Copilot review did not land within 15 minutes; leaving PR #$pr open" >&2
+          exit 1
+
+      - name: Address the review (Claude session 2)
+        if: steps.pr.outputs.has_pr == '1'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PLANGATE_DISABLED: "1"
+          GATEGUARD_DISABLED: "1"
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          claude -p --dangerously-skip-permissions "You are running unattended in CI, continuing work on PR #$PR_NUMBER on branch $BRANCH (already checked out). No user is available: never ask a question or wait for input.
+
+          Read the completed Copilot review: \`gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews\` and \`gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments\`. Judge each finding against this repo's real conventions (.ai-style-rules.md, AGENTS.md, and whatever source the finding concerns), not generic style preference.
+
+          Fix the valid findings. Hard boundary: only .ai-style-rules.md and .github/instructions/*.instructions.md may change. Commit (no AI/tool attribution) and push to the existing branch. Then post one PR comment (\`gh pr comment $PR_NUMBER\`) listing each finding you did not act on, with a one-line reason. Do not merge -- a later step in this workflow handles that."
+
+      - name: Guard -- the PR only touches the style-artifact allowlist
+        if: steps.pr.outputs.has_pr == '1'
+        run: |
+          set -euo pipefail
+          git fetch origin "$BRANCH"
+          bad="$(git diff --name-only "origin/main...origin/$BRANCH" \
+            | grep -Ev '^(\.ai-style-rules\.md|\.github/instructions/[^/]+\.instructions\.md)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "PR touches files outside the style allowlist:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+
+      - name: Squash-merge and delete the branch
+        if: steps.pr.outputs.has_pr == '1'
+        run: gh pr merge "${{ steps.pr.outputs.number }}" --squash --delete-branch
