@@ -31,6 +31,61 @@ and both have found and fixed real gaps in past runs. Three-harness
 portability is most of the installer's bulk and none of the session
 behavior, so it doesn't add runtime cost once a session starts.
 
+## Install
+
+```sh
+git clone https://github.com/blineadam/agent-plan-and-track.git
+cd agent-plan-and-track
+./install.sh all        # macOS/Linux; or: claude | copilot | codex
+./install-office-skills.sh   #optional `docx`, `pdf`, `pptx`, and `xlsx` skills, seperate for license reason
+```
+
+On Windows, run the PowerShell installer instead (same targets):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 all
+powershell -ExecutionPolicy Bypass -File install-office-skills.ps1
+```
+
+You can safely run the installer again at any time. It updates the files managed by this repo while keeping your own changes.
+
+* Skills and hooks are updated in each tool’s user settings. If an existing file is different, a `.bak` backup is created first.
+* Instruction files include a clearly marked managed section. Reinstalling only updates that section and leaves anything you added outside it unchanged. Files without the managed section are not modified.
+* Model settings are updated to the repo defaults each time. Set `PT_KEEP_MODEL=1` to keep your current model choice.
+* Claude and Codex subagents are also kept in sync with the repo. 
+
+The macOS and Linux installer requires `jq`. The Windows PowerShell installer does not.
+
+Node.js is required for the installed hooks, so both installers check for it before making changes. If it is missing, they stop and show the appropriate install command, such as:
+
+```bash
+brew install node
+```
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+### Updaetes
+
+To update later, run `git pull`, then rerun the installer for your operating
+system. The installer deploys whatever is checked out: normally the latest
+`main`, but tagged releases (`vX.Y.Z`, on the Releases tab) are known-good
+snapshots you can pin with `git checkout v1.0.0` before installing.
+
+### First Run In A New Project After Install
+
+The installer is per-machine; each project still needs its own context. On
+first use in a new repository with Claude Code, run Claude's built-in `/init`.
+
+Then run `/inherit-legacy-style` in Codex, Claude Code, or Copilot. 
+If the project is hosted on GitHub, also run `/copilot-review-instructions`.
+
+```text
+/init                         # generate the project's own CLAUDE.md
+/inherit-legacy-style         # capture its implicit conventions in .ai-style-rules.md
+/copilot-review-instructions  # if on GitHub: teach Copilot's PR review those conventions
+```
+
 ## The everyday workflow
 
 These are the ones you hit every session, roughly in the order you hit them:
@@ -181,72 +236,6 @@ level and permissions carry over there, not the model tier.
 Claude picks the right agent for the job automatically, or you can call one by
 name ("use the researcher agent to…"). Copilot has no concept of subagents, so
 these only install to Claude and Codex.
-
-## Install
-
-```sh
-git clone https://github.com/blineadam/agent-plan-and-track.git
-cd agent-plan-and-track
-./install.sh all        # macOS/Linux; or: claude | copilot | codex
-./install-office-skills.sh   #optional `docx`, `pdf`, `pptx`, and `xlsx` skills
-```
-
-On Windows, run the PowerShell installer instead (same targets):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install.ps1 all
-powershell -ExecutionPolicy Bypass -File install-office-skills.ps1
-```
-
-Idempotent. Re-runs re-assert the repo's intended state; your own content is kept:
-
-- **Skills, digest, and hooks** are copied/merged into each tool's user config;
-  a differing existing digest or Copilot hook is backed up to `*.bak`.
-- **Instruction files** get the repo content inside a marker-delimited managed
-  block: re-installs update only that block, and anything you add outside it is
-  never touched. A file without the markers is left alone entirely.
-- **Model defaults** are repo-owned and overwritten on each install (set
-  `PT_KEEP_MODEL=1` to keep a machine's own model choice). The Claude
-  **subagents** are repo-owned like skills, kept in sync on each install
-  (customize them in the repo, not in `~/.claude/agents/`).
-
-The macOS/Linux installer requires `jq`; `install.ps1` does not. Both installers
-configure hooks that require Node.js at runtime, so they check for it first and
-exit with an installation suggestion, such as `brew install node` or
-`winget install OpenJS.NodeJS.LTS`, before writing any files.
-
-To update later, run `git pull`, then rerun the installer for your operating
-system. The installer deploys whatever is checked out: normally the latest
-`main`, but tagged releases (`vX.Y.Z`, on the Releases tab) are known-good
-snapshots you can pin with `git checkout v1.0.0` before installing.
-
-Want the `docx`, `pdf`, `pptx`, and `xlsx` skills too? Their license doesn't
-allow vendoring them in this repo, so they're not part of the install above.
-Run the separate installer instead:
-
-```sh
-./install-office-skills.sh              # macOS/Linux
-```
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install-office-skills.ps1   # Windows
-```
-
-It detects which of Claude Code, Codex, and Copilot are on the machine and
-installs to those only, fetching straight from anthropics/skills via the
-third-party [`skills`](https://github.com/vercel-labs/skills) CLI (needs
-`npx`/network access).
-
-The installer is per-machine; each project still needs its own context. On
-first use in a new repository with Claude Code, run Claude's built-in `/init`,
-then `/inherit-legacy-style`, and `/copilot-review-instructions` too if the
-project is on GitHub:
-
-```text
-/init                         # generate the project's own CLAUDE.md
-/inherit-legacy-style         # capture its implicit conventions in .ai-style-rules.md
-/copilot-review-instructions  # if on GitHub: teach Copilot's PR review those conventions
-```
 
 ## Layout
 
