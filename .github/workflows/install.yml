@@ -10,6 +10,9 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   unix:
     runs-on: ubuntu-latest
