@@ -125,6 +125,10 @@ design and document-creation work rather than the coding workflow above:
 | **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults. | All 3 |
 | **`theme-factory`** | Applies one of ten curated color/font themes (or generates a new one) to a slide deck or other artifact for consistent styling. | All 3 |
 
+The source repo also has `docx`, `pdf`, `pptx`, and `xlsx` skills. Their
+license doesn't allow vendoring them here, so they're not in the table above:
+run the separate installer under [Install](#install) if you want them too.
+
 ## Model defaults
 
 The installer sets a sensible model default for each harness so routine work
@@ -184,12 +188,14 @@ these only install to Claude and Codex.
 git clone https://github.com/blineadam/agent-plan-and-track.git
 cd agent-plan-and-track
 ./install.sh all        # macOS/Linux; or: claude | copilot | codex
+./install-office-skills.sh   #optional `docx`, `pdf`, `pptx`, and `xlsx` skills
 ```
 
 On Windows, run the PowerShell installer instead (same targets):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1 all
+powershell -ExecutionPolicy Bypass -File install-office-skills.ps1
 ```
 
 Idempotent. Re-runs re-assert the repo's intended state; your own content is kept:
@@ -213,6 +219,23 @@ To update later, run `git pull`, then rerun the installer for your operating
 system. The installer deploys whatever is checked out: normally the latest
 `main`, but tagged releases (`vX.Y.Z`, on the Releases tab) are known-good
 snapshots you can pin with `git checkout v1.0.0` before installing.
+
+Want the `docx`, `pdf`, `pptx`, and `xlsx` skills too? Their license doesn't
+allow vendoring them in this repo, so they're not part of the install above.
+Run the separate installer instead:
+
+```sh
+./install-office-skills.sh              # macOS/Linux
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install-office-skills.ps1   # Windows
+```
+
+It detects which of Claude Code, Codex, and Copilot are on the machine and
+installs to those only, fetching straight from anthropics/skills via the
+third-party [`skills`](https://github.com/vercel-labs/skills) CLI (needs
+`npx`/network access).
 
 The installer is per-machine; each project still needs its own context. On
 first use in a new repository with Claude Code, run Claude's built-in `/init`,
