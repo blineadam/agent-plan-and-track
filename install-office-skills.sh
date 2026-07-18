@@ -21,8 +21,22 @@ set -euo pipefail
 
 SOURCE_REPO="https://github.com/anthropics/skills"
 SKILLS=(docx pdf pptx xlsx)
+# Pinned, reviewed version of the third-party fetch tool (vercel-labs/skills),
+# which itself declares a Node >=22.20.0 engine requirement.
+SKILLS_CLI="skills@1.5.19"
+SKILLS_CLI_MIN_NODE="22.20.0"
 
 command -v npx >/dev/null 2>&1 || { echo "error: npx is required (install Node.js)" >&2; exit 1; }
+node -e '
+  const [have, want] = process.argv.slice(1).map(v => v.split(".").map(Number));
+  let ok = true;
+  for (let i = 0; i < 3; i++) {
+    if (have[i] > want[i]) break;
+    if (have[i] < want[i]) { ok = false; break; }
+  }
+  process.exit(ok ? 0 : 1);
+' "$(node --version | sed 's/^v//')" "$SKILLS_CLI_MIN_NODE" \
+  || { echo "error: $SKILLS_CLI requires Node >=$SKILLS_CLI_MIN_NODE (found $(node --version))" >&2; exit 1; }
 
 have_claude=false have_codex=false have_copilot=false
 command -v claude >/dev/null 2>&1 && have_claude=true
@@ -40,7 +54,7 @@ trap 'rm -rf "$scratch"' EXIT
 skill_args=()
 for s in "${SKILLS[@]}"; do skill_args+=(--skill "$s"); done
 
-(cd "$scratch" && npx --yes skills add "$SOURCE_REPO" "${skill_args[@]}" --agent codex --copy -y)
+(cd "$scratch" && npx --yes "$SKILLS_CLI" add "$SOURCE_REPO" "${skill_args[@]}" --agent codex --copy -y)
 
 fetched="$scratch/.agents/skills"
 [ -d "$fetched" ] || { echo "error: fetch did not produce $fetched" >&2; exit 1; }
