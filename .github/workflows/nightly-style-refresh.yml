@@ -73,6 +73,17 @@ name: nightly style refresh
 # A stuck PR from a prior night (poll timeout, or a run that failed after
 # opening the PR) makes the next night's preflight step skip entirely until
 # a human closes or merges it.
+#
+# Two checkpoints track different things. .ai-style-rules.md's own commit
+# fingerprint only advances when /inherit-legacy-style finds real convention
+# drift to record, so a commit that touches source but produces none (a
+# typo fix, a version bump) leaves it stuck behind that commit indefinitely.
+# NIGHTLY_STYLE_LAST_CHECKED_SHA, a GitHub Actions repository variable set
+# by the job's last step, tracks something narrower instead: the last
+# commit a completed run examined at all, drift or not. It lives outside
+# git history because the main-branch ruleset requires a PR for every
+# change, including a fingerprint-only bump, and opening one every quiet
+# night would be worse than the problem it fixes.
 
 on:
   schedule:
@@ -108,6 +119,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           open="$(gh pr list --state open --json headRefName \
             --jq '[.[] | select(.headRefName | startswith("bot/style-refresh-"))] | length')"
           if [ "$open" != "0" ]; then
@@ -115,15 +127,18 @@ jobs:
             echo "skip=1" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          fp="$(sed -n 's/^Commit fingerprint: `\([0-9a-f]*\)`.*/\1/p' .ai-style-rules.md)"
-          if [ -n "$fp" ]; then
+          checkpoint="${{ vars.NIGHTLY_STYLE_LAST_CHECKED_SHA }}"
+          if [ -z "$checkpoint" ]; then
+            checkpoint="$(sed -n 's/^Commit fingerprint: `\([0-9a-f]*\)`.*/\1/p' .ai-style-rules.md)"
+          fi
+          if [ -n "$checkpoint" ]; then
             # exclude commits that only touch the style-artifact allowlist: the
-            # bot's own prior squash commit always advances HEAD past $fp, so
-            # without this exclusion the skip condition below could never fire
+            # bot's own prior squash commit always advances HEAD past $checkpoint,
+            # so without this exclusion the skip condition below could never fire
             # again after the first successful refresh
-            count="$(git rev-list "$fp"..HEAD --count -- . ':!.ai-style-rules.md' ':!.github/instructions')"
+            count="$(git rev-list "$checkpoint"..HEAD --count -- . ':!.ai-style-rules.md' ':!.github/instructions')"
             if [ "$count" = "0" ]; then
-              echo "no source commits since style fingerprint $fp; skipping"
+              echo "no source commits since checkpoint $checkpoint; skipping"
               echo "skip=1" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -334,3 +349,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: gh pr merge "${{ steps.pr.outputs.number }}" --squash --delete-branch
+
+      - name: Advance the run checkpoint to the examined HEAD
+        if: steps.preflight.outputs.skip == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: gh variable set NIGHTLY_STYLE_LAST_CHECKED_SHA --body "${{ steps.preflight.outputs.head_sha }}"
