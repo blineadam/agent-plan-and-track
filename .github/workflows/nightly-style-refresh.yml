@@ -5,22 +5,48 @@ name: nightly style refresh
 # skills/inherit-legacy-style and skills/copilot-review-instructions), a
 # mechanical step opens a PR if either produced drift, requests a GitHub
 # Copilot review, a second headless session triages findings and edits
-# files, a mechanical step commits that fix and comments on the PR, then a
-# mechanical step squash-merges behind a diff-allowlist guard.
+# files, a mechanical step commits that fix and comments on the PR, a
+# mechanical step resolves every review thread and waits for the PR's
+# required checks, then a mechanical step squash-merges behind a
+# diff-allowlist guard.
 #
-# GH_TOKEN is deliberately not in job-level env. Neither Claude session ever
-# holds it: each runs with --dangerously-skip-permissions but no ability to
-# push, open a PR, or call the GitHub API, so prompt-injected repository
-# content it reads can change files in the working tree but can't use `gh`
-# or `git push` to touch anything else. Only the mechanical bash steps
-# (preflight, commit-and-open-PR, review-request/poll, fetch-review,
-# commit-fix-and-comment, guard, merge) declare GH_TOKEN themselves. A
+# Two tokens are in play. The GH_TOKEN secret, a repo-scoped personal
+# access token, is declared by name on every step that writes to GitHub:
+# opening the PR, pushing the refresh commit and the review-fix commit,
+# requesting the Copilot review, resolving review threads, and the
+# squash-merge. That split exists because the org's workflow settings
+# block the default GITHUB_TOKEN from creating pull requests, and because
+# events performed with the default GITHUB_TOKEN don't trigger other
+# workflow runs (workflow_dispatch and repository_dispatch are the only
+# exceptions: https://docs.github.com/en/actions/using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-workflow),
+# which would starve the PR of the CI checks the merge step later waits
+# on. The default token is kept on the two read-only steps (preflight,
+# fetch-review) to minimize scope. Neither Claude session ever holds
+# either token: each runs with --dangerously-skip-permissions but no
+# ability to push, open a PR, or call the GitHub API, so prompt-injected
+# repository content it reads can change files in the working tree but
+# can't use `gh` or `git push` to touch anything else. What actually keeps
+# both sessions credential-free is checkout's persist-credentials flag,
+# set to false below, not the token scoping by itself: checkout's own
+# default (persist-credentials: true) would otherwise configure the
+# default token for git's use, stored in a file under $RUNNER_TEMP as of
+# actions/checkout v6+ rather than in .git/config
+# (https://github.com/actions/checkout#readme), reachable by both sessions
+# regardless of which token any later step declares in its own env. A
 # Claude session hands its output to the next mechanical step as a plain
 # file under $RUNNER_TEMP (outside the git working tree, so it can never
-# land in a commit) rather than acting on GitHub directly. The diff-allowlist
-# guard -- the PR may only touch .ai-style-rules.md and
-# .github/instructions/*.instructions.md -- is a second, independent backstop
-# on top of that token scoping.
+# land in a commit) rather than acting on GitHub directly. The
+# diff-allowlist guard -- the PR may only touch .ai-style-rules.md and
+# .github/instructions/*.instructions.md -- is a second, independent
+# backstop on top of that token scoping.
+#
+# Resolve Copilot review threads runs before the merge attempt because the
+# main-branch ruleset requires every review thread formally resolved (the
+# GraphQL resolveReviewThread mutation), not just replied to. Wait for
+# required checks runs after the guard and before the merge because the
+# review-fix push emits its own pull_request: synchronize event, which
+# re-triggers CI on the new head SHA, and the merge step must not race
+# ahead of that run finishing.
 #
 # Permission mode: sessions run with --dangerously-skip-permissions (fully
 # unattended, no human to approve tool calls). Anthropic's own docs recommend
@@ -54,8 +80,8 @@ on:
   workflow_dispatch: # manual trigger for testing
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: nightly-style-refresh
@@ -65,7 +91,7 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     if: github.repository == 'blineadam/agent-plan-and-track'
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       BRANCH: bot/style-refresh-${{ github.run_id }}
       CLAUDE_CODE_VERSION: "2.1.214"
@@ -74,6 +100,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0 # inherit-legacy-style diffs recorded-fingerprint..HEAD; shallow breaks that
+          persist-credentials: false
 
       - name: Preflight -- skip if a prior nightly PR is still open, or nothing changed
         id: preflight
@@ -139,7 +166,7 @@ jobs:
         id: pr
         if: steps.preflight.outputs.skip == '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "$(git status --porcelain)" ]; then
@@ -156,7 +183,7 @@ jobs:
           git checkout -b "$BRANCH"
           git add .ai-style-rules.md .github/instructions/*.instructions.md
           git commit -m "$title"
-          git push -u origin "$BRANCH"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
           gh pr create --base main --head "$BRANCH" --title "$title" --body-file <(tail -n +2 "$summary")
           number="$(gh pr view "$BRANCH" --json number --jq .number)"
           echo "has_pr=1" >> "$GITHUB_OUTPUT"
@@ -165,7 +192,7 @@ jobs:
       - name: Request Copilot review and wait for it
         if: steps.pr.outputs.has_pr == '1'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
           pr="${{ steps.pr.outputs.number }}"
@@ -213,24 +240,45 @@ jobs:
       - name: Commit the review fix and comment on the PR
         if: steps.pr.outputs.has_pr == '1'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
           set -euo pipefail
           if [ -n "$(git status --porcelain)" ]; then
             git add .ai-style-rules.md .github/instructions/*.instructions.md
             git commit -m "Address Copilot review feedback on PR #$PR_NUMBER"
-            git push
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
           fi
           deferred="$RUNNER_TEMP/deferred-findings.md"
           if [ -s "$deferred" ]; then
             gh pr comment "$PR_NUMBER" --body-file "$deferred"
           fi
 
-      - name: Guard -- the PR only touches the style-artifact allowlist
+      - name: Resolve Copilot review threads
         if: steps.pr.outputs.has_pr == '1'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          pr="${{ steps.pr.outputs.number }}"
+          # Scoped to threads Copilot itself opened: resolving a thread a human
+          # reviewer left while this unattended run was in flight would satisfy
+          # the ruleset's required_review_thread_resolution rule without the
+          # feedback ever having been addressed.
+          ids="$(gh api graphql \
+            -f query='query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
+                reviewThreads(first: 100) { nodes { id isResolved comments(first: 1) { nodes { author { login } } } } } } } }' \
+            -f owner="${{ github.repository_owner }}" -f repo="${GITHUB_REPOSITORY#*/}" -F number="$pr" \
+            --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | select(.comments.nodes[0].author.login == "copilot-pull-request-reviewer") | .id')"
+          for id in $ids; do
+            gh api graphql \
+              -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
+              -f id="$id"
+          done
+
+      - name: Guard -- the PR only touches the style-artifact allowlist
+        if: steps.pr.outputs.has_pr == '1'
         run: |
           set -euo pipefail
           git fetch origin "$BRANCH"
@@ -242,8 +290,47 @@ jobs:
             exit 1
           fi
 
+      - name: Wait for required checks on the PR head
+        if: steps.pr.outputs.has_pr == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          pr="${{ steps.pr.outputs.number }}"
+          # This repo has no branch-protection-level required status checks
+          # (`gh pr checks --required` errors "no required checks reported"
+          # for every PR here; only the ruleset's thread-resolution and
+          # code-scanning rules gate the merge). mergeStateStatus is GitHub's
+          # own authoritative merge-readiness signal, so poll that instead of
+          # guessing which checks are required. Per GitHub's GraphQL schema
+          # (https://docs.github.com/en/graphql/reference/enums#mergestatestatus),
+          # CLEAN means "mergeable and passing commit status" and UNSTABLE
+          # means "mergeable with non-passing commit status" -- a check that's
+          # merely pending (required or not) keeps the PR at UNSTABLE, not
+          # CLEAN, so this loop already keeps polling until every check has
+          # settled, not just the required ones. The explicit failed-check
+          # check below is a belt-and-suspenders hard stop on top of that.
+          for i in $(seq 1 80); do
+            info="$(gh pr view "$pr" --json mergeStateStatus,statusCheckRollup)"
+            merge_status="$(echo "$info" | jq -r '.mergeStateStatus')"
+            failed="$(echo "$info" | jq -r '[.statusCheckRollup[]? | select((.conclusion // .state) as $c | $c == "FAILURE" or $c == "CANCELLED" or $c == "TIMED_OUT" or $c == "ERROR")] | length')"
+            if [ "$failed" != "0" ]; then
+              echo "a check on the PR head failed (mergeStateStatus=$merge_status)" >&2
+              exit 1
+            fi
+            case "$merge_status" in
+              CLEAN|HAS_HOOKS) exit 0 ;;
+              DIRTY)
+                echo "PR has merge conflicts (mergeStateStatus=$merge_status)" >&2; exit 1 ;;
+              *) ;; # BEHIND, BLOCKED, UNSTABLE, UNKNOWN -- still settling, keep polling
+            esac
+            sleep 15
+          done
+          echo "PR did not reach a mergeable state within 20 minutes; leaving PR #$pr open" >&2
+          exit 1
+
       - name: Squash-merge and delete the branch
         if: steps.pr.outputs.has_pr == '1'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: gh pr merge "${{ steps.pr.outputs.number }}" --squash --delete-branch
