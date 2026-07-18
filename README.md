@@ -188,12 +188,14 @@ these only install to Claude and Codex.
 git clone https://github.com/blineadam/agent-plan-and-track.git
 cd agent-plan-and-track
 ./install.sh all        # macOS/Linux; or: claude | copilot | codex
+./install-office-skills.sh   #optional `docx`, `pdf`, `pptx`, and `xlsx` skills
 ```
 
 On Windows, run the PowerShell installer instead (same targets):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1 all
+powershell -ExecutionPolicy Bypass -File install-office-skills.ps1
 ```
 
 Idempotent. Re-runs re-assert the repo's intended state; your own content is kept:
