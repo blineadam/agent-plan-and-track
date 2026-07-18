@@ -148,40 +148,15 @@ jobs:
           GATEGUARD_DISABLED: "1"
         run: |
           set -euo pipefail
-          # TEMPORARY TEST STUB, reverted before this branch ships: forces a
-          # real, deterministic diff so this run exercises the mechanical PR
-          # pipeline (steps 8-16) rather than depending on session 1's live
-          # judgment call, which just found nothing to change in the prior run.
-          cat >> .ai-style-rules.md <<'EOF'
+          claude -p --dangerously-skip-permissions "You are running unattended in CI on a fresh checkout of main. No user is available: never ask a question or wait for input, and never invent an answer to a question you'd normally ask a user -- defer it instead as described below. You have no GitHub token: don't run git or gh commands, and don't try to.
 
-          ### [2026-07-18]: nightly-style-refresh.yml two-token GitHub Actions pattern
+          Run /inherit-legacy-style. It will detect incremental-update mode itself. If a strong-signal conflict would normally trigger its one-question-at-a-time protocol, do not guess: leave that convention uncaptured and note it under a 'Deferred conflicts' heading you'll include in the summary below. Decline its offer to add soft/hard persistence wiring (this repo already references .ai-style-rules.md from AGENTS.md). If it offers to invoke /copilot-review-instructions, accept; otherwise run /copilot-review-instructions yourself afterward -- both of its preconditions already hold in this repo.
 
-          Diffed the workflow's own live-run fix: .github/workflows/nightly-style-refresh.yml
-          now declares two separate GitHub tokens per step rather than one. The default
-          GITHUB_TOKEN is kept only on read-only steps (listing/fetching PRs and
-          reviews); every step that writes to GitHub (opening a PR, pushing a branch,
-          requesting a review, resolving review threads, merging) uses a GH_TOKEN
-          repository secret (a personal access token) instead, because this repo's
-          workflow-permission setting blocks the default token from creating pull
-          requests, and because events authored by the default token don't trigger
-          other workflow runs, which would starve a bot-opened PR of its required
-          checks. Checkout also sets persist-credentials: false, since credential
-          persistence (not token scoping alone) is what would otherwise leave a
-          write-capable token reachable inside an unattended --dangerously-skip-permissions
-          session. Captured as a new Naming and State-Control Rule: a GitHub Actions
-          workflow step's GH_TOKEN env should be the default token only for reads,
-          a scoped PAT secret for writes, name the reason in a header comment, and
-          pair it with persist-credentials: false on checkout whenever the job runs
-          an unattended, permission-bypassed agent session.
+          Hard boundary: only .ai-style-rules.md and .github/instructions/*.instructions.md may change. If anything else changed, revert it before finishing.
 
-          No genuine conflicts across the four scan dimensions; this is the workflow
-          file's own single documented pattern, not something to arbitrate.
-          EOF
-          {
-            echo "Record the nightly workflow's two-token GitHub Actions pattern in the style rules"
-            echo
-            echo "Captures the GH_TOKEN/secrets.GH_TOKEN split and persist-credentials false pattern this workflow now uses for every GitHub write, as a new Naming and State-Control rule."
-          } > "$RUNNER_TEMP/pr-summary.md"
+          If \`git status --porcelain\` is empty when both skills are done, print the single line NO_CHANGES and stop -- do not write a summary file.
+
+          Otherwise, write a file at \"$RUNNER_TEMP/pr-summary.md\": its first line is a one-line PR title describing the change (no AI/tool self-attribution), then a blank line, then a PR body summarizing the actual drift captured plus any deferred conflicts (also with no AI/tool self-attribution anywhere). Then stop -- a later step in this workflow handles committing, pushing, and opening the PR."
 
       - name: Commit changes and open a PR
         id: pr
