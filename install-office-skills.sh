@@ -8,15 +8,21 @@
 # Separate from install.sh: these 4 skills carry an upstream LICENSE.txt that
 # forbids redistribution outside Anthropic's own Services, so this repo never
 # vendors them under skills/. Instead this script shells out to the
-# third-party `skills` npm CLI (vercel-labs/skills) to clone them straight
+# third-party `skills` npm CLI (vercel-labs/skills) to install them straight
 # from Anthropic's own repo at install time, so nothing restricted is ever
 # stored here. Requires network access and npx (Node/npm).
 #
-# Each harness is detected independently, and the shared fetch step runs
-# whenever at least one is detected, regardless of which: `--agent codex` in
-# the fetch below is only a directory-routing label the fetch tool uses (it
-# writes to .agents/skills/ relative to cwd), not a dependency on the codex
-# CLI actually being installed.
+# Each detected harness gets its own `skills add --agent <id> -g` global
+# install, rather than a single shared fetch copied by hand into each
+# destination. Codex and GitHub Copilot both resolve to the same shared
+# ~/.agents/skills directory: GitHub's own docs for Copilot CLI agent skills
+# (docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)
+# list ~/.agents/skills as an officially supported personal-skills location
+# alongside ~/.copilot/skills, and the `skills` CLI's own agent registry
+# treats any agent whose skills directory is ".agents/skills" as sharing that
+# one canonical global path. When both are present the two installs write the
+# same files there, which is harmless; re-running either install is also a
+# harmless no-op.
 set -euo pipefail
 
 SOURCE_REPO="https://github.com/anthropics/skills"
@@ -48,32 +54,31 @@ if ! $have_claude && ! $have_codex && ! $have_copilot; then
   exit 0
 fi
 
-scratch="$(mktemp -d)"
-trap 'rm -rf "$scratch"' EXIT
-
 skill_args=()
 for s in "${SKILLS[@]}"; do skill_args+=(--skill "$s"); done
 
-(cd "$scratch" && npx --yes "$SKILLS_CLI" add "$SOURCE_REPO" "${skill_args[@]}" --agent codex --copy -y)
-
-fetched="$scratch/.agents/skills"
-[ -d "$fetched" ] || { echo "error: fetch did not produce $fetched" >&2; exit 1; }
-
-install_into() {
-  local dest="$1" label="$2" s names=""
-  mkdir -p "$dest"
-  for s in "${SKILLS[@]}"; do
-    cp -R "$fetched/$s" "$dest/"
-    names="$names${names:+,}$s"
-  done
-  echo "  $label -> $dest/{$names}"
+install_for() {
+  local agent="$1"
+  npx --yes "$SKILLS_CLI" add "$SOURCE_REPO" "${skill_args[@]}" --agent "$agent" -g --copy -y
 }
 
-$have_claude  && install_into "$HOME/.claude/skills" "claude Code"
-$have_claude  || echo "  Claude Code -- not detected, skipped"
-$have_codex   && install_into "$HOME/.agents/skills" "codex      "
-$have_codex   || echo "  Codex       -- not detected, skipped"
-$have_copilot && install_into "$HOME/.copilot/skills" "copilot    "
-$have_copilot || echo "  Copilot     -- not detected, skipped"
+if $have_claude; then
+  echo "Claude Code:"
+  install_for claude-code
+else
+  echo "  Claude Code -- not detected, skipped"
+fi
+if $have_codex; then
+  echo "Codex:"
+  install_for codex
+else
+  echo "  Codex       -- not detected, skipped"
+fi
+if $have_copilot; then
+  echo "Copilot:"
+  install_for github-copilot
+else
+  echo "  Copilot     -- not detected, skipped"
+fi
 
 echo "done."
