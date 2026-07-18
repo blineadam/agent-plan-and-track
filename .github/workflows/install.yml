@@ -248,36 +248,21 @@ jobs:
           # of passing.
           @'
           @echo off
-          set AGENT=
-          set GLOBAL=0
-          :parse
-          if "%~1"=="" goto afterparse
-          if "%~1"=="--agent" (
-            set AGENT=%~2
-            shift
-            shift
-            goto parse
-          )
-          if "%~1"=="-g" (
-            set GLOBAL=1
-            shift
-            goto parse
-          )
-          shift
-          goto parse
-          :afterparse
-          if not "%GLOBAL%"=="1" (
+          set ARGS=%*
+          echo %ARGS%| findstr /C:" -g" >nul
+          if errorlevel 1 (
             echo stub: expected -g (global install) but it was not passed 1>&2
             exit /b 1
           )
-          if "%AGENT%"=="claude-code" (
-            set DEST=%USERPROFILE%\.claude\skills
-          ) else if "%AGENT%"=="codex" (
-            set DEST=%USERPROFILE%\.agents\skills
-          ) else if "%AGENT%"=="github-copilot" (
-            set DEST=%USERPROFILE%\.agents\skills
-          ) else (
-            echo stub: unknown --agent %AGENT% 1>&2
+          set DEST=
+          echo %ARGS%| findstr /C:"--agent claude-code" >nul
+          if not errorlevel 1 set DEST=%USERPROFILE%\.claude\skills
+          echo %ARGS%| findstr /C:"--agent codex" >nul
+          if not errorlevel 1 set DEST=%USERPROFILE%\.agents\skills
+          echo %ARGS%| findstr /C:"--agent github-copilot" >nul
+          if not errorlevel 1 set DEST=%USERPROFILE%\.agents\skills
+          if "%DEST%"=="" (
+            echo stub: unknown --agent in "%ARGS%" 1>&2
             exit /b 1
           )
           for %%s in (docx pdf pptx xlsx) do (
