@@ -79,13 +79,16 @@ name: nightly style refresh
 # drift to record, so a commit that touches source but produces none (a
 # typo fix, a version bump) leaves it stuck behind that commit indefinitely.
 # NIGHTLY_STYLE_LAST_CHECKED_SHA, a GitHub Actions repository variable, tracks
-# something narrower instead: main's tip as of the end of the last completed
-# run, drift or not, including the bot's own squash-merge if that run opened
-# one. Preflight skips only when HEAD matches it exactly, so a quiet night
-# with nothing new needs no commit-range math or path exclusions -- and it lives
-# outside git history because the main-branch ruleset requires a PR for
-# every change, including a checkpoint-only bump, and opening one every
-# quiet night would be worse than the problem it fixes.
+# something narrower instead: the last commit this run actually examined --
+# the checked-out HEAD on a quiet night, or the bot's own squash-merge commit
+# when this run found drift and merged a PR -- never main's live tip, since
+# an unrelated commit landing on main while this run is still executing was
+# never examined by it and reading the tip live would wrongly mark it
+# checked. Preflight skips only when HEAD matches it exactly, so a quiet
+# night with nothing new needs no commit-range math or path exclusions --
+# and it lives outside git history because the main-branch ruleset requires
+# a PR for every change, including a checkpoint-only bump, and opening one
+# every quiet night would be worse than the problem it fixes.
 
 on:
   schedule:
@@ -121,6 +124,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           open="$(gh pr list --state open --json headRefName \
             --jq '[.[] | select(.headRefName | startswith("bot/style-refresh-"))] | length')"
           if [ "$open" != "0" ]; then
@@ -342,8 +346,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: gh pr merge "${{ steps.pr.outputs.number }}" --squash --delete-branch
 
-      - name: Advance the run checkpoint to main's current tip
+      - name: Advance the run checkpoint to the examined commit
         if: steps.preflight.outputs.skip == '0'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: gh variable set NIGHTLY_STYLE_LAST_CHECKED_SHA --body "$(gh api repos/${{ github.repository }}/commits/main --jq .sha)"
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.pr.outputs.has_pr }}" = "1" ]; then
+            sha="$(gh pr view "${{ steps.pr.outputs.number }}" --json mergeCommit --jq .mergeCommit.oid)"
+          else
+            sha="${{ steps.preflight.outputs.head_sha }}"
+          fi
+          gh variable set NIGHTLY_STYLE_LAST_CHECKED_SHA --body "$sha"
