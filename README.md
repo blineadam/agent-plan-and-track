@@ -205,7 +205,8 @@ snapshots you can pin with `git checkout v1.0.0` before installing.
 
 The installer is per-machine; each project still needs its own context. On
 first use in a new repository with Claude Code, run Claude's built-in `/init`,
-then two of this repo's skills:
+then `/inherit-legacy-style`, and `/copilot-review-instructions` too if the
+project is on GitHub:
 
 ```text
 /init                         # generate the project's own CLAUDE.md
