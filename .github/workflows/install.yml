@@ -91,12 +91,32 @@ jobs:
           mkdir -p "$stub_bin"
           cat > "$stub_bin/npx" <<'STUB'
           #!/usr/bin/env bash
-          # Fakes `npx skills add ...`'s output shape without hitting the network, so
-          # this test exercises install-office-skills.sh's own detection/fetch/fan-out/
-          # cleanup logic deterministically.
+          # Fakes `npx skills add ... --agent <id> -g ...`'s output shape without
+          # hitting the network, so this test exercises install-office-skills.sh's
+          # own detection/dispatch logic deterministically. Reads --agent from its
+          # own args and routes to the same directories the real skills CLI uses:
+          # claude-code -> ~/.claude/skills, codex/github-copilot -> the shared
+          # ~/.agents/skills. Requires -g so a future regression that drops the
+          # global flag from the real script fails this test instead of passing.
+          agent=""
+          global=false
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --agent) agent="$2"; shift 2 ;;
+              -g) global=true; shift ;;
+              *) shift ;;
+            esac
+          done
+          $global || { echo "stub: expected -g (global install) but it was not passed" >&2; exit 1; }
+          case "$agent" in
+            claude-code) dest="$HOME/.claude/skills" ;;
+            codex|github-copilot) dest="$HOME/.agents/skills" ;;
+            *) echo "stub: unknown --agent $agent" >&2; exit 1 ;;
+          esac
+          echo "$agent" >> "$HOME/agent-invocations.log"
           for s in docx pdf pptx xlsx; do
-            mkdir -p ".agents/skills/$s"
-            printf -- '---\nname: %s\ndescription: stub\n---\n# stub\n' "$s" > ".agents/skills/$s/SKILL.md"
+            mkdir -p "$dest/$s"
+            printf -- '---\nname: %s\ndescription: stub\n---\n# stub\n' "$s" > "$dest/$s/SKILL.md"
           done
           STUB
           chmod +x "$stub_bin/npx"
@@ -105,12 +125,19 @@ jobs:
           export HOME="$RUNNER_TEMP/scratch-home-office"; mkdir -p "$HOME/.copilot"
           export PATH="$stub_bin:$PATH"
           ./install-office-skills.sh
-          ./install-office-skills.sh   # rerun: must not fail merging over its own prior output
-          for h in .claude .agents .copilot; do
-            for s in docx pdf pptx xlsx; do
-              test -f "$HOME/$h/skills/$s/SKILL.md" \
-                || { echo "FAIL: missing $HOME/$h/skills/$s/SKILL.md"; exit 1; }
-            done
+          ./install-office-skills.sh   # rerun: must not fail
+          for s in docx pdf pptx xlsx; do
+            test -f "$HOME/.claude/skills/$s/SKILL.md" \
+              || { echo "FAIL: missing $HOME/.claude/skills/$s/SKILL.md"; exit 1; }
+            test -f "$HOME/.agents/skills/$s/SKILL.md" \
+              || { echo "FAIL: missing $HOME/.agents/skills/$s/SKILL.md"; exit 1; }
+          done
+          # Codex and GitHub Copilot both write the shared .agents/skills tree, so
+          # the file-existence checks above pass even if one of the two dispatch
+          # branches is silently removed. Assert each agent was actually invoked.
+          for a in claude-code codex github-copilot; do
+            grep -qx "$a" "$HOME/agent-invocations.log" \
+              || { echo "FAIL: $a was never invoked"; exit 1; }
           done
 
   windows:
@@ -219,16 +246,47 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $stubBin = Join-Path $env:RUNNER_TEMP 'office-stub-bin'
           New-Item -ItemType Directory -Force -Path $stubBin | Out-Null
-          # Fakes `npx skills add ...`'s output shape without hitting the network, so
-          # this test exercises install-office-skills.ps1's own detection/fetch/
-          # fan-out/cleanup logic deterministically.
+          # Fakes `npx skills add ... --agent <id> -g ...`'s output shape without
+          # hitting the network, so this test exercises install-office-skills.ps1's
+          # own detection/dispatch logic deterministically. The actual routing
+          # logic lives in a PowerShell child script (easier to get right than
+          # cmd.exe batch argument parsing); npx.cmd is just a launcher, since
+          # only .cmd/.exe are resolved via PATH by default. Reads --agent from
+          # its own args and routes to the same directories the real skills CLI
+          # uses: claude-code -> %USERPROFILE%\.claude\skills, codex/github-copilot
+          # -> the shared %USERPROFILE%\.agents\skills. Requires -g so a future
+          # regression that drops the global flag from the real script fails this
+          # test instead of passing.
           @'
           @echo off
-          for %%s in (docx pdf pptx xlsx) do (
-            mkdir ".agents\skills\%%s" 2>nul
-            echo stub> ".agents\skills\%%s\SKILL.md"
-          )
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0npx-stub.ps1" %*
           '@ | Set-Content -Path (Join-Path $stubBin 'npx.cmd') -Encoding ascii
+          @'
+          $argsStr = $args -join " "
+          if ($argsStr -notmatch "(^| )-g( |$)") {
+            Write-Error "stub: expected -g (global install) but it was not passed"
+            exit 1
+          }
+          if ($argsStr -notmatch "--agent (\S+)") {
+            Write-Error "stub: no --agent found in '$argsStr'"
+            exit 1
+          }
+          $agent = $matches[1]
+          if ($agent -eq "claude-code") {
+            $dest = Join-Path $env:USERPROFILE ".claude\skills"
+          } elseif ($agent -eq "codex" -or $agent -eq "github-copilot") {
+            $dest = Join-Path $env:USERPROFILE ".agents\skills"
+          } else {
+            Write-Error "stub: unknown --agent '$agent'"
+            exit 1
+          }
+          Add-Content -Path (Join-Path $env:USERPROFILE "agent-invocations.log") -Value $agent
+          foreach ($s in @("docx", "pdf", "pptx", "xlsx")) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $dest $s) | Out-Null
+            Set-Content -Path (Join-Path $dest "$s\SKILL.md") -Value "stub"
+          }
+          exit 0
+          '@ | Set-Content -Path (Join-Path $stubBin 'npx-stub.ps1') -Encoding ascii
           '@echo off' | Set-Content -Path (Join-Path $stubBin 'claude.cmd') -Encoding ascii
           '@echo off' | Set-Content -Path (Join-Path $stubBin 'codex.cmd') -Encoding ascii
           $env:PATH = "$stubBin;$env:PATH"
@@ -236,12 +294,19 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.copilot" | Out-Null
           .\install-office-skills.ps1
           if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 failed with exit code $LASTEXITCODE" }
-          .\install-office-skills.ps1   # rerun: must not fail merging over its own prior output
+          .\install-office-skills.ps1   # rerun: must not fail
           if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 (rerun) failed with exit code $LASTEXITCODE" }
           $baseDir = $env:USERPROFILE
-          foreach ($harness in @('.claude', '.agents', '.copilot')) {
+          foreach ($harness in @('.claude', '.agents')) {
             foreach ($s in @('docx', 'pdf', 'pptx', 'xlsx')) {
               $p = "$baseDir\$harness\skills\$s\SKILL.md"
               if (-not (Test-Path -LiteralPath $p)) { throw "missing $p" }
             }
+          }
+          # Codex and GitHub Copilot both write the shared .agents tree, so the
+          # file-existence checks above pass even if one dispatch branch is
+          # silently removed. Assert each agent was actually invoked.
+          $invoked = Get-Content (Join-Path $baseDir "agent-invocations.log")
+          foreach ($a in @('claude-code', 'codex', 'github-copilot')) {
+            if ($invoked -notcontains $a) { throw "$a was never invoked" }
           }
