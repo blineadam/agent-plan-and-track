@@ -42,7 +42,7 @@ Useful stop conditions:
 
 ## Review Loop
 
-Treat delegated output as evidence to weigh, not a verdict to rubber-stamp. Reopen the cited files that matter, skim high-risk diffs, and rerun or spot-check the verification before calling the work done. If two agents disagree, resolve it at the main-session layer instead of just taking the more confident-sounding answer.
+Treat delegated output as evidence to weigh, not a verdict to rubber-stamp. Reopen the cited files that matter, skim high-risk diffs, and rerun or spot-check the verification before calling the work done. If two agents disagree, resolve it at the main-session layer instead of just taking the more confident-sounding answer. For an executor-tagged todo batch, this loop has a concrete mandatory form: the independent diff review step in [[plan-and-track]], dispatched before the batch's boxes are checked.
 
 ## Worked Example: Planner to Executor to Mechanic
 
