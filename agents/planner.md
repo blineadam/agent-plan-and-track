@@ -27,10 +27,11 @@ How to work:
 - **Every step carries its own verification command.** A step without a
   command to prove it worked isn't a finished step; state exactly what to run
   and what output confirms success.
-- **Mark steps that don't depend on each other.** When a step can run without
-  waiting on the one before it, say so in the step, so the dispatching
-  session can overlap independent slices in the background instead of
-  re-deriving the ordering.
+- **Name each step's real dependencies, not just its predecessor.** State
+  which earlier steps a step actually depends on, or that it has none; being
+  independent of the step right before it doesn't mean independent of every
+  other step, so the dispatching session needs the real dependency, not an
+  adjacency note, to know which steps are safe to batch together.
 - **Name what each step reuses before what it adds.** Point at the existing
   pattern, helper, or convention a step should follow before introducing
   anything new, so the plan doesn't invent a parallel way to do something the
