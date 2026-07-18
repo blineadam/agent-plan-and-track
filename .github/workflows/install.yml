@@ -240,36 +240,41 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stubBin | Out-Null
           # Fakes `npx skills add ... --agent <id> -g ...`'s output shape without
           # hitting the network, so this test exercises install-office-skills.ps1's
-          # own detection/dispatch logic deterministically. Reads --agent from its
-          # own args and routes to the same directories the real skills CLI uses:
-          # claude-code -> %USERPROFILE%\.claude\skills, codex/github-copilot -> the
-          # shared %USERPROFILE%\.agents\skills. Requires -g so a future regression
-          # that drops the global flag from the real script fails this test instead
-          # of passing.
+          # own detection/dispatch logic deterministically. The actual routing
+          # logic lives in a PowerShell child script (easier to get right than
+          # cmd.exe batch argument parsing); npx.cmd is just a launcher, since
+          # only .cmd/.exe are resolved via PATH by default. Reads --agent from
+          # its own args and routes to the same directories the real skills CLI
+          # uses: claude-code -> %USERPROFILE%\.claude\skills, codex/github-copilot
+          # -> the shared %USERPROFILE%\.agents\skills. Requires -g so a future
+          # regression that drops the global flag from the real script fails this
+          # test instead of passing.
           @'
           @echo off
-          set ARGS=%*
-          echo %ARGS%| findstr /C:" -g" >nul
-          if errorlevel 1 (
-            echo stub: expected -g (global install) but it was not passed 1>&2
-            exit /b 1
-          )
-          set DEST=
-          echo %ARGS%| findstr /C:"--agent claude-code" >nul
-          if not errorlevel 1 set DEST=%USERPROFILE%\.claude\skills
-          echo %ARGS%| findstr /C:"--agent codex" >nul
-          if not errorlevel 1 set DEST=%USERPROFILE%\.agents\skills
-          echo %ARGS%| findstr /C:"--agent github-copilot" >nul
-          if not errorlevel 1 set DEST=%USERPROFILE%\.agents\skills
-          if "%DEST%"=="" (
-            echo stub: unknown --agent in "%ARGS%" 1>&2
-            exit /b 1
-          )
-          for %%s in (docx pdf pptx xlsx) do (
-            mkdir "%DEST%\%%s" 2>nul
-            echo stub> "%DEST%\%%s\SKILL.md"
-          )
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0npx-stub.ps1" %*
           '@ | Set-Content -Path (Join-Path $stubBin 'npx.cmd') -Encoding ascii
+          @'
+          $argsStr = $args -join " "
+          if ($argsStr -notmatch "(^| )-g( |$)") {
+            Write-Error "stub: expected -g (global install) but it was not passed"
+            exit 1
+          }
+          if ($argsStr -match "--agent claude-code") {
+            $dest = Join-Path $env:USERPROFILE ".claude\skills"
+          } elseif ($argsStr -match "--agent codex") {
+            $dest = Join-Path $env:USERPROFILE ".agents\skills"
+          } elseif ($argsStr -match "--agent github-copilot") {
+            $dest = Join-Path $env:USERPROFILE ".agents\skills"
+          } else {
+            Write-Error "stub: unknown --agent in '$argsStr'"
+            exit 1
+          }
+          foreach ($s in @("docx", "pdf", "pptx", "xlsx")) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $dest $s) | Out-Null
+            Set-Content -Path (Join-Path $dest "$s\SKILL.md") -Value "stub"
+          }
+          exit 0
+          '@ | Set-Content -Path (Join-Path $stubBin 'npx-stub.ps1') -Encoding ascii
           '@echo off' | Set-Content -Path (Join-Path $stubBin 'claude.cmd') -Encoding ascii
           '@echo off' | Set-Content -Path (Join-Path $stubBin 'codex.cmd') -Encoding ascii
           $env:PATH = "$stubBin;$env:PATH"
