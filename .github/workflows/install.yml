@@ -113,6 +113,7 @@ jobs:
             codex|github-copilot) dest="$HOME/.agents/skills" ;;
             *) echo "stub: unknown --agent $agent" >&2; exit 1 ;;
           esac
+          echo "$agent" >> "$HOME/agent-invocations.log"
           for s in docx pdf pptx xlsx; do
             mkdir -p "$dest/$s"
             printf -- '---\nname: %s\ndescription: stub\n---\n# stub\n' "$s" > "$dest/$s/SKILL.md"
@@ -130,6 +131,13 @@ jobs:
               || { echo "FAIL: missing $HOME/.claude/skills/$s/SKILL.md"; exit 1; }
             test -f "$HOME/.agents/skills/$s/SKILL.md" \
               || { echo "FAIL: missing $HOME/.agents/skills/$s/SKILL.md"; exit 1; }
+          done
+          # Codex and GitHub Copilot both write the shared .agents/skills tree, so
+          # the file-existence checks above pass even if one of the two dispatch
+          # branches is silently removed. Assert each agent was actually invoked.
+          for a in claude-code codex github-copilot; do
+            grep -qx "$a" "$HOME/agent-invocations.log" \
+              || { echo "FAIL: $a was never invoked"; exit 1; }
           done
 
   windows:
@@ -259,16 +267,20 @@ jobs:
             Write-Error "stub: expected -g (global install) but it was not passed"
             exit 1
           }
-          if ($argsStr -match "--agent claude-code") {
-            $dest = Join-Path $env:USERPROFILE ".claude\skills"
-          } elseif ($argsStr -match "--agent codex") {
-            $dest = Join-Path $env:USERPROFILE ".agents\skills"
-          } elseif ($argsStr -match "--agent github-copilot") {
-            $dest = Join-Path $env:USERPROFILE ".agents\skills"
-          } else {
-            Write-Error "stub: unknown --agent in '$argsStr'"
+          if ($argsStr -notmatch "--agent (\S+)") {
+            Write-Error "stub: no --agent found in '$argsStr'"
             exit 1
           }
+          $agent = $matches[1]
+          if ($agent -eq "claude-code") {
+            $dest = Join-Path $env:USERPROFILE ".claude\skills"
+          } elseif ($agent -eq "codex" -or $agent -eq "github-copilot") {
+            $dest = Join-Path $env:USERPROFILE ".agents\skills"
+          } else {
+            Write-Error "stub: unknown --agent '$agent'"
+            exit 1
+          }
+          Add-Content -Path (Join-Path $env:USERPROFILE "agent-invocations.log") -Value $agent
           foreach ($s in @("docx", "pdf", "pptx", "xlsx")) {
             New-Item -ItemType Directory -Force -Path (Join-Path $dest $s) | Out-Null
             Set-Content -Path (Join-Path $dest "$s\SKILL.md") -Value "stub"
@@ -290,4 +302,11 @@ jobs:
               $p = "$baseDir\$harness\skills\$s\SKILL.md"
               if (-not (Test-Path -LiteralPath $p)) { throw "missing $p" }
             }
+          }
+          # Codex and GitHub Copilot both write the shared .agents tree, so the
+          # file-existence checks above pass even if one dispatch branch is
+          # silently removed. Assert each agent was actually invoked.
+          $invoked = Get-Content (Join-Path $baseDir "agent-invocations.log")
+          foreach ($a in @('claude-code', 'codex', 'github-copilot')) {
+            if ($invoked -notcontains $a) { throw "$a was never invoked" }
           }
