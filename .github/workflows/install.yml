@@ -91,12 +91,27 @@ jobs:
           mkdir -p "$stub_bin"
           cat > "$stub_bin/npx" <<'STUB'
           #!/usr/bin/env bash
-          # Fakes `npx skills add ...`'s output shape without hitting the network, so
-          # this test exercises install-office-skills.sh's own detection/fetch/fan-out/
-          # cleanup logic deterministically.
+          # Fakes `npx skills add ... --agent <id> -g ...`'s output shape without
+          # hitting the network, so this test exercises install-office-skills.sh's
+          # own detection/dispatch logic deterministically. Reads --agent from its
+          # own args and routes to the same directories the real skills CLI uses:
+          # claude-code -> ~/.claude/skills, codex/github-copilot -> the shared
+          # ~/.agents/skills.
+          agent=""
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --agent) agent="$2"; shift 2 ;;
+              *) shift ;;
+            esac
+          done
+          case "$agent" in
+            claude-code) dest="$HOME/.claude/skills" ;;
+            codex|github-copilot) dest="$HOME/.agents/skills" ;;
+            *) echo "stub: unknown --agent $agent" >&2; exit 1 ;;
+          esac
           for s in docx pdf pptx xlsx; do
-            mkdir -p ".agents/skills/$s"
-            printf -- '---\nname: %s\ndescription: stub\n---\n# stub\n' "$s" > ".agents/skills/$s/SKILL.md"
+            mkdir -p "$dest/$s"
+            printf -- '---\nname: %s\ndescription: stub\n---\n# stub\n' "$s" > "$dest/$s/SKILL.md"
           done
           STUB
           chmod +x "$stub_bin/npx"
@@ -105,12 +120,12 @@ jobs:
           export HOME="$RUNNER_TEMP/scratch-home-office"; mkdir -p "$HOME/.copilot"
           export PATH="$stub_bin:$PATH"
           ./install-office-skills.sh
-          ./install-office-skills.sh   # rerun: must not fail merging over its own prior output
-          for h in .claude .agents .copilot; do
-            for s in docx pdf pptx xlsx; do
-              test -f "$HOME/$h/skills/$s/SKILL.md" \
-                || { echo "FAIL: missing $HOME/$h/skills/$s/SKILL.md"; exit 1; }
-            done
+          ./install-office-skills.sh   # rerun: must not fail
+          for s in docx pdf pptx xlsx; do
+            test -f "$HOME/.claude/skills/$s/SKILL.md" \
+              || { echo "FAIL: missing $HOME/.claude/skills/$s/SKILL.md"; exit 1; }
+            test -f "$HOME/.agents/skills/$s/SKILL.md" \
+              || { echo "FAIL: missing $HOME/.agents/skills/$s/SKILL.md"; exit 1; }
           done
 
   windows:
@@ -219,14 +234,37 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $stubBin = Join-Path $env:RUNNER_TEMP 'office-stub-bin'
           New-Item -ItemType Directory -Force -Path $stubBin | Out-Null
-          # Fakes `npx skills add ...`'s output shape without hitting the network, so
-          # this test exercises install-office-skills.ps1's own detection/fetch/
-          # fan-out/cleanup logic deterministically.
+          # Fakes `npx skills add ... --agent <id> -g ...`'s output shape without
+          # hitting the network, so this test exercises install-office-skills.ps1's
+          # own detection/dispatch logic deterministically. Reads --agent from its
+          # own args and routes to the same directories the real skills CLI uses:
+          # claude-code -> %USERPROFILE%\.claude\skills, codex/github-copilot -> the
+          # shared %USERPROFILE%\.agents\skills.
           @'
           @echo off
+          set AGENT=
+          :parse
+          if "%~1"=="" goto afterparse
+          if "%~1"=="--agent" (
+            set AGENT=%~2
+            shift
+          )
+          shift
+          goto parse
+          :afterparse
+          if "%AGENT%"=="claude-code" (
+            set DEST=%USERPROFILE%\.claude\skills
+          ) else if "%AGENT%"=="codex" (
+            set DEST=%USERPROFILE%\.agents\skills
+          ) else if "%AGENT%"=="github-copilot" (
+            set DEST=%USERPROFILE%\.agents\skills
+          ) else (
+            echo stub: unknown --agent %AGENT% 1>&2
+            exit /b 1
+          )
           for %%s in (docx pdf pptx xlsx) do (
-            mkdir ".agents\skills\%%s" 2>nul
-            echo stub> ".agents\skills\%%s\SKILL.md"
+            mkdir "%DEST%\%%s" 2>nul
+            echo stub> "%DEST%\%%s\SKILL.md"
           )
           '@ | Set-Content -Path (Join-Path $stubBin 'npx.cmd') -Encoding ascii
           '@echo off' | Set-Content -Path (Join-Path $stubBin 'claude.cmd') -Encoding ascii
@@ -236,10 +274,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.copilot" | Out-Null
           .\install-office-skills.ps1
           if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 failed with exit code $LASTEXITCODE" }
-          .\install-office-skills.ps1   # rerun: must not fail merging over its own prior output
+          .\install-office-skills.ps1   # rerun: must not fail
           if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 (rerun) failed with exit code $LASTEXITCODE" }
           $baseDir = $env:USERPROFILE
-          foreach ($harness in @('.claude', '.agents', '.copilot')) {
+          foreach ($harness in @('.claude', '.agents')) {
             foreach ($s in @('docx', 'pdf', 'pptx', 'xlsx')) {
               $p = "$baseDir\$harness\skills\$s\SKILL.md"
               if (-not (Test-Path -LiteralPath $p)) { throw "missing $p" }

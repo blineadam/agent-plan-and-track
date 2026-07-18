@@ -22,8 +22,10 @@
   alongside ~/.copilot/skills, and the `skills` CLI's own agent registry
   treats any agent whose skills directory is ".agents/skills" as sharing that
   one canonical global path. When both are present the two installs write the
-  same files there, which is harmless; re-running either install is also a
-  harmless no-op.
+  same files there, which is harmless. Re-running is also safe: the CLI wipes
+  and re-fetches each skill's own directory on every install (`--copy` is not
+  a diff/merge), so a re-run does real work but always converges on the same
+  content, not a no-op in the sense of touching nothing.
 
   PARITY: this script and install-office-skills.sh must stay in lockstep.
 #>
