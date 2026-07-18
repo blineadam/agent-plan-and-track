@@ -38,7 +38,10 @@ just a suggestion.
 - Root causes only: flag temporary fixes, workarounds, or unrequested
   refactors riding along with the real change.
 - Flag scope creep: new abstractions, config knobs, or features the task
-  didn't ask for.
+  didn't ask for, or error handling for cases that can't occur.
+- Flag leftovers and drive-bys: imports, variables, or functions the change
+  orphaned but kept, and edits to adjacent code the request didn't cover
+  (reformatting, comment rewrites, fixing pre-existing dead code).
 - Flag unnecessarily complex implementations where a simpler one would
   clearly do (skip this for trivial, obvious fixes).
 - Flag new code, a pattern, or an abstraction that duplicates something the

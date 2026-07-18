@@ -18,15 +18,15 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
    - **Batch clarifying questions**: ask 2-4 high-leverage questions together, not one at a time.
 
    When the tiered subagent roster is available, delegate per [[efficient-frontier]], which owns the roster and the tier-matching rules. On Claude Code, drafting happens inside plan mode, and plan mode's own workflow suggests a generic `Plan` agent for its design phase: launch the roster's `planner` there instead (Agent tool, `subagent_type: "planner"`). It reads the real tree and returns the spec as text (it has no write tools); that returned spec is what goes into the plan file and step 4. Codex renders the same roster natively, but named-agent invocation there is currently unreliable (see the Codex UNVERIFIED caveat in README.md), so don't rely on it silently loading the right profile until that's fixed upstream. Copilot has no subagent concept, so plan inline there.
-4. Write the plan to `tasks/todo.md` as a checklist, tagging each step with who carries it out. Default the tags, don't deliberate them: implementation steps get `executor`, research steps `researcher`, mechanical tails `mechanic` (per [[efficient-frontier]]). Tagging a step `main` is the exception and must carry a one-clause reason in the tag itself; "the main session already has the context" doesn't qualify, since delegation pays in context preservation even when the delegate runs the same model tier. Decide this at plan time, not mid-implementation:
+4. Write the plan to `tasks/todo.md` as a checklist, tagging each step with who carries it out and naming how the step will be verified: a short `verify:` clause (the command to run or the observable check that proves the step landed), placed before the owner tag so the tag still ends the line. Default the tags, don't deliberate them: implementation steps get `executor`, research steps `researcher`, mechanical tails `mechanic` (per [[efficient-frontier]]). Tagging a step `main` is the exception and must carry a one-clause reason in the tag itself; "the main session already has the context" doesn't qualify, since delegation pays in context preservation even when the delegate runs the same model tier. Decide this at plan time, not mid-implementation:
 
    ```markdown
    # <Task name>
 
    ## Plan
-   - [ ] Step 1 ... (researcher)
-   - [ ] Step 2 ... (executor)
-   - [ ] Step 3 ... (main: needs user sign-off mid-step)
+   - [ ] Step 1 ...; verify: <check> (researcher)
+   - [ ] Step 2 ...; verify: <command and expected output> (executor)
+   - [ ] Step 3 ...; verify: <check> (main: needs user sign-off mid-step)
    ```
 
 5. Check in with the user on the plan before starting implementation (skip only if running autonomously).
