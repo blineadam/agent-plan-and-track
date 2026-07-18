@@ -25,7 +25,7 @@ Eight subagents, each pinned to a model tier that matches the cost of a missed j
 1. Identify the main-session-only decisions: architecture, prioritization, ambiguity resolution, risk, synthesis, and final review.
 2. Identify delegable work: research scans, repo inventory, search, docs extraction, log reduction, test-failure clustering, narrow coding against an already-decided spec, and mechanical edits.
 3. Pick the subagent whose tier matches the work's judgment cost, not the cheapest one that could technically do it.
-4. Spawn subagents for independent slices with clear ownership, bounded scope, and expected evidence, in parallel when the slices don't depend on each other.
+4. Spawn subagents for independent slices with clear ownership, bounded scope, and expected evidence, in parallel when the slices don't depend on each other. Dispatch each slice as soon as its inputs exist and keep doing main-session work while it runs: the wall-clock win comes from overlap, not just fan-out.
 5. Require compact returns: findings, changed files, commands run, residual risk, stop conditions hit, and anything the main session must decide.
 6. Integrate and review the returns centrally before presenting the result.
 
