@@ -114,6 +114,17 @@ For turning a project's conventions into documentation other agents consume:
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
 | **`copilot-review-instructions`** | Generates path-scoped `.github/instructions/*.instructions.md` PR-review directives from a project's documented conventions (style rules, instructions file, README, docs). | All 3 (Copilot-only output) |
 
+## Design and document skills
+
+Adapted from [anthropics/skills](https://github.com/anthropics/skills), for
+design and document-creation work rather than the coding workflow above:
+
+| Skill | What it does | Where |
+| --- | --- | --- |
+| **`canvas-design`** | Produces original visual art (a poster, piece, or static design) as a PDF or PNG, built from an explicit design philosophy rather than a template. | All 3 |
+| **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults. | All 3 |
+| **`theme-factory`** | Applies one of ten curated color/font themes (or generates a new one) to a slide deck or other artifact for consistent styling. | All 3 |
+
 ## Model defaults
 
 The installer sets a sensible model default for each harness so routine work
@@ -234,6 +245,9 @@ skills/plow-ahead/           autonomy contract for open-ended work: state assump
                               stop only for true blockers (portable)
 skills/efficient-frontier/   routing doctrine: which tiered subagent fits a piece of delegated work (portable)
 skills/read-the-damn-docs/   docs-first grounding before third-party API/version work (portable)
+skills/canvas-design/        original visual art (poster/PDF/PNG) built from a stated design philosophy (portable)
+skills/frontend-design/      distinctive visual/UI design direction, not templated defaults (portable)
+skills/theme-factory/        apply or generate a cohesive color/font theme for a deck or artifact (portable)
 agents/                      tiered subagents (Claude .md + rendered Codex TOML): architect-reviewer,
                               security-auditor, fable-advisor, planner (Fable); researcher, debugger,
                               executor (Sonnet); mechanic (Haiku)
