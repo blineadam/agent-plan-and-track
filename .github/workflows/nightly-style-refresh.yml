@@ -314,18 +314,32 @@ jobs:
         run: |
           set -euo pipefail
           pr="${{ steps.pr.outputs.number }}"
+          # This repo has no branch-protection-level required status checks
+          # (`gh pr checks --required` errors "no required checks reported"
+          # for every PR here; only the ruleset's thread-resolution and
+          # code-scanning rules gate the merge). mergeStateStatus is GitHub's
+          # own authoritative merge-readiness signal, so poll that instead of
+          # guessing which checks are required; a failed/cancelled/timed-out
+          # check is still treated as a hard stop even though it isn't
+          # formally "required", since a check the repo runs on every PR that
+          # ends in failure is real signal worth not squash-merging past.
           for i in $(seq 1 80); do
-            states="$(gh pr checks "$pr" --required --json state --jq '[.[].state] | unique | join(",")' 2>/dev/null || true)"
-            case "$states" in
-              "") ;;
-              *FAILURE*|*ERROR*|*CANCELLED*|*TIMED_OUT*|*ACTION_REQUIRED*)
-                echo "required checks failed: $states" >&2; exit 1 ;;
-              *PENDING*|*QUEUED*|*IN_PROGRESS*|*WAITING*|*EXPECTED*) ;;
-              *) exit 0 ;;
+            info="$(gh pr view "$pr" --json mergeStateStatus,statusCheckRollup)"
+            merge_status="$(echo "$info" | jq -r '.mergeStateStatus')"
+            failed="$(echo "$info" | jq -r '[.statusCheckRollup[]? | select((.conclusion // .state) as $c | $c == "FAILURE" or $c == "CANCELLED" or $c == "TIMED_OUT" or $c == "ERROR")] | length')"
+            if [ "$failed" != "0" ]; then
+              echo "a check on the PR head failed (mergeStateStatus=$merge_status)" >&2
+              exit 1
+            fi
+            case "$merge_status" in
+              CLEAN|HAS_HOOKS) exit 0 ;;
+              DIRTY)
+                echo "PR has merge conflicts (mergeStateStatus=$merge_status)" >&2; exit 1 ;;
+              *) ;; # BEHIND, BLOCKED, UNSTABLE, UNKNOWN -- still settling, keep polling
             esac
             sleep 15
           done
-          echo "required checks did not finish within 20 minutes; leaving PR #$pr open" >&2
+          echo "PR did not reach a mergeable state within 20 minutes; leaving PR #$pr open" >&2
           exit 1
 
       - name: Squash-merge and delete the branch
