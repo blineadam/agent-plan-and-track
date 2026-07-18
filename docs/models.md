@@ -53,8 +53,10 @@ back to your normal model. Codex gets the same eight agents, but only the
 effort level and permissions carry over there, not the model tier.
 
 Claude picks the right agent for the job automatically, or you can call
-one by name ("use the researcher agent to..."). Copilot has no concept of
-subagents, so these only install to Claude and Codex.
+one by name ("use the researcher agent to..."). Copilot CLI does have its
+own custom-agent and subagent-delegation system now, but this repo's
+installer doesn't render the roster for it yet, so for now these only
+install to Claude and Codex.
 
 ## Per-tool notes
 
@@ -68,8 +70,9 @@ subagents, so these only install to Claude and Codex.
   `"includeCoAuthoredBy": false` drops its trailer too.
 - **Codex** (`~/.codex`): the user `AGENTS.md` loads before project ones;
   skills live in `~/.agents/skills/`, and subagents render to
-  `~/.codex/agents/*.toml`. Run `codex` and press `2` to accept new hooks.
-  Recent builds add no attribution trailer. Unverified: named-agent
+  `~/.codex/agents/*.toml`. New or changed hooks get skipped until you
+  review and trust them via `/hooks`; Codex prints a warning at startup if
+  any need attention. Recent builds add no attribution trailer. Unverified: named-agent
   invocation via `spawn_agent` is unreliable everywhere as of this
   writing, not only in SDK/MCP-driven sessions. Recent reports
   (openai/codex#15250) reproduce it on standalone Codex CLI and Codex

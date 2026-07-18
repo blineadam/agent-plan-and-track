@@ -100,7 +100,7 @@ design and document-creation work rather than the coding workflow above:
 | **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults. | All 3 |
 | **`theme-factory`** | Applies one of ten curated color/font themes (or generates a new one) to a slide deck or other artifact for consistent styling. | All 3 |
 
-The source repo also has `docx`, `pdf`, `pptx`, and `xlsx` skills, but their
-license doesn't allow vendoring them here, so they're not in the table
-above. Run the separate installer under [Install](../README.md#install) if
-you want them too.
+[anthropics/skills](https://github.com/anthropics/skills) also has `docx`,
+`pdf`, `pptx`, and `xlsx` skills, but their license doesn't allow vendoring
+them here, so they're not in the table above. Run the separate installer
+under [Install](../README.md#install) if you want them too.

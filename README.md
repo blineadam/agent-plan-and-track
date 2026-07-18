@@ -49,12 +49,14 @@ powershell -ExecutionPolicy Bypass -File install-office-skills.ps1
 ```
 
 You can safely run the installer again any time. It updates the files this
-repo manages and leaves anything you've added yourself alone: skills and
-hooks get overwritten (with a `.bak` backup if something existing looked
-different), instruction files only get their clearly marked managed
-section touched, and model settings reset to the repo defaults each run
-(set `PT_KEEP_MODEL=1` to keep your own choice). Claude and Codex
-subagents stay in sync too.
+repo manages and leaves anything you've added yourself alone: skills are
+copied straight over since this repo is their source of truth, the digest
+and Copilot's own hook files get a `.bak` backup first if they'd changed,
+hook wiring is only added where it's missing on Claude and Codex,
+instruction files only get their clearly marked managed section touched,
+and model settings reset to the repo defaults each run (set
+`PT_KEEP_MODEL=1` to keep your own choice). Claude and Codex subagents
+stay in sync too.
 
 The macOS/Linux installer needs `jq`; the Windows one doesn't. Both check
 for Node.js first, since the hooks need it, and will tell you what to
