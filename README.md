@@ -203,6 +203,16 @@ system. The installer deploys whatever is checked out: normally the latest
 `main`, but tagged releases (`vX.Y.Z`, on the Releases tab) are known-good
 snapshots you can pin with `git checkout v1.0.0` before installing.
 
+The installer is per-machine; each project still needs its own context. On
+first use in a new repository with Claude Code, run Claude's built-in `/init`,
+then two of this repo's skills:
+
+```text
+/init                         # generate the project's own CLAUDE.md
+/inherit-legacy-style         # capture its implicit conventions in .ai-style-rules.md
+/copilot-review-instructions  # if on GitHub: teach Copilot's PR review those conventions
+```
+
 ## Layout
 
 ```text
