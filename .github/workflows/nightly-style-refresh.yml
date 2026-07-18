@@ -16,20 +16,24 @@ name: nightly style refresh
 # requesting the Copilot review, resolving review threads, and the
 # squash-merge. That split exists because the org's workflow settings
 # block the default GITHUB_TOKEN from creating pull requests, and because
-# pushes and PRs authored by the default token don't trigger other
-# workflow runs, which would starve the PR of the CI checks the merge step
-# later waits on. The default token is kept on the two read-only steps
-# (preflight, fetch-review) to minimize scope. Neither Claude session ever
-# holds either token: each runs with --dangerously-skip-permissions but no
+# events performed with the default GITHUB_TOKEN don't trigger other
+# workflow runs (workflow_dispatch and repository_dispatch are the only
+# exceptions: https://docs.github.com/en/actions/using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-workflow),
+# which would starve the PR of the CI checks the merge step later waits
+# on. The default token is kept on the two read-only steps (preflight,
+# fetch-review) to minimize scope. Neither Claude session ever holds
+# either token: each runs with --dangerously-skip-permissions but no
 # ability to push, open a PR, or call the GitHub API, so prompt-injected
 # repository content it reads can change files in the working tree but
 # can't use `gh` or `git push` to touch anything else. What actually keeps
 # both sessions credential-free is checkout's persist-credentials flag,
 # set to false below, not the token scoping by itself: checkout's own
-# default (persisting credentials) would otherwise write the default
-# token into .git/config inside the working tree, reachable by both
-# sessions regardless of which token any later step declares in its own
-# env. A Claude session hands its output to the next mechanical step as a plain
+# default (persist-credentials: true) would otherwise configure the
+# default token for git's use, stored in a file under $RUNNER_TEMP as of
+# actions/checkout v6+ rather than in .git/config
+# (https://github.com/actions/checkout#readme), reachable by both sessions
+# regardless of which token any later step declares in its own env. A
+# Claude session hands its output to the next mechanical step as a plain
 # file under $RUNNER_TEMP (outside the git working tree, so it can never
 # land in a commit) rather than acting on GitHub directly. The
 # diff-allowlist guard -- the PR may only touch .ai-style-rules.md and
@@ -257,12 +261,16 @@ jobs:
         run: |
           set -euo pipefail
           pr="${{ steps.pr.outputs.number }}"
+          # Scoped to threads Copilot itself opened: resolving a thread a human
+          # reviewer left while this unattended run was in flight would satisfy
+          # the ruleset's required_review_thread_resolution rule without the
+          # feedback ever having been addressed.
           ids="$(gh api graphql \
             -f query='query($owner: String!, $repo: String!, $number: Int!) {
               repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
-                reviewThreads(first: 100) { nodes { id isResolved } } } } }' \
+                reviewThreads(first: 100) { nodes { id isResolved comments(first: 1) { nodes { author { login } } } } } } } }' \
             -f owner="${{ github.repository_owner }}" -f repo="${GITHUB_REPOSITORY#*/}" -F number="$pr" \
-            --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | .id')"
+            --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | select(.comments.nodes[0].author.login == "copilot-pull-request-reviewer") | .id')"
           for id in $ids; do
             gh api graphql \
               -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
@@ -294,10 +302,14 @@ jobs:
           # for every PR here; only the ruleset's thread-resolution and
           # code-scanning rules gate the merge). mergeStateStatus is GitHub's
           # own authoritative merge-readiness signal, so poll that instead of
-          # guessing which checks are required; a failed/cancelled/timed-out
-          # check is still treated as a hard stop even though it isn't
-          # formally "required", since a check the repo runs on every PR that
-          # ends in failure is real signal worth not squash-merging past.
+          # guessing which checks are required. Per GitHub's GraphQL schema
+          # (https://docs.github.com/en/graphql/reference/enums#mergestatestatus),
+          # CLEAN means "mergeable and passing commit status" and UNSTABLE
+          # means "mergeable with non-passing commit status" -- a check that's
+          # merely pending (required or not) keeps the PR at UNSTABLE, not
+          # CLEAN, so this loop already keeps polling until every check has
+          # settled, not just the required ones. The explicit failed-check
+          # check below is a belt-and-suspenders hard stop on top of that.
           for i in $(seq 1 80); do
             info="$(gh pr view "$pr" --json mergeStateStatus,statusCheckRollup)"
             merge_status="$(echo "$info" | jq -r '.mergeStateStatus')"
