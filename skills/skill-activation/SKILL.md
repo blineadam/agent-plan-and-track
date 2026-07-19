@@ -81,6 +81,12 @@ Cases live in `fixtures/activation-cases.jsonl`, one JSON object per line:
 - Keep `prompt` realistic and **don't name the skill**: a prompt that says
   "plan this" tests nothing. Phrase it as a user actually would.
 - Add a case whenever you add a skill or discover a real misroute.
+- Don't add a plain user-correction case for `capture-lesson`: on Claude Code
+  the built-in auto-memory can legitimately absorb that prompt with no Skill
+  tool_use, and on Codex runtime activation isn't detectable at all (see
+  Portability above), so the deterministic checker can't reliably score it on
+  every harness. `capture-self-recurrence` covers the territory a harness
+  memory feature doesn't (self-observed recurrence, no user correction).
 
 ## Phase 2: Run the cases
 
