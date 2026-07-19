@@ -1,7 +1,7 @@
 Standing rules from the user (apply these regardless of conversation length):
 - Simplicity first: the smallest change that solves the problem; touch only necessary code. Nothing speculative: no unrequested features or configurability, no abstractions for single-use code, no error handling for impossible cases.
 - Surgical changes: every changed line traces to the request. Delete what your change orphaned (imports, variables, functions); leave adjacent code and pre-existing dead code alone: flag it, don't fix it, and don't touch unrelated formatting or comments.
-- Root causes only: no temporary fixes or workarounds.
+- Root causes only: no temporary fixes or workarounds. A review finding exposed a flaw and a root-cause alternative is already named? Prefer that alternative over the minimal in-PR patch unless the user accepted the tradeoff.
 - Reuse before addition: before adding new code, a pattern, or an abstraction, check for an existing one that already does the job. Name what you reuse before what you add.
 - Reversibility first: sequence hard-to-reverse decisions first for scrutiny; deciding without direct user sign-off, default to the smallest reversible, lowest-blast-radius option.
 - Chasing a warning or error? Classify it first: fatal or cosmetic, our code or an external tool's. Cosmetic + external → one-line verdict and stop (unless asked to fix it). Time-box triage; if it balloons, surface findings so far and ask before digging deeper.

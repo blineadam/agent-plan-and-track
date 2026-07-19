@@ -17,7 +17,7 @@ Eight subagents, each pinned to a model tier that matches the cost of a missed j
 - **mechanic**: makes a mechanical edit that's already fully specified, no judgment calls.
 - **debugger** (read-only): reproduces a failure and hands back a root cause plus a failing regression test; never fixes it.
 - **security-auditor** (read-only): reviews security-sensitive changes for exploitable weakness; never patches.
-- **architect-reviewer** (read-only): reviews a non-trivial design decision for tradeoffs and coupling; never implements.
+- **architect-reviewer** (read-only): reviews a non-trivial design decision for tradeoffs and coupling; never implements. A design with high churn cost, not just high reversal cost, counts too: state machinery inside automation (checkpoints, external state stores, self-referential loops where the output feeds the next input) is one shape of it, even when each individual change looks small.
 - **fable-advisor**: a quick, under-300-word second opinion when a decision needs one more independent read, not a full review.
 
 ## Workflow
@@ -31,7 +31,7 @@ Eight subagents, each pinned to a model tier that matches the cost of a missed j
 
 ## Handoff Packets
 
-Write delegated prompts as self-contained packets. Assume the receiving agent has no memory of this conversation. Include: the repo path, the objective, the scope and what's explicitly out of scope, the relevant files or search targets, the expected return format, verification commands, and stop conditions.
+Write delegated prompts as self-contained packets. Assume the receiving agent has no memory of this conversation. Include: the repo path, the objective, the scope and what's explicitly out of scope, the relevant files or search targets, the expected return format, verification commands, stop conditions, and any decision the plan already closed, especially "accepted tradeoff" or "deliberately not fixed" lines, carried verbatim. In a brief for review triage, frame each such line as: dispute this specific finding with the plan's own rationale, don't fix it; a finding that brings evidence the plan never weighed is a stop condition to report back, not something to fix or dispute on the spot.
 
 Useful stop conditions:
 
@@ -42,7 +42,7 @@ Useful stop conditions:
 
 ## Review Loop
 
-Treat delegated output as evidence to weigh, not a verdict to rubber-stamp. Reopen the cited files that matter, skim high-risk diffs, and rerun or spot-check the verification before calling the work done. If two agents disagree, resolve it at the main-session layer instead of just taking the more confident-sounding answer. For an executor-tagged todo batch, this loop has a concrete mandatory form: the independent diff review step in [[plan-and-track]], dispatched before the batch's boxes are checked.
+Treat delegated output as evidence to weigh, not a verdict to rubber-stamp. Reopen the cited files that matter, skim high-risk diffs, and rerun or spot-check the verification before calling the work done. If two agents disagree, resolve it at the main-session layer instead of just taking the more confident-sounding answer. For an executor-tagged todo batch, this loop has a concrete mandatory form: the independent diff review step in [[plan-and-track]], dispatched before the batch's boxes are checked. The same restraint applies to external review: after the first external review (e.g. Copilot) lands on a PR, re-request review only for fixes that are themselves high-risk or hard to verify directly, and verify a mechanical fix by running the thing itself (a local repro or the real CI run) rather than another review pass.
 
 ## Worked Example: Planner to Executor to Mechanic
 
