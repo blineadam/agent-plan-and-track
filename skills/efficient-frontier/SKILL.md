@@ -31,7 +31,7 @@ Eight subagents, each pinned to a model tier that matches the cost of a missed j
 
 ## Handoff Packets
 
-Write delegated prompts as self-contained packets. Assume the receiving agent has no memory of this conversation. Include: the repo path, the objective, the scope and what's explicitly out of scope, the relevant files or search targets, the expected return format, verification commands, stop conditions, and any decision the plan already closed, especially "accepted tradeoff" or "deliberately not fixed" lines, carried verbatim. In a brief for review triage, frame each such line as: dispute this specific finding with the plan's own rationale, don't fix it.
+Write delegated prompts as self-contained packets. Assume the receiving agent has no memory of this conversation. Include: the repo path, the objective, the scope and what's explicitly out of scope, the relevant files or search targets, the expected return format, verification commands, stop conditions, and any decision the plan already closed, especially "accepted tradeoff" or "deliberately not fixed" lines, carried verbatim. In a brief for review triage, frame each such line as: dispute this specific finding with the plan's own rationale, don't fix it; a finding that brings evidence the plan never weighed is a stop condition to report back, not something to fix or dispute on the spot.
 
 Useful stop conditions:
 
