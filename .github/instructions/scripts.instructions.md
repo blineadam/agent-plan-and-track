@@ -47,6 +47,13 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   than guess when the simulation can't be exact (e.g. an `old_string` that
   doesn't match). Flag a lint that writes a temp file to check content, or
   that guesses at a result it can't derive exactly.
+- A hook that must tell a main-thread tool call apart from a dispatched
+  subagent's checks the same four fields (`agent_id`, `agentId`,
+  `parent_tool_use_id`, `parentToolUseId`; true if any is a non-empty
+  string), copied inline per script rather than shared (`gateguard.js`'s
+  `isSubagent()`, `suggest-compact.js`'s inline check). Flag a new hook that
+  reimplements this differently, or that relies on `agent_type` alone (also
+  set for a whole session launched with `--agent`, which is main-thread).
 
 ## Shell scripts
 

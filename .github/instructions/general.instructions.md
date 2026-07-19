@@ -36,6 +36,10 @@ just a suggestion.
   number (e.g. "Batch 12"). Those files are gitignored and local-only, so
   the reference is a dead pointer for anyone without the author's working
   tree; the change should be described on its own terms instead.
+- Flag a destructive or history-altering git operation (`git reset --hard`,
+  `git clean`, force-push, rewriting shared history) or a commit/revert that
+  overwrites another session's or agent's in-flight work, unless the PR
+  description shows it was explicitly requested.
 
 ## Scope discipline
 
@@ -64,6 +68,12 @@ just a suggestion.
   defaults) with no rationale or approval trail in the description; these
   should read as deliberate and reviewed, not a silent edit riding along
   with unrelated work.
+- Flag a PR that adopts or dismisses an external review's suggested fix with
+  no visible triage: the finding should be confirmed as real (or rejected)
+  against the PR's own context, not accepted or waved off on the reviewer's
+  authority alone.
+- Flag a PR that fans the same repetitive change across every target file at
+  once with no evidence a smaller subset was piloted and reviewed first.
 
 ## Verification
 
@@ -71,6 +81,12 @@ just a suggestion.
   or a described manual check.
 - Flag a bug fix with no regression test, when a test harness already
   exists in the repo.
+- Flag a claim that a check, build, or test suite passed when the change
+  achieves that by stubbing an implementation, returning a placeholder,
+  silencing an error without resolving it, deleting or weakening a test or
+  assertion, disabling a safety check, or leaving required work as a TODO. A
+  "tests pass" claim should mean the tests actually ran, not that they were
+  skipped.
 - Flag a PR description or commit message that claims completion without
   noting residual risk or what wasn't verified.
 - Flag an assertion about a third-party API, library, or product behavior
