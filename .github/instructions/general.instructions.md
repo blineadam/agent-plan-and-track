@@ -72,8 +72,9 @@ just a suggestion.
   no visible triage: the finding should be confirmed as real (or rejected)
   against the PR's own context, not accepted or waved off on the reviewer's
   authority alone.
-- Flag a PR that fans the same repetitive change across every target file at
-  once with no evidence a smaller subset was piloted and reviewed first.
+- Flag a PR that delegates the same repetitive change across every target
+  file to a subagent in one pass, with no evidence a smaller subset was
+  piloted and reviewed first.
 
 ## Verification
 
