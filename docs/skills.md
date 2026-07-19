@@ -90,10 +90,11 @@ For turning a project's conventions into documentation other agents can read:
 | **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
 | **`copilot-review-instructions`** | Generates path-scoped `.github/instructions/*.instructions.md` PR-review directives from a project's documented conventions (style rules, instructions file, README, docs). | All 3 (Copilot-only output) |
 
-## Design and document skills
+## Design, document, and browser-testing skills
 
 Adapted from [anthropics/skills](https://github.com/anthropics/skills), for
-design and document-creation work rather than the coding workflow above:
+design, document-creation, and browser-testing work rather than the everyday
+coding workflow above:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
@@ -101,6 +102,7 @@ design and document-creation work rather than the coding workflow above:
 | **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults. | All 3 |
 | **`theme-factory`** | Applies one of ten curated color/font themes (or generates a new one) to a slide deck or other artifact for consistent styling. | All 3 |
 | **`slack-gif-creator`** | Creates Slack-optimized animated GIFs: dimension/FPS/color/duration constraints, validation tools, animation-concept guidance. | All 3 |
+| **`webapp-testing`** | Drives a local web app in a real browser with Playwright to verify frontend behavior, debug UI, capture screenshots, and read console logs. | All 3 |
 
 [anthropics/skills](https://github.com/anthropics/skills) also has `docx`,
 `pdf`, `pptx`, and `xlsx` skills, but their license doesn't allow vendoring
