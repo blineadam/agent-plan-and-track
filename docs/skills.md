@@ -39,8 +39,9 @@ correction into a rule for next time.
   right before you finish: did you verify, did you checkpoint? Backs up
   the verify-before-done and capture-lesson rules at the harness level. An
   env var can make it block instead of warn.
-- **`capture-lesson`** (skill) kicks in whenever you get corrected, and
-  turns the correction into a durable rule in `tasks/lessons.md`.
+- **`capture-lesson`** (skill) kicks in whenever you get corrected or I
+  notice the same repeated error, and turns the correction into a durable 
+  rule in `tasks/lessons.md`.
 - **`humanizer`** (skill, adapted from
   [blader/humanizer](https://github.com/blader/humanizer)) kicks in before
   finalizing longer user-facing writing: README sections, docs, PR
