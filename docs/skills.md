@@ -100,6 +100,7 @@ design and document-creation work rather than the coding workflow above:
 | **`canvas-design`** | Produces original visual art (a poster, piece, or static design) as a PDF or PNG, built from an explicit design philosophy rather than a template. | All 3 |
 | **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults. | All 3 |
 | **`theme-factory`** | Applies one of ten curated color/font themes (or generates a new one) to a slide deck or other artifact for consistent styling. | All 3 |
+| **`slack-gif-creator`** | Creates Slack-optimized animated GIFs: dimension/FPS/color/duration constraints, validation tools, animation-concept guidance. | All 3 |
 
 [anthropics/skills](https://github.com/anthropics/skills) also has `docx`,
 `pdf`, `pptx`, and `xlsx` skills, but their license doesn't allow vendoring
