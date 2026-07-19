@@ -31,7 +31,7 @@ Eight subagents, each pinned to a model tier that matches the cost of a missed j
 
 ## Handoff Packets
 
-Write delegated prompts as self-contained packets. Assume the receiving agent has no memory of this conversation. Include: the repo path, the objective, the scope and what's explicitly out of scope, the relevant files or search targets, the expected return format, verification commands, stop conditions, and any decision the plan already closed, especially "accepted tradeoff" or "deliberately not fixed" lines, carried verbatim. In a brief for review triage, frame each such line as: dispute this specific finding with the plan's own rationale, don't fix it; a finding that brings evidence the plan never weighed is a stop condition to report back, not something to fix or dispute on the spot.
+Write delegated prompts as self-contained packets. Assume the receiving agent has no memory of this conversation. Include: the repo path, the objective, the scope and what's explicitly out of scope, the relevant files or search targets, the expected return format, verification commands, stop conditions, and any decision the plan already closed, especially "accepted tradeoff" or "deliberately not fixed" lines, carried verbatim. In a brief for review triage, frame each such line as: dispute this specific finding with the plan's own rationale, don't fix it; a finding that brings evidence the plan never weighed is a stop condition to report back, not something to fix or dispute on the spot. A brief whose deliverable is verification or confirmation is default-deny: instruct the agent to report not-confirmed unless it can cite concrete evidence (file and line, or command output), so the burden of proof sits on confirming, not on someone later finding the counterexample.
 
 Useful stop conditions:
 
@@ -53,6 +53,7 @@ The default ladder for a spec-shaped task: `planner` writes the spec after readi
 - Don't reach for the harness's generic catch-all agent when a roster tier fits; the catch-all is the fallback for work no tier covers, not the default.
 - Don't delegate the work that's actually the immediate blocker; if the next step depends on an answer, get it directly instead of waiting on a round trip.
 - Don't send two agents to edit the same files at the same time.
+- Don't fan a repetitive change out across the full target set on the first pass. Pilot the brief on a small representative subset, review those results, fold the corrections into the brief, then scale to the rest.
 - Don't trust a subagent's conclusion blindly when the stakes are high; inspect the evidence that matters yourself.
 - Don't assume delegation always saves time. It pays off when the work is genuinely parallelizable or genuinely bounded, not as a reflex for everything.
 
