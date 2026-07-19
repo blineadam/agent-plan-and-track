@@ -58,14 +58,14 @@ compact. Nothing important should live only in the conversation.
 Manual installs (`./install.sh claude`, or `install.ps1 claude` on Windows) also register a `PreToolUse` hook (on all
 tools), `~/.claude/scripts/suggest-compact.js`, that reads the session
 transcript's latest context size (a bounded tail read) and nudges you toward
-`/compact` at a window-scaled threshold, plus an all-tools count fallback. It
-only ever adds a one-line suggestion; it never blocks a tool call.
+`/compact` at a window-scaled threshold, plus an all-tools count fallback. The
+nudge is shown to you directly (and mirrored to the model); it never blocks a tool call. Subagent tool calls are skipped.
 
 Tune via environment variables:
 
 - `COMPACT_THRESHOLD`: tool calls before the first count-based nudge (default 50; then every 25).
-- `COMPACT_CONTEXT_THRESHOLD`: context tokens before the size-based nudge (default 160000 on a 200k window, 250000 on 1M; `0` disables it).
-- `COMPACT_CONTEXT_INTERVAL`: extra tokens of growth before it re-nudges (default 60000).
+- `COMPACT_CONTEXT_THRESHOLD`: context tokens before the size-based nudge (default 120000, or 250000 once context growth proves a 1M window; `0` disables it).
+- `COMPACT_CONTEXT_INTERVAL`: extra tokens of growth before it re-nudges (default 60000; 40000 on a proven 1M window).
 
 Copilot and Codex don't get this hook (their harnesses don't expose the same
 transcript/`/compact` mechanics). The decision guide above is the portable part.

@@ -4,15 +4,23 @@
  *
  * A PreToolUse hook (registered for all tools) that nudges you to run /compact
  * at logical boundaries instead of waiting for arbitrary mid-task auto-compaction.
- * It adds a one-line suggestion to the next model turn via hookSpecificOutput; it
- * never blocks a tool call and always exits 0. Firing on every tool call keeps the
- * tool-count signal honest during read/search/Bash-heavy phases (e.g. research)
- * that do no edits: the bounded-tail transcript read keeps this cheap.
+ * Delivery is dual-channel: a top-level systemMessage so the user sees it directly
+ * (only the user can run /compact), mirrored via hookSpecificOutput's
+ * additionalContext so the model can still checkpoint before the user compacts.
+ * It never blocks a tool call and always exits 0. Subagent tool calls (detected
+ * via the same id fields gateguard.js checks) are skipped entirely: sidechain
+ * transcripts misjudge the main
+ * context, and the session-keyed state files are main-thread-only. Firing on every
+ * main-thread tool call keeps the tool-count signal honest during read/search/
+ * Bash-heavy phases (e.g. research) that do no edits: the bounded-tail transcript
+ * read keeps this cheap.
  *
  * Two signals:
  *  - Context size (primary): reads the latest assistant `usage` record from the
  *    session transcript and compares real context tokens against a window-scaled
- *    threshold, re-reminding after each interval of growth.
+ *    threshold, re-reminding after each interval of growth. A 1M context window is
+ *    only ever proven by tokens exceeding 200000 (a 200k session can never report
+ *    more), so the message names a window only above that line.
  *  - Tool-call count (secondary): first at COMPACT_THRESHOLD, then every 25.
  *
  * Self-contained: no external modules, Node core only (Claude Code ships Node).
@@ -20,8 +28,8 @@
  * so it stays a Claude-only piece; Copilot/Codex get the guidance skill instead.
  *
  * Config (env): COMPACT_THRESHOLD (default 50), COMPACT_CONTEXT_THRESHOLD
- * (default 160000 on a 200k window / 250000 on 1M; 0 disables the context
- * signal), COMPACT_CONTEXT_INTERVAL (default 60000).
+ * (default 120000, or 250000 once tokens prove a 1M window; 0 disables the context
+ * signal), COMPACT_CONTEXT_INTERVAL (default 60000; 40000 on a proven 1M window).
  */
 'use strict';
 
@@ -37,7 +45,7 @@ function readStdin() {
   }
 }
 
-// Last assistant usage record in the transcript → real context size + model.
+// Last assistant usage record in the transcript → real context size.
 // Reads only a bounded tail: transcripts grow without limit in the long sessions
 // this hook targets, and the latest usage record sits at the very end, so a full
 // read+parse on every tool call would be O(total transcript) for no benefit.
@@ -85,8 +93,7 @@ function readLatestUsage(transcriptPath) {
         (u.input_tokens || 0) +
         (u.cache_read_input_tokens || 0) +
         (u.cache_creation_input_tokens || 0);
-      const model = (obj.message && obj.message.model) || '';
-      return { tokens, model };
+      return { tokens };
     }
   }
   return null;
@@ -107,6 +114,14 @@ function main() {
     input = {};
   }
 
+  // Subagent tool calls run on sidechain transcripts that misjudge the main
+  // context, and the shared session-keyed state files would otherwise advance
+  // past nudges the main thread never saw. Skip entirely. Same field set as
+  // gateguard.js's isSubagent: agent_type alone is NOT proof (it's also set
+  // for whole sessions launched with --agent, which are main-thread).
+  const agentIds = [input.agent_id, input.agentId, input.parent_tool_use_id, input.parentToolUseId];
+  if (agentIds.some((v) => typeof v === 'string' && v.trim())) process.exit(0);
+
   const rawId =
     (input && typeof input.session_id === 'string' && input.session_id) ||
     process.env.CLAUDE_SESSION_ID ||
@@ -123,10 +138,11 @@ function main() {
   // --- Context-size signal (primary) ---
   const usage = readLatestUsage(transcriptPath);
   if (usage) {
-    const is1M = /\[1m\]/i.test(usage.model) || usage.tokens > 200000;
-    const windowTokens = is1M ? 1000000 : 200000;
-    const threshold = intEnv('COMPACT_CONTEXT_THRESHOLD', is1M ? 250000 : 160000);
-    const interval = Math.max(1, intEnv('COMPACT_CONTEXT_INTERVAL', 60000));
+    // >200k context is itself proof of a 1M window (a 200k session can never
+    // report more); the transcript model id carries no window marker.
+    const is1M = usage.tokens > 200000;
+    const threshold = intEnv('COMPACT_CONTEXT_THRESHOLD', is1M ? 250000 : 120000);
+    const interval = Math.max(1, intEnv('COMPACT_CONTEXT_INTERVAL', is1M ? 40000 : 60000));
     const atThreshold = threshold > 0 && usage.tokens >= threshold;
     const bucket = atThreshold ? Math.floor((usage.tokens - threshold) / interval) : -1;
 
@@ -146,10 +162,10 @@ function main() {
         /* best effort */
       }
       const approx = `${Math.round(usage.tokens / 1000)}k`;
-      const pct = Math.round((usage.tokens / windowTokens) * 100);
-      const win = windowTokens >= 1000000 ? '1M' : '200k';
+      // Absolute tokens always; window % only once is1M has proven the window.
+      const win = is1M ? ` (${Math.round((usage.tokens / 1000000) * 100)}% of 1M window)` : '';
       messages.push(
-        `[StrategicCompact] Context ~${approx} tokens (${pct}% of ${win} window); consider /compact at the next logical boundary.`
+        `[StrategicCompact] Context ~${approx} tokens${win}; consider /compact at the next logical boundary.`
       );
     } else if (bucket < last) {
       // Context shrank (e.g. after /compact) → resync the saved bucket downward
@@ -188,11 +204,16 @@ function main() {
   }
 
   if (messages.length > 0) {
+    const text = messages.join('\n');
+    // Dual delivery: systemMessage is user-visible (since /compact is
+    // user-run, only the user can act on the nudge), mirrored to the model
+    // via additionalContext so it can still checkpoint before the user compacts.
     process.stdout.write(
       JSON.stringify({
+        systemMessage: text,
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
-          additionalContext: messages.join('\n'),
+          additionalContext: text,
         },
       })
     );
