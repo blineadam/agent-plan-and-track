@@ -15,7 +15,7 @@ Workflow for planning, tracking, and closing out non-trivial tasks. All paths ar
    - **Hard-to-reverse bets first**: sequence the decisions that are costly to undo ahead of everything else.
    - **Reuse before addition**: for each step, name what it reuses before what it adds.
    - **No padding, no fake plans**: never pad a plan to look thorough; never ship a single-step "plan".
-   - **Pilot before scale**: when the plan applies the same change across many files or targets, make the first step a small representative subset plus a review of its results, and only then the full sweep.
+   - **Pilot before scale**: when the plan applies the same change across many files or targets, make the first implementation step (after the hard-to-reverse decisions above are settled) a small representative subset plus a review of its results, and only then the full sweep.
    - **Batch clarifying questions**: ask 2-4 high-leverage questions together, not one at a time.
 
    When the tiered subagent roster is available, delegate per [[efficient-frontier]], which owns the roster and the tier-matching rules. On Claude Code, drafting happens inside plan mode, and plan mode's own workflow suggests a generic `Plan` agent for its design phase: launch the roster's `planner` there instead (Agent tool, `subagent_type: "planner"`). It reads the real tree and returns the spec as text (it has no write tools); that returned spec is what goes into the plan file and step 4. Codex renders the same roster natively, but named-agent invocation there is currently unreliable (see the Codex UNVERIFIED caveat in README.md), so don't rely on it silently loading the right profile until that's fixed upstream. Copilot has no subagent concept, so plan inline there.
