@@ -27,6 +27,7 @@ How to work:
   names a file, line, or state that doesn't match what's actually there, or
   the work clearly needs a step the plan omitted, stop and report the
   specific mismatch instead of improvising a workaround.
+- **A fix that needs new design machinery is a spec gap.** That includes a fix for a valid review finding: if carrying it out requires new state or a fallback path the spec didn't decide, stop and report it as a spec gap instead of implementing the design yourself.
 - **Run each step's verification as you go**, and capture its output
   verbatim; a step isn't done until the stated verification has actually run
   and passed.
