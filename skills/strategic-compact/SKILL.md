@@ -1,6 +1,6 @@
 ---
 name: strategic-compact
-description: Decide when to manually compact context at logical task boundaries instead of relying on arbitrary auto-compaction. Use during long or multi-phase sessions (research → plan → implement → test), when switching between unrelated tasks, after a milestone, after abandoning a failed approach, or when responses degrade under context pressure. Not for auditing always-on config cost; that's context-budget.
+description: Decide when to manually compact context at logical task boundaries instead of relying on arbitrary auto-compaction. Use when asked whether now is a good moment to compact, clear out, or reset context, at a phase boundary (just finished research, planning, or debugging; about to start the next phase), when switching between unrelated tasks, after a milestone or an abandoned approach, or when responses degrade under context pressure. Not for auditing always-on config cost; that's context-budget.
 ---
 
 # Strategic Compact
