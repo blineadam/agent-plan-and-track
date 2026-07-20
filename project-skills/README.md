@@ -12,7 +12,7 @@ Copy the skill's whole folder into your target project at the destination your h
 
 ## Catalog
 
-- **migration-discipline**: file-ownership isolation for parallel agents, a progressive validation ladder, a semantic-error review checklist, work-queue batching for large error sets, test-oracle integrity, and audit-trail preservation for large migrations and ports.
+- **migration-discipline**: file-ownership isolation for parallel agents, a progressive validation ladder, a semantic-error review checklist, work-queue batching for large error sets, test-oracle integrity, audit-trail preservation for large migrations and ports, and a durable migration-state block in tasks/todo.md preserving invariants across sessions and compaction.
 
 ## Per-harness copy destinations
 
