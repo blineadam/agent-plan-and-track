@@ -281,14 +281,19 @@ function frontmatterMeta(file) {
 // Whether the frontmatter contains a `key: value` line YAML would reject. This
 // repo's convention is single-line name/description pairs only, never YAML
 // folding, so a targeted per-line check covers it; no general YAML parser.
-// Two failure modes, one per quoting style:
-//   unquoted value  -> a colon-space (": ") sequence, which YAML reads as a
+// A value opening with a quote is a quoted scalar (a plain scalar may not start
+// with one), so it is judged by the quoted rules; anything else is plain.
+//   plain scalar    -> a colon-space (": ") sequence, which YAML reads as a
 //                      nested mapping key, invalidating the whole block
-//   quoted value    -> an unescaped instance of its own delimiter inside the
-//                      quotes, which closes the scalar early. YAML escapes
-//                      these as \" inside "..." and as '' inside '...'.
-// The second case is the one that bites when a value is single-quoted to avoid
-// escaping embedded double quotes: adding an apostrophe later breaks it.
+//   quoted scalar   -> no matching closing delimiter, or an unescaped instance
+//                      of its own delimiter inside the quotes, either of which
+//                      ends the scalar somewhere YAML does not expect. YAML
+//                      escapes these as \" inside "..." and as '' inside '...',
+//                      and \" only counts as escaped after an even-length run
+//                      of backslashes, since \\ is itself an escaped backslash.
+// The unescaped-delimiter case is the one that bites when a value is
+// single-quoted to avoid escaping embedded double quotes: adding an apostrophe
+// later breaks it.
 function hasInvalidFrontmatterValue(file) {
   const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
   let fm = 0;
@@ -302,14 +307,15 @@ function hasInvalidFrontmatterValue(file) {
     const m = /^[A-Za-z0-9_-]+:[ \t]*(.*)$/.exec(line);
     if (!m) continue;
     const value = m[1];
-    const q = value.length >= 2 && (value[0] === '"' || value[0] === "'") ? value[0] : '';
-    if (!q || value[value.length - 1] !== q) {
+    const q = value[0] === '"' || value[0] === "'" ? value[0] : '';
+    if (!q) {
       if (value.includes(': ')) return true;
       continue;
     }
+    if (value.length < 2 || value[value.length - 1] !== q) return true;
     const inner = value.slice(1, -1);
     const unescaped =
-      q === '"' ? /(^|[^\\])"/.test(inner) : inner.replace(/''/g, '').includes("'");
+      q === '"' ? /(?:^|[^\\])(?:\\\\)*"/.test(inner) : inner.replace(/''/g, '').includes("'");
     if (unescaped) return true;
   }
   return false;
