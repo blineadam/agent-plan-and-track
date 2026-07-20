@@ -24,9 +24,11 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   the trigger clause: "Use when X," "Use BEFORE Y." A summary of what the
   skill does, with no trigger clause, is not sufficient.
 - Any frontmatter value containing a colon-space (`: `) must be quoted:
-  double quotes by default, single quotes only when the text already
-  contains a double quote (never escape). An unquoted colon-space reads as
-  a nested YAML mapping key and invalidates the whole frontmatter block for
+  double quotes by default, single quotes when the text already contains a
+  double quote, and when it contains both quote types, escape the chosen
+  delimiter (`\"` inside double quotes, `''` inside single quotes) rather
+  than switching representations. An unquoted colon-space reads as a
+  nested YAML mapping key and invalidates the whole frontmatter block for
   a strict parser, even though this repo's own lenient parsers keep
   working. Flag an unquoted `description` containing `: `, and flag a
   quoted value containing an unescaped copy of its own delimiter.
