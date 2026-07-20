@@ -12,9 +12,9 @@ Disciplines specific to large migrations, language ports, and mechanical rewrite
 Parallelize only work that can be safely isolated. Before dispatching parallel agents at migration scale:
 
 - Assign each agent explicit, non-overlapping ownership of files or components; two agents must never hold write access to the same file at the same time.
-- Use separate worktrees or branches per parallel stream when the scale warrants it, not just separate prompts against one working tree.
+- Give each parallel stream its own working directory, a git worktree or a separate clone, each on its own branch, when the scale warrants it. Switching branches inside one shared checkout is not isolation: every agent still mutates the same files and index.
 - Cap parallelism to what disk, memory, build, and test infrastructure can actually sustain; more agents than the build/test system can absorb turns into contention, not throughput.
-- Never run a project-wide formatter, generator, build, or dependency update from inside a parallel task. Those touch files outside any single agent's assigned ownership and will race with every other agent's edits.
+- Never run a command that mutates shared or out-of-scope state from inside a parallel task: a project-wide formatter, code generator, or dependency update, or a build that writes to a shared cache or output tree. Those race with every other agent's edits. A build that only reads tracked sources and writes outputs inside the task's own worktree is fine, and is what the per-batch validation below depends on.
 
 ## Progressive Validation Ladder
 
@@ -33,7 +33,7 @@ Climb the ladder in order. A change that passes rung 2 but hasn't been run throu
 
 ## Semantic-Error Review Brief
 
-A port or rewrite can compile, typecheck, and even pass a shallow smoke test while still being behaviorally wrong in ways that only show up under specific inputs or timing. When writing a review brief for this kind of change (per [[efficient-frontier]]'s default-deny verification-brief approach), attach the semantic-error checklist as a reviewer appendix rather than trusting the reviewer to think of each category unprompted. See [references/semantic-error-checklist.md](references/semantic-error-checklist.md) for the full list; don't inline it here.
+A port or rewrite can compile, typecheck, and even pass a shallow smoke test while still being behaviorally wrong in ways that only show up under specific inputs or timing. When writing a review brief for this kind of change (per [[efficient-frontier]]'s default-deny verification-brief approach), it helps to include the semantic-error checklist as a reviewer appendix rather than trusting the reviewer to think of each category unprompted. This is reviewer guidance, not a mandated output format. See [references/semantic-error-checklist.md](references/semantic-error-checklist.md) for the full list; don't inline it here.
 
 ## Work-Queue Batching
 
@@ -61,5 +61,5 @@ For a long, multi-agent, multi-session migration, squash-merging the final resul
 3. Freeze the behavior-verification suite per the oracle-integrity section before behavior-preserving work begins.
 4. As broad validation commands (compiler, linter, full test run) produce output, batch and fix per the work-queue section instead of re-running them after each edit.
 5. Climb the validation ladder in order as batches complete; don't skip a rung because an earlier one passed.
-6. When reviewing changes, attach the semantic-error checklist to the review brief.
+6. When reviewing changes, consider including the semantic-error checklist in the review brief.
 7. At merge time, apply the audit-trail preservation choice appropriate to the effort's size.
