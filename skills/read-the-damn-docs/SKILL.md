@@ -1,6 +1,6 @@
 ---
 name: read-the-damn-docs
-description: Use when implementing, integrating, upgrading, debugging, or answering anything involving third-party APIs, libraries, frameworks, CLIs, cloud services, model or provider SDKs, fast-moving product behavior, a user request for latest, current, or official behavior, unfamiliar repo docs or specs, an error that may indicate API drift, or high-stakes auth, security, billing, data, migration, deployment, compliance, or privacy behavior: forces a web search for current official docs and a read of primary sources before assuming from memory.
+description: "Use when implementing, integrating, upgrading, debugging, or answering anything involving third-party APIs, libraries, frameworks, CLIs, cloud services, model or provider SDKs, fast-moving product behavior, a user request for latest, current, or official behavior, unfamiliar repo docs or specs, an error that may indicate API drift, or high-stakes auth, security, billing, data, migration, deployment, compliance, or privacy behavior: forces a web search for current official docs and a read of primary sources before assuming from memory."
 ---
 
 # Read The Damn Docs

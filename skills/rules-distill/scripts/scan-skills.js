@@ -58,7 +58,9 @@ function toDisplay(p) {
 // Extract a single-line frontmatter field (quoted or unquoted), reproducing the
 // awk in the shell version: only lines between the first and second `---`, only
 // a line that starts with `<field>: ` (colon then one space), value is the rest
-// with at most one leading and one trailing double quote removed. Does not
+// with one matching pair of surrounding quotes removed. Both quote styles count:
+// a value whose text contains a colon-space has to be quoted to parse as YAML,
+// and single quotes are what a value containing double quotes uses. Does not
 // handle multi-line YAML blocks or nested keys. Returns '' when not found.
 function extractField(lines, field) {
   const prefix = field + ': ';
@@ -71,7 +73,9 @@ function extractField(lines, field) {
     }
     if (fm >= 2) break; // past the frontmatter block
     if (fm === 1 && line.startsWith(prefix)) {
-      return line.slice(prefix.length).replace(/^"/, '').replace(/"$/, '');
+      const value = line.slice(prefix.length);
+      const q = value.length >= 2 && (value[0] === '"' || value[0] === "'") ? value[0] : '';
+      return q && value[value.length - 1] === q ? value.slice(1, -1) : value;
     }
   }
   return '';
