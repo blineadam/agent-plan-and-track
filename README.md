@@ -108,7 +108,7 @@ gets, the tiered subagents Claude and Codex install, and per-tool notes.
 ### Opt-in Skills
 These opt-in skills should be copied into a project as needed.
 
-[project-skills/README.md](Migration_Discipline) provides Guidance for 
+[Migration_Discipline](project-skills/README.md) provides Guidance for 
 safely handling large migrations across many files, especially with multiple 
 agents. It focuses on isolated ownership, staged validation, batching errors, 
 keeping tests trustworthy, and preserving enough history to understand what 
