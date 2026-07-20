@@ -58,7 +58,9 @@
  * delete an existing `## Migration State` heading (the durable cross-session
  * block the migration-discipline project skill keeps there) is denied once
  * per session, gateguard-style: the marker is written at deny time so an
- * intentional retry always passes. PLANGATE_LINT_DISABLED does not turn this
+ * intentional retry always passes (a concurrent write racing that first
+ * deny is denied too, via marker age, not mistaken for the retry).
+ * PLANGATE_LINT_DISABLED does not turn this
  * off (it is a data-loss guard, not a formatting lint); PLANGATE_DISABLED
  * does, and PLANGATE_WARN demotes it like every other deny here.
  *
@@ -483,7 +485,25 @@ function maybeGuardMigrationState(toolName, toolInput, stamp) {
       // STATE_DIR exists here: the session stamp this branch requires lives in it.
       fs.writeFileSync(stamp + '.migstate', '', { flag: 'wx' });
     } catch (err) {
-      if (err && err.code === 'EEXIST') return false; // already speed-bumped once: intentional retry passes
+      if (err && err.code === 'EEXIST') {
+        // EEXIST alone can't tell an intentional retry from a concurrent
+        // write that lost the wx race microseconds ago (PreToolUse hooks can
+        // run concurrently; see withSessionLock above). A racing loser sees
+        // a marker written within the same tool batch, sub-second old; a
+        // genuine retry needs a model turn after seeing the deny. So a fresh
+        // marker means contention: deny this invocation too. The check never
+        // touches the marker's mtime, so denied racers can't keep the window
+        // open and re-deny a real retry forever.
+        try {
+          if (Date.now() - fs.statSync(stamp + '.migstate').mtimeMs < 2000) {
+            emitGateDecision(migrationMsg());
+            return true;
+          }
+        } catch {
+          /* marker vanished or unreadable: treat as the retry and allow */
+        }
+        return false; // aged marker: intentional retry passes
+      }
       process.stderr.write('[PlanGate] migration-state marker could not be persisted; allowing the edit.\n');
       return false; // never deny what we can't record, or the deny would repeat forever
     }
