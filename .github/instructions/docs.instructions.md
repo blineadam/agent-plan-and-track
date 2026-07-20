@@ -1,5 +1,5 @@
 ---
-applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md"
+applyTo: "rules/**/*.md,skills/**/*.md,project-skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md"
 excludeAgent: "cloud-agent"
 ---
 
@@ -23,6 +23,22 @@ themselves. See `.ai-style-rules.md` for the full convention set.
 - A skill's frontmatter `description` must lead with (or clearly contain)
   the trigger clause: "Use when X," "Use BEFORE Y." A summary of what the
   skill does, with no trigger clause, is not sufficient.
+- Any frontmatter value containing a colon-space (`: `) must be quoted:
+  double quotes by default, single quotes when the text already contains a
+  double quote, and when it contains both quote types, escape the chosen
+  delimiter (`\"` inside double quotes, `''` inside single quotes) rather
+  than switching representations. An unquoted colon-space reads as a
+  nested YAML mapping key and invalidates the whole frontmatter block for
+  a strict parser, even though this repo's own lenient parsers keep
+  working. Flag an unquoted `description` containing `: `, and flag a
+  quoted value containing an unescaped copy of its own delimiter.
+- An opt-in, project-scoped skill (not meant to load in every session)
+  lives under `project-skills/<name>/`, a sibling of `skills/` deliberately
+  outside the installer's `skills/*/` glob, so it's never auto-deployed;
+  its own reference material lives under its `references/` folder, not
+  top-level `docs/`. Flag a new skill added under `skills/` that reads as
+  project-specific, opt-in guidance (the way `migration-discipline` does)
+  rather than something every session should load.
 - Cross-skill references inside a skill's body use `[[skill-name]]`
   wiki-link syntax instead of duplicating another skill's content inline.
   A frontmatter `description` may still name a sibling skill in plain text
