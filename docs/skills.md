@@ -108,3 +108,12 @@ coding workflow above:
 `pdf`, `pptx`, and `xlsx` skills, but their license doesn't allow vendoring
 them here, so they're not in the table above. Run the separate installer
 under [Install](../README.md#install) if you want them too.
+
+## Project-scoped skills (not installed)
+
+Unlike everything above, the skills under `project-skills/` are never deployed
+by the installer. They cover work only some projects do (large migrations,
+language ports, mechanical rewrites), so rather than loading them into every
+session you copy the one you need into the specific project that needs it. See
+[project-skills/README.md](../project-skills/README.md) for the catalog and the
+per-harness copy destinations.
