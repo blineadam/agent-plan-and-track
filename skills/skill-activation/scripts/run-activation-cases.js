@@ -36,6 +36,16 @@
  *   DESC_TOKEN_FLOOR         words below which a description is a weak router signal (default 12)
  *   DESC_CHAR_CEILING        chars past which a description is flagged overlong, informational only (default 700)
  *   ACTIVATION_ALLOW_SPEND   set to 1 to permit --run to call claude -p
+ *
+ * --precheck per-skill flags:
+ *   weak_router_signal        description under DESC_TOKEN_FLOOR words, or no use/when/after/before/trigger clause
+ *   desc_overlong              description over DESC_CHAR_CEILING chars, informational only
+ *   name_matches_folder        frontmatter `name` equals the containing folder name
+ *   name_pattern_ok            frontmatter `name` is lowercase-kebab-case
+ *   extra_frontmatter_keys     any top-level frontmatter key besides name/description
+ *   frontmatter_invalid_yaml   a frontmatter key: value line YAML would reject: an unquoted value
+ *                              containing a colon-space, or a quoted value containing an unescaped
+ *                              copy of its own delimiter (counts into schema_issue_count)
  */
 'use strict';
 
@@ -160,6 +170,7 @@ function modePrecheck(args) {
     const nameMatchesFolder = meta.name === folder;
     const namePatternOk = SKILL_NAME_PATTERN.test(meta.name);
     const extraFrontmatterKeys = meta.keys.filter((k) => k !== 'name' && k !== 'description');
+    const frontmatterInvalidYaml = hasInvalidFrontmatterValue(f);
     return {
       skill: folder,
       desc_words: words,
@@ -170,10 +181,15 @@ function modePrecheck(args) {
       name_matches_folder: nameMatchesFolder,
       name_pattern_ok: namePatternOk,
       extra_frontmatter_keys: extraFrontmatterKeys,
+      frontmatter_invalid_yaml: frontmatterInvalidYaml,
     };
   });
   const schemaIssueCount = skills.filter(
-    (s) => !s.name_matches_folder || !s.name_pattern_ok || s.extra_frontmatter_keys.length > 0
+    (s) =>
+      !s.name_matches_folder ||
+      !s.name_pattern_ok ||
+      s.extra_frontmatter_keys.length > 0 ||
+      s.frontmatter_invalid_yaml
   ).length;
   printJson({
     skills,
@@ -226,7 +242,12 @@ function frontmatterDescription(file) {
       continue;
     }
     if (fm === 1 && /^description:/.test(line)) {
-      return line.replace(/^description:[ \t]*/, '');
+      const value = line.replace(/^description:[ \t]*/, '');
+      // Strip YAML quoting so the word/char metrics measure the string the
+      // router actually sees, not its on-disk encoding. A description is
+      // quoted whenever its text contains a colon-space.
+      const q = value.length >= 2 && (value[0] === '"' || value[0] === "'") ? value[0] : '';
+      return q && value[value.length - 1] === q ? value.slice(1, -1) : value;
     }
   }
   return '';
@@ -255,6 +276,43 @@ function frontmatterMeta(file) {
     }
   }
   return { name, keys };
+}
+
+// Whether the frontmatter contains a `key: value` line YAML would reject. This
+// repo's convention is single-line name/description pairs only, never YAML
+// folding, so a targeted per-line check covers it; no general YAML parser.
+// Two failure modes, one per quoting style:
+//   unquoted value  -> a colon-space (": ") sequence, which YAML reads as a
+//                      nested mapping key, invalidating the whole block
+//   quoted value    -> an unescaped instance of its own delimiter inside the
+//                      quotes, which closes the scalar early. YAML escapes
+//                      these as \" inside "..." and as '' inside '...'.
+// The second case is the one that bites when a value is single-quoted to avoid
+// escaping embedded double quotes: adding an apostrophe later breaks it.
+function hasInvalidFrontmatterValue(file) {
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  let fm = 0;
+  for (const line of lines) {
+    if (line === '---') {
+      fm++;
+      if (fm >= 2) break;
+      continue;
+    }
+    if (fm !== 1) continue;
+    const m = /^[A-Za-z0-9_-]+:[ \t]*(.*)$/.exec(line);
+    if (!m) continue;
+    const value = m[1];
+    const q = value.length >= 2 && (value[0] === '"' || value[0] === "'") ? value[0] : '';
+    if (!q || value[value.length - 1] !== q) {
+      if (value.includes(': ')) return true;
+      continue;
+    }
+    const inner = value.slice(1, -1);
+    const unescaped =
+      q === '"' ? /(^|[^\\])"/.test(inner) : inner.replace(/''/g, '').includes("'");
+    if (unescaped) return true;
+  }
+  return false;
 }
 
 // ---- Case-driven modes ------------------------------------------------------

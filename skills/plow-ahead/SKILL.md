@@ -1,6 +1,6 @@
 ---
 name: plow-ahead
-description: Use when the user explicitly wants autonomous progress without routine clarification stops, phrases like "plow ahead", "do not stop", "use your best judgment", "keep going until done", "finish while I am away", or "do not ask questions unless truly blocked": convert ordinary ambiguity into stated assumptions, proceed through implementation and validation, stop only for true blockers, and end with a clear recap of decisions, changes, verification, and residual risk.
+description: 'Use when the user explicitly wants autonomous progress without routine clarification stops, phrases like "plow ahead", "do not stop", "use your best judgment", "keep going until done", "finish while I am away", or "do not ask questions unless truly blocked": convert ordinary ambiguity into stated assumptions, proceed through implementation and validation, stop only for true blockers, and end with a clear recap of decisions, changes, verification, and residual risk.'
 ---
 
 # Plow Ahead

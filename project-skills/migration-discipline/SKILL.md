@@ -1,6 +1,6 @@
 ---
 name: migration-discipline
-description: Use when planning or running a large migration, language port, or mechanical rewrite across many files, especially with parallel agents or large error sets: covers file-ownership isolation, a progressive validation ladder, work-queue batching, test-oracle integrity, and audit-trail preservation. Not general task planning (that is plan-and-track) or subagent tiering (that is efficient-frontier).
+description: "Use when planning or running a large migration, language port, or mechanical rewrite across many files, especially with parallel agents or large error sets: covers file-ownership isolation, a progressive validation ladder, work-queue batching, test-oracle integrity, and audit-trail preservation. Not general task planning (that is plan-and-track) or subagent tiering (that is efficient-frontier)."
 ---
 
 # Migration Discipline
