@@ -1,6 +1,6 @@
 ---
 name: migration-discipline
-description: "Use when planning or running a large migration, language port, or mechanical rewrite across many files, especially with parallel agents or large error sets: covers file-ownership isolation, a progressive validation ladder, work-queue batching, test-oracle integrity, and audit-trail preservation. Also use when resuming or continuing a migration already in progress. Not general task planning (that is plan-and-track) or subagent tiering (that is efficient-frontier)."
+description: "Use when planning or running a large migration, language port, or mechanical rewrite across many files, especially with parallel agents or large error sets: covers file-ownership isolation, a progressive validation ladder, behavior preservation, work-queue batching, test-oracle integrity, and audit-trail preservation. Also use when resuming or continuing a migration already in progress. Not general task planning (that is plan-and-track) or subagent tiering (that is efficient-frontier)."
 ---
 
 # Migration Discipline
@@ -30,6 +30,10 @@ Compiling or parsing without errors is not completion. Validate a migration in a
 8. Release, canary, or production-like validation when applicable
 
 Climb the ladder in order. A change that passes rung 2 but hasn't been run through rung 4 hasn't been validated at rung 4, regardless of how mechanical the change looked.
+
+## Preserve Existing Behavior
+
+Unless the task explicitly calls for a behavior change, match the existing architecture, interfaces, and observable behavior rather than opportunistically redesigning code the migration happens to be touching (the standing surgical-changes rule, applied here to the code being migrated, not just its neighbors). Land the mechanical, behavior-preserving change first, and treat idiomatic refactoring or redesign as a separate later pass, taken up only once compatibility is established. Existing tests and externally observable behavior are the compatibility contract for that first pass (see Test-Oracle Integrity).
 
 ## Semantic-Error Review Brief
 
@@ -78,7 +82,8 @@ The block is a single-writer file under the same ownership rule as any other: on
 2. Plan file/component ownership and worktree layout per the isolation section above before any agent starts editing.
 3. Freeze the behavior-verification suite per the oracle-integrity section before behavior-preserving work begins.
 4. If no `## Migration State` block exists yet, write the one described above into `tasks/todo.md` before the first batch begins. If one already exists, update it rather than replacing it, so the recorded oracle and ladder rung survive.
-5. As broad validation commands (compiler, linter, full test run) produce output, batch and fix per the work-queue section instead of re-running them after each edit, updating the `## Migration State` block in the same pass.
-6. Climb the validation ladder in order as batches complete; don't skip a rung because an earlier one passed.
-7. When reviewing changes, consider including the semantic-error checklist in the review brief.
-8. At merge time, apply the audit-trail preservation choice appropriate to the effort's size, and keep the `## Migration State` block, since it is part of that trail.
+5. Keep each batch mechanical and behavior-preserving per the behavior-preservation section; park idiomatic refactoring and redesign for a separate pass after the migration validates.
+6. As broad validation commands (compiler, linter, full test run) produce output, batch and fix per the work-queue section instead of re-running them after each edit, updating the `## Migration State` block in the same pass.
+7. Climb the validation ladder in order as batches complete; don't skip a rung because an earlier one passed.
+8. When reviewing changes, consider including the semantic-error checklist in the review brief.
+9. At merge time, apply the audit-trail preservation choice appropriate to the effort's size, and keep the `## Migration State` block, since it is part of that trail.

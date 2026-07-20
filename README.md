@@ -105,15 +105,6 @@ maintenance and design skills.
 See [docs/models.md](docs/models.md) for the model defaults each harness 
 gets, the tiered subagents Claude and Codex install, and per-tool notes.
 
-### Opt-in Skills
-These opt-in skills should be copied into a project as needed.
-
-[Migration_Discipline](project-skills/README.md) provides Guidance for 
-safely handling large migrations across many files, especially with multiple 
-agents. It focuses on isolated ownership, staged validation, batching errors, 
-keeping tests trustworthy, and preserving enough history to understand what 
-happened later.
-
 ## Layout
 
 ```text
@@ -139,7 +130,7 @@ skills/frontend-design/      distinctive visual/UI design direction, not templat
 skills/theme-factory/        apply or generate a cohesive color/font theme for a deck or artifact (portable)
 skills/slack-gif-creator/    create animated GIFs optimized for Slack with dimension/FPS/color constraints, validation tools, and animation guidance (portable)
 skills/webapp-testing/       drive a local web app in a real browser with Playwright: verify frontend behavior, debug UI, screenshot, read console logs (portable)
-project-skills/              opt-in skills copied into a project as needed, never installed (see project-skills/README.md)
+skills/migration-discipline/ disciplines for large migrations/ports: ownership isolation, validation ladder, work-queue batching, durable migration state (portable)
 agents/                      tiered subagents (Claude .md + rendered Codex TOML): architect-reviewer,
                               security-auditor, fable-advisor, planner (Fable); researcher, debugger,
                               executor (Sonnet); mechanic (Haiku)

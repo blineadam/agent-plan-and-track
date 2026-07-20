@@ -56,7 +56,7 @@
  *
  * MIGRATION-STATE GUARD: also once stamped, a tasks/todo.md write that would
  * delete an existing `## Migration State` heading (the durable cross-session
- * block the migration-discipline project skill keeps there) is denied once
+ * block the migration-discipline skill keeps there) is denied once
  * per session, gateguard-style: the marker is written at deny time so an
  * intentional retry always passes (a concurrent write racing that first
  * deny is denied too, via marker age, not mistaken for the retry).
@@ -461,7 +461,7 @@ function maybeLintTodoContent(toolName, toolInput) {
 
 // --- Migration-state guard ---
 
-// The `## Migration State` block (see project-skills/migration-discipline) is
+// The `## Migration State` block (see skills/migration-discipline) is
 // durable cross-session state; a tidying sweep that deletes it is
 // unrecoverable after compaction. Exact H2 title only, case-insensitive like
 // the Plan-heading match above; no trailing text, so prose that merely
