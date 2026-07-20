@@ -37,6 +37,10 @@ correction into a rule for next time.
   or testing off to one of this repo's tiered subagents. Picks the tier
   that actually fits the work, so delegation doesn't burn the main
   session's judgment on something a cheaper agent could do.
+- **`migration-discipline`** (skill) kicks in on migration-shaped work: many
+  files, one mechanical change, possibly parallel agents. Layers on
+  `plan-and-track` and `efficient-frontier`, and keeps a durable
+  `## Migration State` block in the project's `tasks/todo.md`.
 - **delivery-gate** (enforcing hook only, Claude/Codex) is a warn-only check
   right before you finish: did you verify, did you checkpoint? Backs up
   the verify-before-done and capture-lesson rules at the harness level. An
@@ -110,12 +114,3 @@ coding workflow above:
 `pdf`, `pptx`, and `xlsx` skills, but their license doesn't allow vendoring
 them here, so they're not in the table above. Run the separate installer
 under [Install](../README.md#install) if you want them too.
-
-## Project-scoped skills (not installed)
-
-Unlike everything above, the skills under `project-skills/` are never deployed
-by the installer. They cover work only some projects do (large migrations,
-language ports, mechanical rewrites), so rather than loading them into every
-session you copy the one you need into the specific project that needs it. See
-[project-skills/README.md](../project-skills/README.md) for the catalog and the
-per-harness copy destinations.
