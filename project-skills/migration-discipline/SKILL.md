@@ -1,6 +1,6 @@
 ---
 name: migration-discipline
-description: "Use when planning or running a large migration, language port, or mechanical rewrite across many files, especially with parallel agents or large error sets: covers file-ownership isolation, a progressive validation ladder, work-queue batching, test-oracle integrity, and audit-trail preservation. Not general task planning (that is plan-and-track) or subagent tiering (that is efficient-frontier)."
+description: "Use when planning or running a large migration, language port, or mechanical rewrite across many files, especially with parallel agents or large error sets: covers file-ownership isolation, a progressive validation ladder, work-queue batching, test-oracle integrity, and audit-trail preservation. Also use when resuming or continuing a migration already in progress. Not general task planning (that is plan-and-track) or subagent tiering (that is efficient-frontier)."
 ---
 
 # Migration Discipline
@@ -54,12 +54,31 @@ A behavior-preserving migration's test suite is only a valid oracle if it stays 
 
 For a long, multi-agent, multi-session migration, squash-merging the final result erases the branch, merge, and revert history that a postmortem or a later debugging session would need to reconstruct what actually happened during the effort. Preserve the working branch (or merge with a merge commit instead of squashing) and keep any internal audit or progress docs the effort produced rather than deleting them pre-merge. This is specific to large multi-session efforts: a small, single-topic PR still squashes fine, and this discipline shouldn't be read as a blanket objection to squash-merging in general.
 
+## Durable Migration State
+
+A migration runs across many sessions and compactions, long enough that standing invariants like the frozen oracle or the ladder rung reached decay out of context between sessions. Move them onto disk instead, as a top-level `## Migration State` block in the target project's `tasks/todo.md`, re-read on resume via [[plan-and-track]]. This is advisory guidance with a recommended template, not a mandated output format.
+
+```markdown
+## Migration State
+Maintained per the migration-discipline skill. Re-read before each batch; update at each batch boundary. Keep until the migration merges.
+- Oracle: <suite identity>, frozen at commit <SHA> on <date>
+- Ladder: highest rung passed: <N (rung name)>, as of batch <M>
+- Ownership: <stream -> files/components, worktree/branch; one line per stream>
+- Queue: open: <batch ids>; done: <ids>; source: <where the captured output lives>
+- Updated: batch <M>, <date>
+```
+
+Keep the block at the top level, never nested under `## Plan`, and use plain bullets rather than checkboxes. State lines describe a fact as of a point in time, not a step to complete; nesting them under a plan heading or checkbox-ing them risks the block being read as plan steps and swept up when a batch gets compressed.
+
+The block is a single-writer file under the same ownership rule as any other: only the coordinating session that dispatches batches writes it, and parallel streams report their state up to that session instead of editing it themselves. Two sessions writing it concurrently would clobber each other with no conflict to signal the loss, and per-worktree copies would each drift into a different answer with no authoritative one. If parallel streams need their own scratch notes, keep those in their own worktree and leave this block to the coordinator.
+
 ## Applying This Discipline
 
-1. Before starting: confirm the change is migration-shaped (many files, one mechanical change, possibly parallel agents), otherwise use [[plan-and-track]] alone.
+1. Before starting: confirm the change is migration-shaped (many files, one mechanical change, possibly parallel agents), otherwise use [[plan-and-track]] alone. If `tasks/todo.md` already carries a `## Migration State` block, this is a resume: re-read it and trust it over remembered context for the oracle, the ladder rung, and ownership.
 2. Plan file/component ownership and worktree layout per the isolation section above before any agent starts editing.
 3. Freeze the behavior-verification suite per the oracle-integrity section before behavior-preserving work begins.
-4. As broad validation commands (compiler, linter, full test run) produce output, batch and fix per the work-queue section instead of re-running them after each edit.
-5. Climb the validation ladder in order as batches complete; don't skip a rung because an earlier one passed.
-6. When reviewing changes, consider including the semantic-error checklist in the review brief.
-7. At merge time, apply the audit-trail preservation choice appropriate to the effort's size.
+4. If no `## Migration State` block exists yet, write the one described above into `tasks/todo.md` before the first batch begins. If one already exists, update it rather than replacing it, so the recorded oracle and ladder rung survive.
+5. As broad validation commands (compiler, linter, full test run) produce output, batch and fix per the work-queue section instead of re-running them after each edit, updating the `## Migration State` block in the same pass.
+6. Climb the validation ladder in order as batches complete; don't skip a rung because an earlier one passed.
+7. When reviewing changes, consider including the semantic-error checklist in the review brief.
+8. At merge time, apply the audit-trail preservation choice appropriate to the effort's size, and keep the `## Migration State` block, since it is part of that trail.
