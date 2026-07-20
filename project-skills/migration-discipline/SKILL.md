@@ -60,7 +60,7 @@ A migration runs across many sessions and compactions, long enough that standing
 
 ```markdown
 ## Migration State
-Maintained per the migration-discipline skill. Re-read before each batch; update at each batch boundary. Keep until the migration merges.
+Maintained per the migration-discipline skill. Re-read before each batch; update at each batch boundary. Keep after the migration merges, as part of its audit trail.
 - Oracle: <suite identity>, frozen at commit <SHA> on <date>
 - Ladder: highest rung passed: <N (rung name)>, as of batch <M>
 - Ownership: <stream -> files/components, worktree/branch; one line per stream>
