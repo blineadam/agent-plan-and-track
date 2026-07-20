@@ -16,7 +16,9 @@ correction into a rule for next time.
   closing out. A Claude-only hook backs it up: it blocks writes to
   `tasks/todo.md` until the skill has actually run that session, and checks
   that new plan steps carry an owner tag (implementation defaults to
-  executor; `main` needs a stated reason).
+  executor; `main` needs a stated reason), and speed-bumps any write that
+  would delete an existing `## Migration State` block (deny once, retry
+  passes).
 - **`plow-ahead`** (skill) kicks in when you're told to just proceed: "plow
   ahead," "use your best judgment," "don't stop." Turns ordinary ambiguity
   into stated assumptions, keeps moving, and only stops for a real blocker.

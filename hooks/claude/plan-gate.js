@@ -54,6 +54,16 @@
  * on-disk baseline counts as new. Runs only after the stamp check passes, via
  * maybeLintTodoContent().
  *
+ * MIGRATION-STATE GUARD: also once stamped, a tasks/todo.md write that would
+ * delete an existing `## Migration State` heading (the durable cross-session
+ * block the migration-discipline project skill keeps there) is denied once
+ * per session, gateguard-style: the marker is written at deny time so an
+ * intentional retry always passes (a concurrent write racing that first
+ * deny is denied too, via marker age, not mistaken for the retry).
+ * PLANGATE_LINT_DISABLED does not turn this
+ * off (it is a data-loss guard, not a formatting lint); PLANGATE_DISABLED
+ * does, and PLANGATE_WARN demotes it like every other deny here.
+ *
  * Config (env):
  *   PLANGATE_DISABLED        "1" turns the gate off entirely.
  *   PLANGATE_WARN            "1" demotes deny to a non-blocking warning.
@@ -401,6 +411,14 @@ function lintMsg(offenders) {
   ].join('\n');
 }
 
+function migrationMsg() {
+  return [
+    '[PlanGate] This write would delete the `## Migration State` block from tasks/todo.md. That block is durable cross-session migration state (frozen oracle, ladder rung, ownership) that must survive tidying, batch compression, and compaction.',
+    'If ending or abandoning the migration is intentional (user-confirmed), retry the same write: the retry passes. Otherwise re-issue the write with the `## Migration State` block kept intact.',
+    '(PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
+  ].join('\n');
+}
+
 function emitGateDecision(msg) {
   if (process.env.PLANGATE_WARN === '1') {
     process.stdout.write(
@@ -441,6 +459,61 @@ function maybeLintTodoContent(toolName, toolInput) {
   }
 }
 
+// --- Migration-state guard ---
+
+// The `## Migration State` block (see project-skills/migration-discipline) is
+// durable cross-session state; a tidying sweep that deletes it is
+// unrecoverable after compaction. Exact H2 title only, case-insensitive like
+// the Plan-heading match above; no trailing text, so prose that merely
+// mentions the phrase never counts as the heading.
+const MIGRATION_HEADING_RE = /^\s{0,3}##\s+Migration State\s*$/im;
+
+// Deny ONCE per session a tasks/todo.md write that would delete an existing
+// `## Migration State` heading. Gateguard's mark-at-deny-time pattern: the
+// `.migstate` marker is claimed exclusively when the deny is emitted, so the
+// intentional retry (and any later deletion this session) passes. Runs only
+// after the stamp check, and deliberately ignores PLANGATE_LINT_DISABLED:
+// opting out of tag formatting must not silently drop a data-loss guard.
+// Returns true when a decision was emitted, so the caller exits without
+// running the lint (a hook run may emit at most one decision JSON).
+function maybeGuardMigrationState(toolName, toolInput, stamp) {
+  try {
+    const sim = simulateResult(toolName, toolInput);
+    if (!sim) return false;
+    if (!MIGRATION_HEADING_RE.test(sim.baseline) || MIGRATION_HEADING_RE.test(sim.result)) return false;
+    try {
+      // STATE_DIR exists here: the session stamp this branch requires lives in it.
+      fs.writeFileSync(stamp + '.migstate', '', { flag: 'wx' });
+    } catch (err) {
+      if (err && err.code === 'EEXIST') {
+        // EEXIST alone can't tell an intentional retry from a concurrent
+        // write that lost the wx race microseconds ago (PreToolUse hooks can
+        // run concurrently; see withSessionLock above). A racing loser sees
+        // a marker written within the same tool batch, sub-second old; a
+        // genuine retry needs a model turn after seeing the deny. So a fresh
+        // marker means contention: deny this invocation too. The check never
+        // touches the marker's mtime, so denied racers can't keep the window
+        // open and re-deny a real retry forever.
+        try {
+          if (Date.now() - fs.statSync(stamp + '.migstate').mtimeMs < 2000) {
+            emitGateDecision(migrationMsg());
+            return true;
+          }
+        } catch {
+          /* marker vanished or unreadable: treat as the retry and allow */
+        }
+        return false; // aged marker: intentional retry passes
+      }
+      process.stderr.write('[PlanGate] migration-state marker could not be persisted; allowing the edit.\n');
+      return false; // never deny what we can't record, or the deny would repeat forever
+    }
+    emitGateDecision(migrationMsg());
+    return true;
+  } catch {
+    return false; // fail open: any simulation/guard error allows the edit
+  }
+}
+
 function main() {
   let input = {};
   try {
@@ -478,6 +551,9 @@ function main() {
   // tasks/todo.md gate: unchanged behavior, own message.
   if (/(^|\/)tasks\/todo\.md$/i.test(norm)) {
     if (fs.existsSync(stamp)) {
+      // Guard before lint, exclusively: at most one decision JSON per run,
+      // and keeping the Migration State block outranks tag formatting.
+      if (maybeGuardMigrationState(toolName, toolInput, stamp)) process.exit(0);
       maybeLintTodoContent(toolName, toolInput); // may emitGateDecision(lintMsg(...))
       process.exit(0);
     }
