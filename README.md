@@ -101,9 +101,18 @@ user-facing ships. A few more round out autonomous work, docs-first
 research, and delegation to subagents.
 
 See [docs/skills.md](docs/skills.md) for the full catalog, including the
-maintenance and design skills. See [docs/models.md](docs/models.md) for
-the model defaults each harness gets, the tiered subagents Claude and
-Codex install, and per-tool notes.
+maintenance and design skills. 
+See [docs/models.md](docs/models.md) for the model defaults each harness 
+gets, the tiered subagents Claude and Codex install, and per-tool notes.
+
+### Opt-in Skills
+These opt-in skills should be copied into a project as needed.
+
+[project-skills/README.md](Migration Discipline) provides Guidance for 
+safely handling large migrations across many files, especially with multiple 
+agents. It focuses on isolated ownership, staged validation, batching errors, 
+keeping tests trustworthy, and preserving enough history to understand what 
+happened later.
 
 ## Layout
 
