@@ -16,6 +16,6 @@ Copy the skill's whole folder into your target project at the destination your h
 
 ## Per-harness copy destinations
 
-- **Claude Code**: copy the folder to `<project>/.claude/skills/migration-discipline/`. Loaded automatically just-in-time when its description matches the task; also invocable directly as `/migration-discipline`. (Source: code.claude.com/docs/en/skills)
-- **Codex**: copy the folder to `<project>/.agents/skills/migration-discipline/`. Committed to the repo, it's team-shared; loaded just-in-time by description, or invoke `$migration-discipline` or the `/skills` command. (Source: developers.openai.com/codex/skills)
-- **GitHub Copilot CLI**: copy the folder to `<project>/.github/skills/migration-discipline/`. Copilot CLI also auto-discovers skills already in `<project>/.claude/skills/` or `<project>/.agents/skills/`, so if you copied it there for Claude or Codex, Copilot picks it up too with no second copy. Loaded just-in-time by description, or invoke `/migration-discipline`. (Source: docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)
+- **Claude Code**: copy the folder to `<project>/.claude/skills/migration-discipline/`. Loaded automatically just-in-time when its description matches the task; also invocable directly as `/migration-discipline`. 
+- **Codex**: copy the folder to `<project>/.agents/skills/migration-discipline/`. Committed to the repo, it's team-shared; loaded just-in-time by description, or invoke `$migration-discipline` or the `/skills` command.
+- **GitHub Copilot CLI**: copy the folder to `<project>/.github/skills/migration-discipline/`. Copilot CLI also auto-discovers skills already in `<project>/.claude/skills/` or `<project>/.agents/skills/`, so if you copied it there for Claude or Codex, Copilot picks it up too with no second copy. Loaded just-in-time by description, or invoke `/migration-discipline`. 
