@@ -105,8 +105,10 @@ agent_names() {
 # the manifest tracks NAME ownership, and a user could have installed their
 # own content at a name this repo used to own, which git cannot restore. A
 # failed prune warns and continues; it must never abort an install whose
-# copies already succeeded. No .bak (git covers repo content; the attic
-# covers everything else). Rails confine deletion to direct children.
+# copies already succeeded. A failed quarantine also drops that entry from
+# the rewritten manifest, so the item is never re-pruned: errs toward keeping
+# content. No .bak (git covers repo content; the attic covers everything
+# else). Rails confine deletion to direct children.
 prune_stale() {
   local dest="$1" expected="$2" attic entry manifest
   manifest="$dest/$MANIFEST_NAME"
@@ -127,6 +129,9 @@ prune_stale() {
     while IFS= read -r entry || [ -n "$entry" ]; do
       entry="${entry%$'\r'}"
       case "$entry" in ''|'#'*|*/*|*\\*|.*) continue ;; esac
+      # Case-insensitive on purpose (parity with install.ps1's -contains): after a case-only
+      # rename on a case-insensitive filesystem (macOS default), a case-sensitive match would
+      # false-prune the wanted dir.
       printf '%s\n' "$expected" | grep -qixF -- "$entry" && continue
       # -e is false for a dangling symlink, so also accept -L or a stale link never prunes.
       { [ -e "$dest/$entry" ] || [ -L "$dest/$entry" ]; } || continue
