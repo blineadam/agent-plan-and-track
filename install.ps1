@@ -197,7 +197,9 @@ function Get-AgentNames($ext) {
 # manifest tracks NAME ownership, and a user could have installed their own
 # content at a name this repo used to own, which git cannot restore. A failed
 # prune warns and continues; it must never abort an install whose copies
-# already succeeded. Rails confine deletion to direct children. A reparse
+# already succeeded. A failed quarantine also drops that entry from the
+# rewritten manifest, so the item is never re-pruned: errs toward keeping
+# content. Rails confine deletion to direct children. A reparse
 # point (junction/symlink) is deleted rather than quarantined: PS 5.1's
 # Move-Item on a junction is unreliable and can follow into the target, so we
 # remove only the link (the target's real data is never touched).
@@ -224,6 +226,8 @@ function Remove-StaleInstalled($dest, $expected) {
     foreach ($line in $lines) {
       $entry = $line.TrimEnd("`r")
       if ($entry -eq '' -or $entry.StartsWith('#') -or $entry.Contains('/') -or $entry.Contains('\') -or $entry.StartsWith('.')) { continue }
+      # -contains is case-insensitive, deliberately matching install.sh's grep -qixF: a case-only
+      # rename on a case-insensitive filesystem must not false-prune.
       if ($expected -contains $entry) { continue }
       $child = Join-Path $dest $entry
       $item = Get-Item -LiteralPath $child -Force -ErrorAction SilentlyContinue
@@ -236,6 +240,9 @@ function Remove-StaleInstalled($dest, $expected) {
           Write-Host "  pruned          -> $dest/$entry (repo source removed; link removed)"
         } else {
           $quarantinePath = Join-Path $attic $entry
+          # Known limitation: PS 5.1 Remove-Item -Recurse can follow a junction nested INSIDE this
+          # previously quarantined content (bash rm -rf does not). Accepted: only reachable by
+          # re-pruning repossessed content that carries an internal junction.
           if (Test-Path -LiteralPath $quarantinePath) { Remove-Item -LiteralPath $quarantinePath -Recurse -Force }
           Move-Item -LiteralPath $child -Destination $quarantinePath -Force
           Write-Host "  pruned          -> $dest/$entry (repo source removed; quarantined)"
