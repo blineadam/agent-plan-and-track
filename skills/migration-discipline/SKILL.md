@@ -28,7 +28,7 @@ This skill's text loads in the coordinating session only; a parallel worker neve
 - Ownership scope: the exact files or components the worker owns, with everything else named out of scope.
 - Banned operations: no git beyond committing its own files (no stash, reset, or checkout over another stream's work); no project-wide formatters, generators, or dependency updates, which no stream runs while parallel work is in flight, coordinator included; and no broad, expensive whole-repo commands, whose captured output the coordinator owns per Work-Queue Batching.
 - The no-stub rule, restated in the brief itself: never satisfy a compiler, linter, or test by stubbing an implementation, returning placeholders, or weakening a test. A worker told only to make its batch compile will do exactly that.
-- A pointer to the porting-conventions doc.
+- A pointer to the porting-conventions doc, pinned to the revision on the state block's Conventions line. A path alone is not enough under worktree isolation: a worker's branch-local copy can lag the coordinator's after a pilot correction or process repair, so confirm the pinned revision is present in the worker's checkout before dispatch, or inline the current mapping into the brief.
 - The batch's targeted validation command and the ladder rungs it covers.
 - Reporting: the packet's compact return, with commands run included so the coordinator can confirm the claimed rungs actually ran, plus any mapping gaps for the conventions doc; workers never write the `## Migration State` block themselves.
 
@@ -64,7 +64,7 @@ Treat an expensive command's output (a full compiler error list, a lint run, a f
 - Fix each batch independently, with its own targeted validation.
 - Re-run the broad, expensive command only after a batch is complete, to confirm that batch's fixes and surface what's left, not on every individual edit.
 
-Re-running the full command after every small fix burns time the batching structure already avoids. The validation ladder feeds this structure: each rung's captured failure output is the natural source of the next round's batches. At parallel scale the broad command is the coordinator's to run and capture; workers run only their batch's targeted validation.
+Re-running the full command after every small fix burns time the batching structure already avoids. The validation ladder feeds this structure: each rung's captured failure output is the natural source of the next round's batches. At parallel scale the broad command is the coordinator's to run and capture, against a checkout that has the completed batches integrated: with each stream on its own branch, the coordinator's own tree lags until it merges them, and a broad run over stale source validates the wrong code and regenerates a misleading queue. Workers run only their batch's targeted validation.
 
 ## Test-Oracle Integrity
 
