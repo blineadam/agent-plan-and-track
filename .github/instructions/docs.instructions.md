@@ -1,5 +1,5 @@
 ---
-applyTo: "rules/**/*.md,skills/**/*.md,project-skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md"
+applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md"
 excludeAgent: "cloud-agent"
 ---
 
@@ -32,13 +32,12 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   a strict parser, even though this repo's own lenient parsers keep
   working. Flag an unquoted `description` containing `: `, and flag a
   quoted value containing an unescaped copy of its own delimiter.
-- An opt-in, project-scoped skill (not meant to load in every session)
-  lives under `project-skills/<name>/`, a sibling of `skills/` deliberately
-  outside the installer's `skills/*/` glob, so it's never auto-deployed;
-  its own reference material lives under its `references/` folder, not
-  top-level `docs/`. Flag a new skill added under `skills/` that reads as
-  project-specific, opt-in guidance (the way `migration-discipline` does)
-  rather than something every session should load.
+- A situational skill (loads only when its narrow trigger fires, like
+  `migration-discipline`'s migration-shaped-work trigger) still installs
+  through the standard `skills/*/` glob like every other skill; its own
+  reference material lives under its `references/` folder, not top-level
+  `docs/`. Flag a new skill that reads as project-specific or rarely
+  applicable but has no trigger clause narrowing when it should fire.
 - Cross-skill references inside a skill's body use `[[skill-name]]`
   wiki-link syntax instead of duplicating another skill's content inline.
   A frontmatter `description` may still name a sibling skill in plain text

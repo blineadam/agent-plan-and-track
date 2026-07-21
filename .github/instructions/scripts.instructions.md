@@ -100,11 +100,6 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `hooks/claude/suggest-compact.js`, plus the JSON that wires a shared
   script into that harness's hook contract). Don't reject a harness-specific
   script under `hooks/<harness>/` as misplaced just because it isn't JSON.
-- `project-skills/` is a sibling of `skills/`, deliberately excluded from
-  `copy_skills`'s `skills/*/` glob in both `install.sh` and `install.ps1`, so
-  nothing under it is ever deployed by the installer. Flag a change to
-  either installer that would broaden its skill-copying glob to reach
-  `project-skills/`.
 
 ## Installers and cross-platform portability
 
