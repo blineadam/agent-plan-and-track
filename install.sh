@@ -24,8 +24,9 @@
 #     skipped if git isn't installed
 #   - a previously installed skill/agent whose repo source was removed is pruned
 #     on reinstall, tracked via a `.plan-and-track-manifest` in each managed dir;
-#     only names a prior install recorded are ever touched (user-added skills and
-#     the office skills are never pruned), and a missing manifest prunes nothing.
+#     only names a prior install recorded are ever touched (a name the manifest
+#     never recorded, including user-added and office skills, is never pruned),
+#     and a missing manifest prunes nothing.
 #     Limitation: the prune is direct-children only, so a renamed file INSIDE a
 #     still-installed skill dir, or a renamed hook script under the scripts dir,
 #     is out of scope.
@@ -64,8 +65,8 @@ need_node() {
 CLAUDE_ONLY_SKILLS=("skill-comply")
 
 # Per-destination manifest file name (see prune_stale below) recording exactly
-# what this repo installed there last time, so a stale prune never touches
-# content this repo doesn't own.
+# what this repo installed there last time, so a stale prune only ever touches a
+# name it previously recorded, never one it never installed.
 MANIFEST_NAME=".plan-and-track-manifest"
 
 is_claude_only() {
@@ -109,14 +110,26 @@ agent_names() {
 prune_stale() {
   local dest="$1" expected="$2" attic entry manifest
   manifest="$dest/$MANIFEST_NAME"
+  attic="$dest/.plan-and-track-pruned"
   [ -d "$dest" ] || return 0
+  # A symlinked manifest or attic would redirect our rewrite/quarantine at an
+  # external target, so refuse the whole prune for this dest and leave state
+  # untouched: the confinement guarantee outranks pruning one anomalous dir.
+  if [ -L "$manifest" ]; then
+    echo "  warn            -> $manifest is a symlink; skipping prune for $dest" >&2
+    return 0
+  fi
+  if [ -L "$attic" ]; then
+    echo "  warn            -> $attic is a symlink; skipping prune for $dest" >&2
+    return 0
+  fi
   if [ -f "$manifest" ]; then
-    attic="$dest/.plan-and-track-pruned"
     while IFS= read -r entry || [ -n "$entry" ]; do
       entry="${entry%$'\r'}"
       case "$entry" in ''|'#'*|*/*|*\\*|.*) continue ;; esac
       printf '%s\n' "$expected" | grep -qixF -- "$entry" && continue
-      [ -e "$dest/$entry" ] || continue
+      # -e is false for a dangling symlink, so also accept -L or a stale link never prunes.
+      { [ -e "$dest/$entry" ] || [ -L "$dest/$entry" ]; } || continue
       mkdir -p "$attic" || { echo "  warn            -> cannot make attic in $dest, kept $entry" >&2; continue; }
       rm -rf "${attic:?}/$entry"
       if mv "${dest:?}/$entry" "$attic/$entry" 2>/dev/null; then
@@ -126,7 +139,14 @@ prune_stale() {
       fi
     done < "$manifest"
   fi
-  { printf '%s\n' "# plan-and-track manifest v1"; printf '%s\n' "$expected"; } > "$manifest"
+  # Atomic, fail-open rewrite: a sibling temp renamed over the manifest, so a
+  # partial or failed write warns instead of aborting the installer (set -e).
+  if { printf '%s\n' "# plan-and-track manifest v1"; printf '%s\n' "$expected"; } > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"; then
+    :
+  else
+    rm -f "$manifest.tmp" 2>/dev/null || :
+    echo "  warn            -> could not rewrite $manifest" >&2
+  fi
 }
 
 # Portable skills: every skills/*/ dir except the Claude-only ones, so a new

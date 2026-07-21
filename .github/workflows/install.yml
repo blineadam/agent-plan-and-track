@@ -173,6 +173,34 @@ jobs:
           cmp -s "skills/plan-and-track/SKILL.md" "$skills/plan-and-track/SKILL.md" || { echo "FAIL: real skill not byte-identical after prune"; exit 1; }
           echo "OK: stale copy quarantined; user/office/symlink-target survived; rerun pruned nothing"
 
+      - name: Symlinked attic or manifest is refused, external content survives
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/scratch-home-guard"
+          ./install.sh claude >/dev/null
+          skills="$HOME/.claude/skills"
+          manifest="$skills/.plan-and-track-manifest"
+          # A stale name so the prune has work to do.
+          mkdir -p "$skills/zz-stale-skill"; echo stale > "$skills/zz-stale-skill/SKILL.md"
+          echo "zz-stale-skill" >> "$manifest"
+          # A) Attic is a symlink to an external dir holding an identically-named
+          #    entry: the guard must refuse, never rm -rf/mv into the target.
+          ext="$RUNNER_TEMP/ext-attic"; mkdir -p "$ext/zz-stale-skill"; echo canary > "$ext/zz-stale-skill/keep"
+          ln -s "$ext" "$skills/.plan-and-track-pruned"
+          ./install.sh claude >/dev/null 2>"$RUNNER_TEMP/guardA.err" || true
+          test -f "$ext/zz-stale-skill/keep" || { echo "FAIL: external attic content deleted"; exit 1; }
+          test -d "$skills/zz-stale-skill" || { echo "FAIL: stale skill moved despite bad attic"; exit 1; }
+          grep -q 'is a symlink' "$RUNNER_TEMP/guardA.err" || { echo "FAIL: no attic-symlink warning"; exit 1; }
+          rm -f "$skills/.plan-and-track-pruned"
+          # B) Manifest is a symlink to an external file: the guard must refuse,
+          #    never rewrite through the link.
+          extm="$RUNNER_TEMP/ext-manifest"; echo EXTERNAL > "$extm"
+          rm -f "$manifest"; ln -s "$extm" "$manifest"
+          ./install.sh claude >/dev/null 2>"$RUNNER_TEMP/guardB.err" || true
+          grep -qx EXTERNAL "$extm" || { echo "FAIL: external manifest overwritten"; exit 1; }
+          grep -q 'is a symlink' "$RUNNER_TEMP/guardB.err" || { echo "FAIL: no manifest-symlink warning"; exit 1; }
+          echo "OK: symlinked attic and manifest refused; external content untouched"
+
   windows:
     runs-on: windows-latest
     steps:
@@ -383,3 +411,26 @@ jobs:
           $b = (Get-FileHash "$skills\plan-and-track\SKILL.md").Hash
           if ($a -ne $b) { throw "real skill not byte-identical after prune" }
           Write-Host "OK: stale copy quarantined; user/office/junction-target survived; rerun pruned nothing"
+
+      - name: Reparse-point attic is refused, external content survives
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-guard"
+          .\install.ps1 claude 6>&1 | Out-Null
+          $skills = "$env:USERPROFILE\.claude\skills"
+          $manifest = "$skills\.plan-and-track-manifest"
+          New-Item -ItemType Directory -Force -Path "$skills\zz-stale-skill" | Out-Null
+          Set-Content -Path "$skills\zz-stale-skill\SKILL.md" -Value "stale"
+          Add-Content -Path $manifest -Value "zz-stale-skill"
+          # Attic is a junction to an external dir with an identically-named entry:
+          # the guard must refuse, never Remove-Item -Recurse/Move-Item through it.
+          # Survival of the external entry is itself the proof the guard fired.
+          $ext = "$env:RUNNER_TEMP\ext-attic"
+          New-Item -ItemType Directory -Force -Path "$ext\zz-stale-skill" | Out-Null
+          Set-Content -Path "$ext\zz-stale-skill\keep" -Value "canary"
+          New-Item -ItemType Junction -Path "$skills\.plan-and-track-pruned" -Target $ext | Out-Null
+          .\install.ps1 claude 6>&1 | Out-String | Write-Host
+          if (-not (Test-Path -LiteralPath "$ext\zz-stale-skill\keep")) { throw "external attic content deleted" }
+          if (-not (Test-Path -LiteralPath "$skills\zz-stale-skill")) { throw "stale skill moved despite bad attic" }
+          Write-Host "OK: reparse-point attic refused; external content untouched"

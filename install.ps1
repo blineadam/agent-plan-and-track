@@ -31,8 +31,9 @@
     - a previously installed skill/agent whose repo source was removed is
       pruned on reinstall, tracked via a `.plan-and-track-manifest` in each
       managed dir; only names a prior install recorded are ever touched
-      (user-added skills and the office skills are never pruned), and a
-      missing manifest prunes nothing. Limitation: the prune is
+      (a name the manifest never recorded, including user-added and office
+      skills, is never pruned), and a missing manifest prunes nothing.
+      Limitation: the prune is
       direct-children only, so a renamed file INSIDE a still-installed skill
       dir, or a renamed hook script under the scripts dir, is out of scope.
 
@@ -63,8 +64,8 @@ $MarkEnd         = '<!-- agent-plan-and-track:end -->'
 $ClaudeOnlySkills = @('skill-comply')
 
 # Per-destination manifest file name (see Remove-StaleInstalled below) recording
-# exactly what this repo installed there last time, so a stale prune never
-# touches content this repo doesn't own.
+# exactly what this repo installed there last time, so a stale prune only ever
+# touches a name it previously recorded, never one it never installed.
 $ManifestName = '.plan-and-track-manifest'
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -203,7 +204,21 @@ function Get-AgentNames($ext) {
 function Remove-StaleInstalled($dest, $expected) {
   $expected = @($expected)
   $manifest = Join-Path $dest $ManifestName
+  $attic = Join-Path $dest '.plan-and-track-pruned'
   if (-not (Test-Path -LiteralPath $dest)) { return }
+  # A reparse-pointed manifest or attic would redirect our rewrite/quarantine at
+  # an external target, so refuse the whole prune for this dest and leave state
+  # untouched: the confinement guarantee outranks pruning one anomalous dir.
+  $manifestItem = Get-Item -LiteralPath $manifest -Force -ErrorAction SilentlyContinue
+  if ($manifestItem -and (($manifestItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+    [Console]::Error.WriteLine("  warn            -> $manifest is a reparse point; skipping prune for $dest")
+    return
+  }
+  $atticItem = Get-Item -LiteralPath $attic -Force -ErrorAction SilentlyContinue
+  if ($atticItem -and (($atticItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+    [Console]::Error.WriteLine("  warn            -> $attic is a reparse point; skipping prune for $dest")
+    return
+  }
   if (Test-Path -LiteralPath $manifest) {
     $lines = @(Get-Content -LiteralPath $manifest)
     foreach ($line in $lines) {
@@ -214,7 +229,6 @@ function Remove-StaleInstalled($dest, $expected) {
       $item = Get-Item -LiteralPath $child -Force -ErrorAction SilentlyContinue
       if (-not $item) { continue }
       try {
-        $attic = Join-Path $dest '.plan-and-track-pruned'
         New-Item -ItemType Directory -Force -Path $attic | Out-Null
         $isReparse = ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
         if ($isReparse) {
@@ -231,9 +245,18 @@ function Remove-StaleInstalled($dest, $expected) {
       }
     }
   }
+  # Atomic, fail-open rewrite: a sibling temp renamed over the manifest, so a
+  # partial or failed write warns instead of aborting the installer (Stop).
   $content = "# plan-and-track manifest v1`n" + (($expected -join "`n"))
   if (-not $content.EndsWith("`n")) { $content += "`n" }
-  [System.IO.File]::WriteAllText($manifest, $content, $Utf8NoBom)
+  try {
+    $tmp = "$manifest.tmp"
+    [System.IO.File]::WriteAllText($tmp, $content, $Utf8NoBom)
+    Move-Item -LiteralPath $tmp -Destination $manifest -Force
+  } catch {
+    Remove-Item -LiteralPath "$manifest.tmp" -Force -ErrorAction SilentlyContinue
+    [Console]::Error.WriteLine("  warn            -> could not rewrite $manifest")
+  }
 }
 
 # Read a single-line frontmatter value for $key out of $file's YAML
