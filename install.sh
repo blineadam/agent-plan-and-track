@@ -22,12 +22,20 @@
 #     points to, or ~/.gitignore_global if unset) gets tasks/todo.md and
 #     tasks/lessons.md appended if missing, once per run regardless of target;
 #     skipped if git isn't installed
+#   - a previously installed skill/agent whose repo source was removed is pruned
+#     on reinstall, tracked via a `.plan-and-track-manifest` in each managed dir;
+#     only names a prior install recorded are ever touched (user-added skills and
+#     the office skills are never pruned), and a missing manifest prunes nothing.
+#     Limitation: the prune is direct-children only, so a renamed file INSIDE a
+#     still-installed skill dir, or a renamed hook script under the scripts dir,
+#     is out of scope.
 #
 # PARITY: install.ps1 is the Windows (PowerShell) sibling of this script and must
 # stay in lockstep. Any change to the managed surface here (skills, agents (both
 # the Claude .md copies and the Codex TOML rendering), the core-rules digest, the
 # instructions managed block, hook wiring + __SCRIPTS__ substitution, model/effort
-# defaults, the TOML upsert, the global gitignore entries) must be mirrored there.
+# defaults, the TOML upsert, the global gitignore entries, the manifest-based
+# stale prune keyed by .plan-and-track-manifest) must be mirrored there.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -55,12 +63,70 @@ need_node() {
 # harnesses. Everything else under skills/ is portable and installs everywhere.
 CLAUDE_ONLY_SKILLS=("skill-comply")
 
+# Per-destination manifest file name (see prune_stale below) recording exactly
+# what this repo installed there last time, so a stale prune never touches
+# content this repo doesn't own.
+MANIFEST_NAME=".plan-and-track-manifest"
+
 is_claude_only() {
   local name="$1" s
   for s in "${CLAUDE_ONLY_SKILLS[@]}"; do
     [ "$s" = "$name" ] && return 0
   done
   return 1
+}
+
+# Newline-separated skill dir basenames. scope=all lists every skills/*/;
+# scope=portable skips the Claude-only ones. Mirrors copy_skills' loop.
+skill_names() {
+  local scope="$1" dir name
+  for dir in "$REPO_DIR"/skills/*/; do
+    name="$(basename "$dir")"
+    [ "$scope" = portable ] && is_claude_only "$name" && continue
+    printf '%s\n' "$name"
+  done
+}
+
+# Newline-separated installed agent filenames for extension $1 (md|toml).
+# Empty when the repo has no agents/ dir.
+agent_names() {
+  local ext="$1" f name
+  [ -d "$REPO_DIR/agents" ] || return 0
+  for f in "$REPO_DIR"/agents/*.md; do
+    [ -e "$f" ] || continue
+    name="$(basename "$f" .md)"
+    printf '%s\n' "$name.$ext"
+  done
+}
+
+# Remove repo-owned installed copies whose source left the repo, tracked by
+# a per-dest manifest. Quarantines into a dot-attic rather than deleting:
+# the manifest tracks NAME ownership, and a user could have installed their
+# own content at a name this repo used to own, which git cannot restore. A
+# failed prune warns and continues; it must never abort an install whose
+# copies already succeeded. No .bak (git covers repo content; the attic
+# covers everything else). Rails confine deletion to direct children.
+prune_stale() {
+  local dest="$1" expected="$2" attic entry manifest
+  manifest="$dest/$MANIFEST_NAME"
+  [ -d "$dest" ] || return 0
+  if [ -f "$manifest" ]; then
+    attic="$dest/.plan-and-track-pruned"
+    while IFS= read -r entry || [ -n "$entry" ]; do
+      entry="${entry%$'\r'}"
+      case "$entry" in ''|'#'*|*/*|*\\*|.*) continue ;; esac
+      printf '%s\n' "$expected" | grep -qixF -- "$entry" && continue
+      [ -e "$dest/$entry" ] || continue
+      mkdir -p "$attic" || { echo "  warn            -> cannot make attic in $dest, kept $entry" >&2; continue; }
+      rm -rf "${attic:?}/$entry"
+      if mv "${dest:?}/$entry" "$attic/$entry" 2>/dev/null; then
+        echo "  pruned          -> $dest/$entry (repo source removed; quarantined)"
+      else
+        echo "  warn            -> could not quarantine $dest/$entry, left in place" >&2
+      fi
+    done < "$manifest"
+  fi
+  { printf '%s\n' "# plan-and-track manifest v1"; printf '%s\n' "$expected"; } > "$manifest"
 }
 
 # Portable skills: every skills/*/ dir except the Claude-only ones, so a new
@@ -339,7 +405,9 @@ install_claude() {
     cp -R "$REPO_DIR/skills/$claude_skill" "$HOME/.claude/skills/"
     echo "  skill (claude)  -> ~/.claude/skills/$claude_skill (Claude-only)"
   done
+  prune_stale "$HOME/.claude/skills" "$(skill_names all)"
   copy_agents "$HOME/.claude/agents"
+  prune_stale "$HOME/.claude/agents" "$(agent_names md)"
   install_digest "$HOME/.claude/core-rules.md"
   install_instructions "$HOME/.claude/CLAUDE.md"
   mkdir -p "$HOME/.claude/scripts"
@@ -422,6 +490,7 @@ install_claude() {
 install_copilot() {
   echo "GitHub Copilot (user scope: ~/.copilot)"
   copy_skills "$HOME/.copilot/skills"
+  prune_stale "$HOME/.copilot/skills" "$(skill_names portable)"
   install_digest "$HOME/.copilot/core-rules.md"
   install_instructions "$HOME/.copilot/copilot-instructions.md"
   # Global model default: "auto" lets Copilot route to the best model per task.
@@ -474,7 +543,9 @@ install_copilot() {
 install_codex() {
   echo "Codex (user scope: ~/.codex; skills in ~/.agents/skills)"
   copy_skills "$HOME/.agents/skills"
+  prune_stale "$HOME/.agents/skills" "$(skill_names portable)"
   copy_codex_agents "$HOME/.codex/agents"
+  prune_stale "$HOME/.codex/agents" "$(agent_names toml)"
   install_digest "$HOME/.codex/core-rules.md"
   install_instructions "$HOME/.codex/AGENTS.md"
   # Plan-mode default, re-asserted on every install: raise reasoning effort in

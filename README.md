@@ -56,7 +56,10 @@ hook wiring is only added where it's missing on Claude and Codex,
 instruction files only get their clearly marked managed section touched,
 and model settings reset to the repo defaults each run (set
 `PT_KEEP_MODEL=1` to keep your own choice). Claude and Codex subagents
-stay in sync too.
+stay in sync too. It also tidies up after itself: a skill or subagent this repo
+used to ship but has since renamed or removed gets moved out
+of your config into a `.plan-and-track-pruned/` folder on the
+next install, while anything you added yourself stays put.
 
 The macOS/Linux installer needs `jq`; the Windows one doesn't. Both check
 for Node.js first, since the hooks need it, and will tell you what to

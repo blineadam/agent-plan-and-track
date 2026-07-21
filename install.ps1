@@ -28,13 +28,21 @@
       points to, or ~/.gitignore_global if unset) gets tasks/todo.md and
       tasks/lessons.md appended if missing, once per run regardless of target;
       skipped if git isn't installed
+    - a previously installed skill/agent whose repo source was removed is
+      pruned on reinstall, tracked via a `.plan-and-track-manifest` in each
+      managed dir; only names a prior install recorded are ever touched
+      (user-added skills and the office skills are never pruned), and a
+      missing manifest prunes nothing. Limitation: the prune is
+      direct-children only, so a renamed file INSIDE a still-installed skill
+      dir, or a renamed hook script under the scripts dir, is out of scope.
 
   PARITY: this script and install.sh must stay in lockstep. Any change to the
   managed surface (skills, agents (both the Claude .md copies and the Codex
   TOML rendering), the core-rules digest, the instructions managed block, hook
   wiring + __SCRIPTS__ substitution, model/effort defaults, the TOML upsert,
-  the global gitignore entries) must be mirrored in both. See install.sh for
-  the same note.
+  the global gitignore entries, the manifest-based stale prune keyed by
+  .plan-and-track-manifest) must be mirrored in both. See install.sh for the
+  same note.
 #>
 param([string]$Target)
 
@@ -53,6 +61,11 @@ $MarkEnd         = '<!-- agent-plan-and-track:end -->'
 # Claude-only skills: installed by Install-Claude, skipped for the other
 # harnesses. Everything else under skills/ is portable and installs everywhere.
 $ClaudeOnlySkills = @('skill-comply')
+
+# Per-destination manifest file name (see Remove-StaleInstalled below) recording
+# exactly what this repo installed there last time, so a stale prune never
+# touches content this repo doesn't own.
+$ManifestName = '.plan-and-track-manifest'
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
@@ -153,6 +166,74 @@ function Copy-Agents($dest) {
     $names += $f.BaseName
   }
   if ($names.Count -gt 0) { Write-Host "  agents          -> $dest/{$($names -join ',')} (Claude-only)" }
+}
+
+# Newline-separated skill dir basenames. scope=all lists every skills/*/;
+# scope=portable skips the Claude-only ones. Mirrors Copy-Skills' loop.
+function Get-SkillNames($scope) {
+  $names = @()
+  foreach ($dir in Get-ChildItem -LiteralPath (Join-Path $RepoDir 'skills') -Directory) {
+    if ($scope -eq 'portable' -and $ClaudeOnlySkills -contains $dir.Name) { continue }
+    $names += $dir.Name
+  }
+  return $names
+}
+
+# Installed agent filenames for extension $ext (md|toml). Empty when the repo
+# has no agents/ dir.
+function Get-AgentNames($ext) {
+  $agentsDir = Join-Path $RepoDir 'agents'
+  if (-not (Test-Path -LiteralPath $agentsDir)) { return @() }
+  $names = @()
+  foreach ($f in Get-ChildItem -LiteralPath $agentsDir -Filter '*.md' -File) {
+    $names += "$($f.BaseName).$ext"
+  }
+  return $names
+}
+
+# Remove repo-owned installed copies whose source left the repo, tracked by a
+# per-dest manifest. Quarantines into a dot-attic rather than deleting: the
+# manifest tracks NAME ownership, and a user could have installed their own
+# content at a name this repo used to own, which git cannot restore. A failed
+# prune warns and continues; it must never abort an install whose copies
+# already succeeded. Rails confine deletion to direct children. A reparse
+# point (junction/symlink) is deleted rather than quarantined: PS 5.1's
+# Move-Item on a junction is unreliable and can follow into the target, so we
+# remove only the link (the target's real data is never touched).
+function Remove-StaleInstalled($dest, $expected) {
+  $expected = @($expected)
+  $manifest = Join-Path $dest $ManifestName
+  if (-not (Test-Path -LiteralPath $dest)) { return }
+  if (Test-Path -LiteralPath $manifest) {
+    $lines = @(Get-Content -LiteralPath $manifest)
+    foreach ($line in $lines) {
+      $entry = $line.TrimEnd("`r")
+      if ($entry -eq '' -or $entry.StartsWith('#') -or $entry.Contains('/') -or $entry.Contains('\') -or $entry.StartsWith('.')) { continue }
+      if ($expected -contains $entry) { continue }
+      $child = Join-Path $dest $entry
+      $item = Get-Item -LiteralPath $child -Force -ErrorAction SilentlyContinue
+      if (-not $item) { continue }
+      try {
+        $attic = Join-Path $dest '.plan-and-track-pruned'
+        New-Item -ItemType Directory -Force -Path $attic | Out-Null
+        $isReparse = ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+        if ($isReparse) {
+          $item.Delete()
+          Write-Host "  pruned          -> $dest/$entry (repo source removed; link removed)"
+        } else {
+          $quarantinePath = Join-Path $attic $entry
+          if (Test-Path -LiteralPath $quarantinePath) { Remove-Item -LiteralPath $quarantinePath -Recurse -Force }
+          Move-Item -LiteralPath $child -Destination $quarantinePath -Force
+          Write-Host "  pruned          -> $dest/$entry (repo source removed; quarantined)"
+        }
+      } catch {
+        [Console]::Error.WriteLine("  warn            -> could not prune $dest/$entry; left in place")
+      }
+    }
+  }
+  $content = "# plan-and-track manifest v1`n" + (($expected -join "`n"))
+  if (-not $content.EndsWith("`n")) { $content += "`n" }
+  [System.IO.File]::WriteAllText($manifest, $content, $Utf8NoBom)
 }
 
 # Read a single-line frontmatter value for $key out of $file's YAML
@@ -442,7 +523,9 @@ function Install-Claude {
     Copy-Tree (Join-Path (Join-Path $RepoDir 'skills') $s) (Join-Path (Join-Path $base 'skills') $s)
     Write-Host "  skill (claude)  -> ~/.claude/skills/$s (Claude-only)"
   }
+  Remove-StaleInstalled (Join-Path $base 'skills') (Get-SkillNames 'all')
   Copy-Agents (Join-Path $base 'agents')
+  Remove-StaleInstalled (Join-Path $base 'agents') (Get-AgentNames 'md')
   Install-Digest (Join-Path $base 'core-rules.md')
   Install-Instructions (Join-Path $base 'CLAUDE.md')
 
@@ -503,6 +586,7 @@ function Install-Copilot {
   Write-Host "GitHub Copilot (user scope: ~/.copilot)"
   $base = Join-Path $HomeDir '.copilot'
   Copy-Skills (Join-Path $base 'skills')
+  Remove-StaleInstalled (Join-Path $base 'skills') (Get-SkillNames 'portable')
   Install-Digest (Join-Path $base 'core-rules.md')
   Install-Instructions (Join-Path $base 'copilot-instructions.md')
 
@@ -547,7 +631,9 @@ function Install-Codex {
   $codex = Join-Path $HomeDir '.codex'
   $scripts = Join-Path $codex 'scripts'
   Copy-Skills (Join-Path (Join-Path $HomeDir '.agents') 'skills')
+  Remove-StaleInstalled (Join-Path (Join-Path $HomeDir '.agents') 'skills') (Get-SkillNames 'portable')
   Copy-CodexAgents (Join-Path $codex 'agents')
+  Remove-StaleInstalled (Join-Path $codex 'agents') (Get-AgentNames 'toml')
   Install-Digest (Join-Path $codex 'core-rules.md')
   Install-Instructions (Join-Path $codex 'AGENTS.md')
   # Plan-mode default, re-asserted each install: raise reasoning effort in Plan
