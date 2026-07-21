@@ -139,6 +139,68 @@ jobs:
             grep -qx "$a" "$HOME/agent-invocations.log" \
               || { echo "FAIL: $a was never invoked"; exit 1; }
           done
+      - name: Stale prune quarantines removed repo copies, never non-repo content
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/scratch-home"
+          skills="$HOME/.claude/skills"
+          manifest="$skills/.plan-and-track-manifest"
+          test -f "$manifest" || { echo "FAIL: manifest missing after install"; exit 1; }
+          # 1. Repo-owned skill whose source was since removed: on disk AND recorded
+          #    in the manifest, but absent from the current repo skill set -> prune.
+          mkdir -p "$skills/zz-stale-skill"
+          printf -- '---\nname: zz-stale-skill\ndescription: stale\n---\n' > "$skills/zz-stale-skill/SKILL.md"
+          echo "zz-stale-skill" >> "$manifest"
+          # 2. User-added skill: on disk, NOT in the manifest -> must survive.
+          mkdir -p "$skills/zz-user-skill"; echo keep > "$skills/zz-user-skill/SKILL.md"
+          # 3. Stub office skill: on disk, NOT in the manifest -> must survive.
+          mkdir -p "$skills/docx"; echo office > "$skills/docx/SKILL.md"
+          # 4. Symlink at a manifest-recorded (repo-owned) name pointing OUTSIDE the
+          #    tree: prune must remove the link but never follow into the target.
+          ext="$RUNNER_TEMP/external-precious"; mkdir -p "$ext"; echo precious > "$ext/data.txt"
+          ln -s "$ext" "$skills/zz-linked-skill"
+          echo "zz-linked-skill" >> "$manifest"
+          out="$(./install.sh claude)"; echo "$out"
+          attic="$skills/.plan-and-track-pruned"
+          test ! -e "$skills/zz-stale-skill" || { echo "FAIL: stale skill still present"; exit 1; }
+          test -f "$attic/zz-stale-skill/SKILL.md" || { echo "FAIL: stale skill not quarantined"; exit 1; }
+          test -f "$skills/zz-user-skill/SKILL.md" || { echo "FAIL: user skill was pruned"; exit 1; }
+          test -f "$skills/docx/SKILL.md" || { echo "FAIL: office skill was pruned"; exit 1; }
+          test ! -e "$skills/zz-linked-skill" || { echo "FAIL: stale symlink not pruned"; exit 1; }
+          { test -f "$ext/data.txt" && grep -q precious "$ext/data.txt"; } || { echo "FAIL: symlink target destroyed"; exit 1; }
+          out2="$(./install.sh claude)"; echo "$out2"
+          echo "$out2" | grep -q 'repo source removed' && { echo "FAIL: no-change rerun pruned something"; exit 1; } || true
+          cmp -s "skills/plan-and-track/SKILL.md" "$skills/plan-and-track/SKILL.md" || { echo "FAIL: real skill not byte-identical after prune"; exit 1; }
+          echo "OK: stale copy quarantined; user/office/symlink-target survived; rerun pruned nothing"
+
+      - name: Symlinked attic or manifest is refused, external content survives
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/scratch-home-guard"
+          mkdir -p "$HOME"
+          ./install.sh claude >/dev/null
+          skills="$HOME/.claude/skills"
+          manifest="$skills/.plan-and-track-manifest"
+          # A stale name so the prune has work to do.
+          mkdir -p "$skills/zz-stale-skill"; echo stale > "$skills/zz-stale-skill/SKILL.md"
+          echo "zz-stale-skill" >> "$manifest"
+          # A) Attic is a symlink to an external dir holding an identically-named
+          #    entry: the guard must refuse, never rm -rf/mv into the target.
+          ext="$RUNNER_TEMP/ext-attic"; mkdir -p "$ext/zz-stale-skill"; echo canary > "$ext/zz-stale-skill/keep"
+          ln -s "$ext" "$skills/.plan-and-track-pruned"
+          ./install.sh claude >/dev/null 2>"$RUNNER_TEMP/guardA.err" || true
+          test -f "$ext/zz-stale-skill/keep" || { echo "FAIL: external attic content deleted"; exit 1; }
+          test -d "$skills/zz-stale-skill" || { echo "FAIL: stale skill moved despite bad attic"; exit 1; }
+          grep -q 'is a symlink' "$RUNNER_TEMP/guardA.err" || { echo "FAIL: no attic-symlink warning"; exit 1; }
+          rm -f "$skills/.plan-and-track-pruned"
+          # B) Manifest is a symlink to an external file: the guard must refuse,
+          #    never rewrite through the link.
+          extm="$RUNNER_TEMP/ext-manifest"; echo EXTERNAL > "$extm"
+          rm -f "$manifest"; ln -s "$extm" "$manifest"
+          ./install.sh claude >/dev/null 2>"$RUNNER_TEMP/guardB.err" || true
+          grep -qx EXTERNAL "$extm" || { echo "FAIL: external manifest overwritten"; exit 1; }
+          grep -q 'is a symlink' "$RUNNER_TEMP/guardB.err" || { echo "FAIL: no manifest-symlink warning"; exit 1; }
+          echo "OK: symlinked attic and manifest refused; external content untouched"
 
   windows:
     runs-on: windows-latest
@@ -310,3 +372,67 @@ jobs:
           foreach ($a in @('claude-code', 'codex', 'github-copilot')) {
             if ($invoked -notcontains $a) { throw "$a was never invoked" }
           }
+      - name: Stale prune quarantines removed repo copies, never non-repo content
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home"
+          $skills = "$env:USERPROFILE\.claude\skills"
+          $manifest = "$skills\.plan-and-track-manifest"
+          if (-not (Test-Path -LiteralPath $manifest)) { throw "manifest missing after install" }
+          # 1. Repo-owned skill whose source was since removed -> must be pruned.
+          New-Item -ItemType Directory -Force -Path "$skills\zz-stale-skill" | Out-Null
+          Set-Content -Path "$skills\zz-stale-skill\SKILL.md" -Value "stale"
+          Add-Content -Path $manifest -Value "zz-stale-skill"
+          # 2. User-added skill: NOT in the manifest -> must survive.
+          New-Item -ItemType Directory -Force -Path "$skills\zz-user-skill" | Out-Null
+          Set-Content -Path "$skills\zz-user-skill\SKILL.md" -Value "keep"
+          # 3. Stub office skill: NOT in the manifest -> must survive.
+          New-Item -ItemType Directory -Force -Path "$skills\docx" | Out-Null
+          Set-Content -Path "$skills\docx\SKILL.md" -Value "office"
+          # 4. Junction at a manifest-recorded name pointing OUTSIDE the tree: prune
+          #    must remove the link but never follow into the target.
+          $ext = "$env:RUNNER_TEMP\external-precious"
+          New-Item -ItemType Directory -Force -Path $ext | Out-Null
+          Set-Content -Path "$ext\data.txt" -Value "precious"
+          New-Item -ItemType Junction -Path "$skills\zz-linked-skill" -Target $ext | Out-Null
+          Add-Content -Path $manifest -Value "zz-linked-skill"
+          $out = (.\install.ps1 claude 6>&1 | Out-String); Write-Host $out
+          $attic = "$skills\.plan-and-track-pruned"
+          if (Test-Path -LiteralPath "$skills\zz-stale-skill") { throw "stale skill still present" }
+          if (-not (Test-Path -LiteralPath "$attic\zz-stale-skill\SKILL.md")) { throw "stale skill not quarantined" }
+          if (-not (Test-Path -LiteralPath "$skills\zz-user-skill\SKILL.md")) { throw "user skill was pruned" }
+          if (-not (Test-Path -LiteralPath "$skills\docx\SKILL.md")) { throw "office skill was pruned" }
+          if (Test-Path -LiteralPath "$skills\zz-linked-skill") { throw "stale junction not pruned" }
+          if (-not (Test-Path -LiteralPath "$ext\data.txt")) { throw "junction target destroyed" }
+          if ((Get-Content -Raw "$ext\data.txt").Trim() -ne "precious") { throw "junction target altered" }
+          $out2 = (.\install.ps1 claude 6>&1 | Out-String); Write-Host $out2
+          if ($out2 -match 'repo source removed') { throw "no-change rerun pruned something" }
+          $a = (Get-FileHash "skills\plan-and-track\SKILL.md").Hash
+          $b = (Get-FileHash "$skills\plan-and-track\SKILL.md").Hash
+          if ($a -ne $b) { throw "real skill not byte-identical after prune" }
+          Write-Host "OK: stale copy quarantined; user/office/junction-target survived; rerun pruned nothing"
+
+      - name: Reparse-point attic is refused, external content survives
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-guard"
+          New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null
+          .\install.ps1 claude 6>&1 | Out-Null
+          $skills = "$env:USERPROFILE\.claude\skills"
+          $manifest = "$skills\.plan-and-track-manifest"
+          New-Item -ItemType Directory -Force -Path "$skills\zz-stale-skill" | Out-Null
+          Set-Content -Path "$skills\zz-stale-skill\SKILL.md" -Value "stale"
+          Add-Content -Path $manifest -Value "zz-stale-skill"
+          # Attic is a junction to an external dir with an identically-named entry:
+          # the guard must refuse, never Remove-Item -Recurse/Move-Item through it.
+          # Survival of the external entry is itself the proof the guard fired.
+          $ext = "$env:RUNNER_TEMP\ext-attic"
+          New-Item -ItemType Directory -Force -Path "$ext\zz-stale-skill" | Out-Null
+          Set-Content -Path "$ext\zz-stale-skill\keep" -Value "canary"
+          New-Item -ItemType Junction -Path "$skills\.plan-and-track-pruned" -Target $ext | Out-Null
+          .\install.ps1 claude 6>&1 | Out-String | Write-Host
+          if (-not (Test-Path -LiteralPath "$ext\zz-stale-skill\keep")) { throw "external attic content deleted" }
+          if (-not (Test-Path -LiteralPath "$skills\zz-stale-skill")) { throw "stale skill moved despite bad attic" }
+          Write-Host "OK: reparse-point attic refused; external content untouched"
