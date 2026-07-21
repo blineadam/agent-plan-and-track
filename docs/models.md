@@ -72,14 +72,15 @@ install to Claude and Codex.
   skills live in `~/.agents/skills/`, and subagents render to
   `~/.codex/agents/*.toml`. New or changed hooks get skipped until you
   review and trust them via `/hooks`; Codex prints a warning at startup if
-  any need attention. Recent builds add no attribution trailer. Unverified: named-agent
-  invocation via `spawn_agent` is unreliable everywhere as of this
-  writing, not only in SDK/MCP-driven sessions. Recent reports
-  (openai/codex#15250) reproduce it on standalone Codex CLI and Codex
-  Desktop too, where a requested custom agent silently falls back to the
-  parent's own model, effort, and sandbox instead of loading its TOML.
-  Treat the rendered roster as forward-looking until upstream fixes this;
-  don't count on it picking the right profile on its own.
+  any need attention. Recent builds add no attribution trailer.
+  Named-agent invocation works on standalone Codex CLI: the silent
+  fallback to the parent's own model, effort, and sandbox was a v0.137.0
+  regression (openai/codex#26363), fixed in v0.138.0 (June 2026) via
+  openai/codex#26599, so the rendered roster loads from the global
+  agents dir this installer targets. Still open upstream: invoking a
+  named agent from tool-backed/SDK sessions (openai/codex#15250), and
+  project-scoped `.codex/agents` (openai/codex#26408); neither affects
+  this installer's global-dir install.
 
 To check any of this on a live session: start one, get a few messages in,
 and ask *"what are your standing rules?"*
