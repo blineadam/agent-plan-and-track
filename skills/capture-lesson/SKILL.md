@@ -5,8 +5,6 @@ description: Record a lesson in the active project's tasks/lessons.md after the 
 
 # Capture Lesson
 
-Self-improvement loop: turn every user correction into a rule that prevents the same mistake.
-
 ## When this fires
 
 Any time the user corrects course: a rejected approach, a bug you introduced, a misunderstood requirement, a workflow preference you violated. Don't wait to be asked: capture it as part of handling the correction.

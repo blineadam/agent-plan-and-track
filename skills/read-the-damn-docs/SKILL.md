@@ -5,7 +5,7 @@ description: "Use when implementing, integrating, upgrading, debugging, or answe
 
 # Read The Damn Docs
 
-Don't guess where authoritative docs can answer the question. The most common right move is to web-search for the current official docs, open the relevant pages, and read them before coding. For APIs, versions, provider behavior, config, limits, lifecycle hooks, or security-sensitive flows, ground the answer in what the docs actually say.
+Don't guess where authoritative docs can answer the question. For APIs, versions, provider behavior, config, limits, lifecycle hooks, or security-sensitive flows, ground the answer in what the docs actually say.
 
 Complements [[gateguard]]: gateguard forces local investigation, the callers and schemas already in this codebase, before an edit; this skill forces current external verification, the third-party API or library's actual current version and behavior, before relying on training data that may be stale.
 
