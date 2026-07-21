@@ -177,6 +177,7 @@ jobs:
         run: |
           set -euo pipefail
           export HOME="$RUNNER_TEMP/scratch-home-guard"
+          mkdir -p "$HOME"
           ./install.sh claude >/dev/null
           skills="$HOME/.claude/skills"
           manifest="$skills/.plan-and-track-manifest"
@@ -417,6 +418,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-guard"
+          New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null
           .\install.ps1 claude 6>&1 | Out-Null
           $skills = "$env:USERPROFILE\.claude\skills"
           $manifest = "$skills\.plan-and-track-manifest"
