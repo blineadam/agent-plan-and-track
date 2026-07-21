@@ -5,8 +5,6 @@ description: 'Use when the user explicitly wants autonomous progress without rou
 
 # Plow Ahead
 
-Proceed through ordinary ambiguity. Make reasonable assumptions, keep momentum, validate as you go, and make the final recap strong enough that the user can see what decisions were made while they were away.
-
 This skill elaborates the "Autonomous bug fixing" rule already in `rules/agent-guidelines.md` ("Given a bug report, logs, or failing tests, just fix it end-to-end. No hand-holding required.") into a full autonomy contract that applies to any explicitly-autonomous task, not just bug fixes.
 
 ## Autonomy Contract
@@ -30,7 +28,7 @@ Stop and hand back to the user only for true blockers that need their authorizat
 - Legal, safety, privacy, or security risk is high and cannot be reduced by a conservative local choice.
 - The user explicitly reserved a decision for themselves.
 
-A verification failure that repeats after reasonable investigation, where the next fix would be speculative or broad, is a judgment call, not a user-authorization blocker. When the tiered subagent roster is available (per [[efficient-frontier]]), delegate it to the `fable-advisor` subagent for an independent read on whether to proceed, narrow scope, or stop, and follow that read; without the roster, make the same call inline using the Decision Rules below. A read of proceed or narrow scope means keep going; a read of stop means treat it as a stop condition and hand back to the user below. `fable-advisor` advises only; it cannot itself authorize continuing past any of the blockers above.
+A verification failure that repeats after reasonable investigation, where the next fix would be speculative or broad, is a judgment call, not a user-authorization blocker. When the tiered subagent roster is available (per [[efficient-frontier]]), delegate it to the `fable-advisor` subagent for an independent read on whether to proceed, narrow scope, or stop, and follow that read; without the roster, make the same call inline using the Decision Rules below. A read of proceed or narrow scope means keep going; a read of stop means treat it as a stop condition and hand back to the user below.
 
 If blocked, leave a self-contained handoff: what was done, what blocks progress, what exact input is needed, and the next command or file to inspect.
 
