@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Read-only research and codebase exploration, pinned to a cheaper-than-Opus model. Delegate here to map how something works, find where a symbol is defined or used, gather the facts an edit needs (importers/callers, blast radius, real data schemas), compare approaches, or answer an open question that spans many files (any task that reads and reports but never writes). Keeps the main session's context clean and runs on Sonnet regardless of the main session's model. Prefer this over exploring inline whenever the answer requires reading more than a couple of files.
+description: Read-only research and codebase exploration, kept on a cheap tier. Delegate here to map how something works, find where a symbol is defined or used, gather the facts an edit needs (importers/callers, blast radius, real data schemas), compare approaches, or answer an open question that spans many files (any task that reads and reports but never writes). Keeps the main session's context clean and runs on a cheap tier regardless of the main session's model. Prefer this over exploring inline whenever the answer requires reading more than a couple of files.
 model: sonnet
 effort: high
 tools: Read, Grep, Glob, WebFetch, WebSearch

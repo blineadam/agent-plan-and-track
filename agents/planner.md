@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Implementation planning pinned to Fable regardless of the session's default model. Delegate here when a non-trivial task needs a spec before code is written: it explores the codebase and returns an ordered implementation plan naming exact files, steps, verification commands, and risks, detailed enough to hand to a cheaper model. Use when the plan itself is the hard part. For judging a design you already have use architect-reviewer; for carrying a finished spec out use executor. Read-only: plans, never implements.
+description: Implementation planning pinned to the roster's strongest-judgment tier. Delegate here when a non-trivial task needs a spec before code is written: it explores the codebase and returns an ordered implementation plan naming exact files, steps, verification commands, and risks, detailed enough to hand to a cheaper model. Use when the plan itself is the hard part. For judging a design you already have use architect-reviewer; for carrying a finished spec out use executor. Read-only: plans, never implements.
 model: fable
 effort: xhigh
 tools: Read, Grep, Glob

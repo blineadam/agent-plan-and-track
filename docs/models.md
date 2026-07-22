@@ -22,8 +22,8 @@ overwriting them; the Codex plan-mode effort still updates.
 
 Tiered subagents install to `~/.claude/agents/` and, rendered into each
 harness's own native format, `~/.codex/agents/` (TOML) and
-`~/.copilot/agents/` (Markdown custom agents). Each is pinned to a model
-and effort that fits what the work needs: cheaper for routine delegation,
+`~/.copilot/agents/` (Markdown custom agents). Each carries a model and
+effort assignment sized to the work: cheaper for routine delegation,
 stronger for judgment calls a same-topic skill can't guarantee a model
 tier for.
 
