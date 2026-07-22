@@ -1,6 +1,6 @@
 ---
 name: skill-activation
-description: Measure whether the RIGHT skill is triggered for a prompt (routing/activation regression, not compliance). Maintain a corpus of trigger prompts mapped to the skill that should fire, run each in a fresh agent, and deterministically check the stream-json trace for the expected (and not the forbidden) Skill activation. Use after adding or renaming a skill, when two skills have overlapping triggers, or when the wrong skill keeps firing. For whether an already-fired skill is FOLLOWED, use skill-comply instead.
+description: Measure whether the RIGHT skill is triggered for a prompt (routing/activation regression, not compliance). Maintain a corpus of trigger prompts mapped to the skill that should fire, run each in a fresh agent, and deterministically check the stream-json trace for the expected (and not the forbidden) Skill activation. Use after adding or renaming a skill, when two skills have overlapping triggers, or when the wrong skill keeps firing. Also use its behavioral-smoke harness to regression-check that a trimmed skill body still produces the output its SKILL.md mandates; for LLM-judged compliance across strictness levels rather than a pinned deterministic check, use skill-comply instead.
 ---
 
 # skill-activation
