@@ -100,11 +100,6 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `hooks/claude/suggest-compact.js`, plus the JSON that wires a shared
   script into that harness's hook contract). Don't reject a harness-specific
   script under `hooks/<harness>/` as misplaced just because it isn't JSON.
-- `project-skills/` is a sibling of `skills/`, deliberately excluded from
-  `copy_skills`'s `skills/*/` glob in both `install.sh` and `install.ps1`, so
-  nothing under it is ever deployed by the installer. Flag a change to
-  either installer that would broaden its skill-copying glob to reach
-  `project-skills/`.
 
 ## Installers and cross-platform portability
 
@@ -132,9 +127,14 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   all (an unapproved bash verb like `upsert` must be replaced, e.g.
   `upsert_toml_default` → `Set-TomlDefault`, not `Upsert-TomlDefault`).
 - Rendering a Codex agent's TOML (`render_codex_agent` /
-  `ConvertTo-CodexAgentToml`) must leave `model` unset rather than
-  translating it: Claude's model tiers (`fable`/`opus`/`sonnet`/`haiku`) have
-  no Codex equivalent, so an unset key lets Codex inherit the session's own
-  model. Only `effort` → `model_reasoning_effort` and `tools` →
-  `sandbox_mode` translate. Flag a PR that adds a model-tier translation
-  table here.
+  `ConvertTo-CodexAgentToml`) or a Copilot agent's Markdown
+  (`render_copilot_agent` / `ConvertTo-CopilotAgentMd`) must leave `model`
+  unset rather than translating it: Claude's model tiers
+  (`fable`/`opus`/`sonnet`/`haiku`) have no Codex or Copilot equivalent, so
+  an unset key lets the harness inherit the session's own model. Codex
+  still translates `effort` → `model_reasoning_effort` and `tools` →
+  `sandbox_mode`; Copilot drops `effort` entirely (no matching frontmatter
+  field) and translates only `tools`, through a closed alias table
+  (`Read`→`read`, `Grep`/`Glob`→`search`, `Edit`/`Write`/`MultiEdit`→`edit`,
+  `Bash`→`execute`, `WebFetch`/`WebSearch`→`web`). Flag a PR that adds a
+  model-tier translation table to either renderer.
