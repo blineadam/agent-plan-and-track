@@ -51,7 +51,7 @@ The default ladder for a spec-shaped task: `planner` writes the spec after readi
 ## Guardrails
 
 - Don't reach for the harness's generic catch-all agent when a roster tier fits; the catch-all is the fallback for work no tier covers, not the default.
-- Don't delegate the work that's actually the immediate blocker; when the next step hinges on an answer the main session can determine itself (a fact, a file lookup, a quick read), get it directly instead of paying a subagent round trip. A judgment call the roster's advisors exist for is the opposite case: there the independent read is worth the wait.
+- Don't delegate objective blockers such as fact checks, file lookups, or quick reads; resolve them in the main session. Exception: consult the appropriate roster advisor for design, architecture, security, or judgment calls, even when they block the next step. 
 - Don't send two agents to edit the same files at the same time.
 - Don't fan a repetitive change out across the full target set on the first pass. Pilot the brief on a small representative subset, review those results, fold the corrections into the brief, then scale to the rest.
 - Don't assume delegation always saves time. It pays off when the work is genuinely parallelizable or genuinely bounded, not as a reflex for everything.
