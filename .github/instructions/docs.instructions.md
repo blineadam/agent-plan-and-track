@@ -1,5 +1,5 @@
 ---
-applyTo: "rules/**/*.md,skills/**/*.md,project-skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md"
+applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md"
 excludeAgent: "cloud-agent"
 ---
 
@@ -32,13 +32,10 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   a strict parser, even though this repo's own lenient parsers keep
   working. Flag an unquoted `description` containing `: `, and flag a
   quoted value containing an unescaped copy of its own delimiter.
-- An opt-in, project-scoped skill (not meant to load in every session)
-  lives under `project-skills/<name>/`, a sibling of `skills/` deliberately
-  outside the installer's `skills/*/` glob, so it's never auto-deployed;
-  its own reference material lives under its `references/` folder, not
-  top-level `docs/`. Flag a new skill added under `skills/` that reads as
-  project-specific, opt-in guidance (the way `migration-discipline` does)
-  rather than something every session should load.
+- A skill's own reference material (a checklist, a lookup table specific to
+  that skill) lives under its own `references/` folder, not top-level
+  `docs/`, since `docs/` documents the repo's architecture, not one skill's
+  content (see `migration-discipline/references/`).
 - Cross-skill references inside a skill's body use `[[skill-name]]`
   wiki-link syntax instead of duplicating another skill's content inline.
   A frontmatter `description` may still name a sibling skill in plain text
@@ -94,6 +91,13 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   authority: read-only reviewers get `Read, Grep, Glob`; only an edit-capable
   agent (e.g. `mechanic`, `executor`) should carry `Edit`/`Write`. Flag a
   reviewer or planning agent granted write tools.
+- `description` should name the model/effort tier generically ("the
+  roster's strongest-judgment tier", "a cheap execution tier"), not a
+  specific model like "Fable" or "Sonnet": the installer renders this same
+  file into Codex TOML and a Copilot `.agent.md` copy, and neither carries
+  the `model` field (Copilot drops `effort` too), so prose naming a
+  specific model goes stale on those two harnesses. Flag a `description`
+  that names a model directly.
 
 ## Don't hand-edit installed copies
 
