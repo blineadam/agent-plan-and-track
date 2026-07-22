@@ -81,6 +81,7 @@ jobs:
           node "$HOME/.copilot/scripts/core-rules-digest.js" --copilot >/dev/null
           node skills/skill-activation/scripts/run-activation-cases.js --dry-run >/dev/null
           node skills/skill-activation/scripts/run-activation-cases.js --precheck "$HOME/.claude/skills" >/dev/null
+          node skills/skill-activation/scripts/run-behavioral-smokes.js --dry-run >/dev/null
           node skills/context-budget/scripts/scan-context.js ./skills >/dev/null
           node skills/rules-distill/scripts/scan-rules.js >/dev/null
           node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
@@ -299,6 +300,7 @@ jobs:
           node "$H\.copilot\scripts\core-rules-digest.js" --copilot | Out-Null; Assert-Node 'copilot digest'
           node skills\skill-activation\scripts\run-activation-cases.js --dry-run | Out-Null; Assert-Node 'run-activation --dry-run'
           node skills\skill-activation\scripts\run-activation-cases.js --precheck "$H\.claude\skills" | Out-Null; Assert-Node 'run-activation --precheck'
+          node skills\skill-activation\scripts\run-behavioral-smokes.js --dry-run | Out-Null; Assert-Node 'run-behavioral-smokes --dry-run'
           node skills\context-budget\scripts\scan-context.js .\skills | Out-Null; Assert-Node 'scan-context'
           node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
           node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'
