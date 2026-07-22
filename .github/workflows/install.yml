@@ -72,6 +72,20 @@ jobs:
           # keys, with no stray Claude `model` key (existence/count alone doesn't
           # prove the renderer emitted valid or complete output).
           python3 -c "import glob, os, sys, tomllib; expected={'name','description','model_reasoning_effort','sandbox_mode','developer_instructions'}; files=sorted(glob.glob(os.path.join(sys.argv[1],'*.toml'))); assert files, 'no Codex agent TOML files found'; bad=[(f, sorted(tomllib.load(open(f,'rb')).keys())) for f in files if set(tomllib.load(open(f,'rb')).keys())!=expected]; assert not bad, f'bad TOML key sets: {bad}'; print(f'OK: validated TOML structure for {len(files)} rendered Codex agents')" "$HOME/.codex/agents"
+          # Copilot agents: one rendered file per agents/*.md source.
+          copilot_agent_count="$(ls "$HOME/.copilot/agents"/*.agent.md | wc -l | tr -d ' ')"
+          [ "$copilot_agent_count" = "$agent_md_count" ] \
+            || { echo "FAIL: expected $agent_md_count Copilot agent files, found $copilot_agent_count"; exit 1; }
+          # Mapping spot-check on the rendered executor agent: expected tool
+          # aliases, fenced frontmatter, and neither Claude's model nor effort key
+          # (the Copilot render deliberately omits both).
+          executor_agent="$HOME/.copilot/agents/executor.agent.md"
+          grep -qF 'tools: ["read", "search", "edit", "execute"]' "$executor_agent" \
+            || { echo "FAIL: executor.agent.md missing expected tools mapping"; exit 1; }
+          [ "$(head -n1 "$executor_agent")" = "---" ] \
+            || { echo "FAIL: executor.agent.md does not start with a --- fence"; exit 1; }
+          if grep -q '^model:' "$executor_agent"; then echo "FAIL: executor.agent.md unexpectedly carries a model: line"; exit 1; fi
+          if grep -q '^effort:' "$executor_agent"; then echo "FAIL: executor.agent.md unexpectedly carries an effort: line"; exit 1; fi
       - name: Shared Node scripts run
         run: |
           set -euo pipefail
@@ -286,6 +300,19 @@ jobs:
           Set-Content -Path $validatorPath -Value $validatorLines -Encoding utf8
           python $validatorPath "$H\.codex\agents"
           if ($LASTEXITCODE -ne 0) { throw "Codex TOML validation failed" }
+          # Copilot agents: one rendered file per agents/*.md source.
+          $copilotAgentCount = (Get-ChildItem "$H\.copilot\agents\*.agent.md").Count
+          if ($copilotAgentCount -ne $agentMdCount) { throw "expected $agentMdCount Copilot agent files, found $copilotAgentCount" }
+          # Mapping spot-check on the rendered executor agent: expected tool
+          # aliases, fenced frontmatter, and neither Claude's model nor effort key
+          # (the Copilot render deliberately omits both).
+          $executorAgent = "$H\.copilot\agents\executor.agent.md"
+          $executorContent = Get-Content -Raw $executorAgent
+          if ($executorContent -notmatch [regex]::Escape('tools: ["read", "search", "edit", "execute"]')) { throw "executor.agent.md missing expected tools mapping" }
+          $firstLine = (Get-Content $executorAgent -TotalCount 1)
+          if ($firstLine -ne '---') { throw "executor.agent.md does not start with a --- fence" }
+          if ($executorContent -match '(?m)^model:') { throw "executor.agent.md unexpectedly carries a model: line" }
+          if ($executorContent -match '(?m)^effort:') { throw "executor.agent.md unexpectedly carries an effort: line" }
       - name: Shared Node scripts run
         shell: powershell
         run: |
