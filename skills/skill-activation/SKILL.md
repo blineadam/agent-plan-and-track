@@ -133,3 +133,44 @@ always upstream of a rerun:
 
 A persistently misrouting trigger that resists description fixes is a candidate
 for a hook, same escalation path skill-comply uses.
+
+## Behavioral smokes
+
+A second, separate harness lives beside this one:
+`scripts/run-behavioral-smokes.js` + `fixtures/behavioral-cases.jsonl` +
+`fixtures/behavioral/<id>/`. It answers a different question than the rest of
+this skill: not "does the right skill fire" (a router/description question),
+but "does a trimmed skill *body* still drive its mandated behavior" (does a
+fresh agent that activates skill X actually produce the file/content X's
+SKILL.md requires). Use it after trimming or editing a skill body, to pin a
+regression check that the trim didn't cut behavior.
+
+The boundary vs [[skill-comply]]: skill-comply is LLM-judged strictness
+measurement across supportive/neutral/competing prompts; behavioral smokes are
+deterministic and corpus-pinned, the same file_regex-or-fail contract this
+skill's own `--check` uses for routing.
+
+Each case in `behavioral-cases.jsonl` is `{ id, skill, prompt, max_turns,
+fixture, assertions: [{ kind, path, regex, flags }], note }`. `fixture` names
+a directory under `fixtures/behavioral/` copied into the case's working
+directory before the agent runs (a file the skill's mandated output must be
+appended to, not clobber). Unlike this skill's own routing prompts, a
+behavioral-smoke prompt should **name the target skill**: the point here isn't
+to test routing again, it's to prove the body still works once the skill has
+already fired.
+
+Same three modes as this skill's own runner, with one deliberate difference:
+`--dry-run` here lints the corpus and exits 1 on any problem (a CI guard, not
+just a listing).
+
+- `--dry-run [CORPUS]`: lint the corpus (free); exit 1 on any problem.
+- `--check RESULTS_DIR [CORPUS]`: score pre-captured results (free).
+- `--run [RESULTS_DIR]`: invoke `claude -p` per case (billable, behind the same
+  `ACTIVATION_ALLOW_SPEND=1` gate).
+
+Scoring is liveness-first: a trace's terminal `result` event must show
+`subtype: "success"`, a falsy `is_error`, `num_turns > 0`, and
+`total_cost_usd > 0` before anything else is scored. A non-live run is
+`invalid`, never a pass and never a negative, distinct from a real behavioral
+failure. Only a live run is checked for activation, and only a live,
+activated run is checked against its file assertions.

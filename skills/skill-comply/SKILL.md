@@ -107,3 +107,5 @@ Emit a self-contained report:
 If a step shows consistently low compliance, note it: that's a candidate for
 promotion into the core-rules digest or a hook (where harness-enforced repetition
 beats attention decay), per this repo's rule taxonomy.
+
+For a deterministic, corpus-pinned regression check after a skill body trim, rather than a fresh LLM-judged strictness measurement, use [[skill-activation]]'s behavioral smokes instead.
