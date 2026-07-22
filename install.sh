@@ -32,11 +32,12 @@
 #     is out of scope.
 #
 # PARITY: install.ps1 is the Windows (PowerShell) sibling of this script and must
-# stay in lockstep. Any change to the managed surface here (skills, agents (both
-# the Claude .md copies and the Codex TOML rendering), the core-rules digest, the
-# instructions managed block, hook wiring + __SCRIPTS__ substitution, model/effort
-# defaults, the TOML upsert, the global gitignore entries, the manifest-based
-# stale prune keyed by .plan-and-track-manifest) must be mirrored there.
+# stay in lockstep. Any change to the managed surface here (skills, agents (the
+# Claude .md copies, the Codex TOML rendering, and the Copilot .agent.md
+# rendering), the core-rules digest, the instructions managed block, hook
+# wiring + __SCRIPTS__ substitution, model/effort defaults, the TOML upsert,
+# the global gitignore entries, the manifest-based stale prune keyed by
+# .plan-and-track-manifest) must be mirrored there.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -272,6 +273,78 @@ copy_codex_agents() {
     names="$names${names:+,}$name"
   done
   [ -n "$names" ] && echo "  agents (codex)  -> $dest/{$names}"
+}
+
+# Map $2, a comma-separated agents/*.md "tools:" frontmatter value (e.g.
+# "Read, Grep, Glob"), to Copilot's own tool-alias vocabulary via the closed
+# alias table (Read->read, Grep/Glob->search, Edit/Write/MultiEdit->edit,
+# Bash->execute, WebFetch/WebSearch->web), deduped in first-occurrence order.
+# An unknown source tool name is warned to stderr and dropped, never aborts.
+# Returns the comma-space-joined, double-quoted elements for a YAML flow
+# array (caller wraps in "[...]").
+copilot_tools() {
+  local src="$1" tools="$2" IFS=',' t alias out="" seen=","
+  for t in $tools; do
+    t="${t#"${t%%[![:space:]]*}"}"
+    t="${t%"${t##*[![:space:]]}"}"
+    [ -z "$t" ] && continue
+    case "$t" in
+      Read)                   alias="read" ;;
+      Grep|Glob)               alias="search" ;;
+      Edit|Write|MultiEdit)    alias="edit" ;;
+      Bash)                    alias="execute" ;;
+      WebFetch|WebSearch)      alias="web" ;;
+      *)
+        echo "  warn            -> $src: unknown tool '$t'; dropped from Copilot render" >&2
+        continue
+        ;;
+    esac
+    case "$seen" in
+      *",$alias,"*) continue ;;
+    esac
+    seen="$seen$alias,"
+    out="$out${out:+, }\"$alias\""
+  done
+  printf '%s' "$out"
+}
+
+# Render one agents/*.md source ($1) into a Copilot-native agent file at $2,
+# per the GA custom-agents doc's own example frontmatter shape. Like
+# render_codex_agent, model is left UNSET (no Claude->Copilot model
+# translation); effort is dropped entirely (Copilot's agent frontmatter has no
+# effort field). tools renders as a YAML flow array of double-quoted aliases
+# via copilot_tools.
+render_copilot_agent() {
+  local src="$1" dest="$2" name description tools
+  name="$(frontmatter_field "$src" name)"
+  description="$(frontmatter_field "$src" description)"
+  tools="$(copilot_tools "$src" "$(frontmatter_field "$src" tools)")"
+  {
+    printf -- '---\n'
+    printf 'name: %s\n' "$name"
+    printf 'description: "%s"\n' "$(toml_escape "$description")"
+    printf 'tools: [%s]\n' "$tools"
+    printf -- '---\n\n'
+    agent_body "$src"
+  } > "$dest"
+}
+
+# Copilot-native mirror of copy_codex_agents: same source (agents/*.md),
+# rendered into Copilot's one-agent-file-per-agent format at
+# $dest/<name>.agent.md instead of TOML, since Copilot has no Claude-style
+# Markdown subagent file either. Every agents/*.md is rendered, so adding one
+# needs no edit here. No-op if the repo has no agents/ dir.
+copy_copilot_agents() {
+  local dest="$1" f name names=""
+  [ -d "$REPO_DIR/agents" ] || return 0
+  mkdir -p "$dest"
+  for f in "$REPO_DIR"/agents/*.md; do
+    [ -e "$f" ] || continue
+    name="$(basename "$f" .md)"
+    render_copilot_agent "$f" "$dest/$name.agent.md"
+    names="$names${names:+,}$name"
+  done
+  [ -n "$names" ] && echo "  agents (copilot)-> $dest/{$names}"
 }
 
 # Write $1 (a temp file) back to $2, preserving a symlink at $2 instead of
@@ -516,6 +589,8 @@ install_copilot() {
   echo "GitHub Copilot (user scope: ~/.copilot)"
   copy_skills "$HOME/.copilot/skills"
   prune_stale "$HOME/.copilot/skills" "$(skill_names portable)"
+  copy_copilot_agents "$HOME/.copilot/agents"
+  prune_stale "$HOME/.copilot/agents" "$(agent_names "agent.md")"
   install_digest "$HOME/.copilot/core-rules.md"
   install_instructions "$HOME/.copilot/copilot-instructions.md"
   # Global model default: "auto" lets Copilot route to the best model per task.

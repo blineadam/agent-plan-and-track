@@ -38,12 +38,12 @@
       dir, or a renamed hook script under the scripts dir, is out of scope.
 
   PARITY: this script and install.sh must stay in lockstep. Any change to the
-  managed surface (skills, agents (both the Claude .md copies and the Codex
-  TOML rendering), the core-rules digest, the instructions managed block, hook
-  wiring + __SCRIPTS__ substitution, model/effort defaults, the TOML upsert,
-  the global gitignore entries, the manifest-based stale prune keyed by
-  .plan-and-track-manifest) must be mirrored in both. See install.sh for the
-  same note.
+  managed surface (skills, agents (the Claude .md copies, the Codex TOML
+  rendering, and the Copilot .agent.md rendering), the core-rules digest, the
+  instructions managed block, hook wiring + __SCRIPTS__ substitution,
+  model/effort defaults, the TOML upsert, the global gitignore entries, the
+  manifest-based stale prune keyed by .plan-and-track-manifest) must be
+  mirrored in both. See install.sh for the same note.
 #>
 param([string]$Target)
 
@@ -356,6 +356,76 @@ function Copy-CodexAgents($dest) {
   if ($names.Count -gt 0) { Write-Host "  agents (codex)  -> $dest/{$($names -join ',')}" }
 }
 
+# Map $tools, a comma-separated agents/*.md "tools:" frontmatter value (e.g.
+# "Read, Grep, Glob"), to Copilot's own tool-alias vocabulary via the closed
+# alias table (Read->read, Grep/Glob->search, Edit/Write/MultiEdit->edit,
+# Bash->execute, WebFetch/WebSearch->web), deduped in first-occurrence order.
+# An unknown source tool name is warned to stderr and dropped, never aborts.
+# Returns the comma-space-joined, double-quoted elements for a YAML flow
+# array ($src is only used to name the source file in the warning).
+function ConvertTo-CopilotTools($src, $tools) {
+  $seen = @()
+  $out = @()
+  foreach ($raw in $tools -split ',') {
+    $t = $raw.Trim()
+    if ($t -eq '') { continue }
+    if ($t -eq 'Read') { $alias = 'read' }
+    elseif ($t -eq 'Grep' -or $t -eq 'Glob') { $alias = 'search' }
+    elseif ($t -eq 'Edit' -or $t -eq 'Write' -or $t -eq 'MultiEdit') { $alias = 'edit' }
+    elseif ($t -eq 'Bash') { $alias = 'execute' }
+    elseif ($t -eq 'WebFetch' -or $t -eq 'WebSearch') { $alias = 'web' }
+    else {
+      [Console]::Error.WriteLine("  warn            -> ${src}: unknown tool '$t'; dropped from Copilot render")
+      continue
+    }
+    if ($seen -contains $alias) { continue }
+    $seen += $alias
+    $out += "`"$alias`""
+  }
+  return ($out -join ', ')
+}
+
+# Render one agents/*.md source into a Copilot-native agent file's text, per
+# the GA custom-agents doc's own example frontmatter shape. Like
+# ConvertTo-CodexAgentToml, model is left UNSET (no Claude->Copilot model
+# translation); effort is dropped entirely (Copilot's agent frontmatter has no
+# effort field). tools renders as a YAML flow array of double-quoted aliases
+# via ConvertTo-CopilotTools.
+function ConvertTo-CopilotAgentMd($src) {
+  $name = Get-AgentFrontmatterField $src 'name'
+  $description = Get-AgentFrontmatterField $src 'description'
+  $tools = ConvertTo-CopilotTools $src (Get-AgentFrontmatterField $src 'tools')
+  $body = Get-AgentBody $src
+  $lines = @(
+    "---",
+    "name: $name",
+    "description: `"$(ConvertTo-TomlEscaped $description)`"",
+    "tools: [$tools]",
+    "---",
+    "",
+    $body
+  )
+  return ($lines -join "`n") + "`n"
+}
+
+# Copilot-native mirror of Copy-CodexAgents: same source (agents/*.md),
+# rendered into Copilot's one-agent-file-per-agent format at
+# $dest/<name>.agent.md instead of TOML, since Copilot has no Claude-style
+# Markdown subagent file either. Every agents/*.md is rendered, so adding one
+# needs no edit here. No-op if the repo has no agents/ dir.
+function Copy-CopilotAgents($dest) {
+  $agentsDir = Join-Path $RepoDir 'agents'
+  if (-not (Test-Path -LiteralPath $agentsDir)) { return }
+  New-Item -ItemType Directory -Force -Path $dest | Out-Null
+  $names = @()
+  foreach ($f in Get-ChildItem -LiteralPath $agentsDir -Filter '*.md' -File) {
+    $md = ConvertTo-CopilotAgentMd $f.FullName
+    [System.IO.File]::WriteAllText((Join-Path $dest "$($f.BaseName).agent.md"), $md, $Utf8NoBom)
+    $names += $f.BaseName
+  }
+  if ($names.Count -gt 0) { Write-Host "  agents (copilot)-> $dest/{$($names -join ',')}" }
+}
+
 # Render a hook wiring template to text, replacing __SCRIPTS__ with the resolved
 # absolute scripts dir. Mirrors install.sh render_hook; $scriptsDir is
 # forward-slashed by the caller (node accepts forward slashes on Windows too, and
@@ -617,6 +687,8 @@ function Install-Copilot {
   $base = Join-Path $HomeDir '.copilot'
   Copy-Skills (Join-Path $base 'skills')
   Remove-StaleInstalled (Join-Path $base 'skills') (Get-SkillNames 'portable')
+  Copy-CopilotAgents (Join-Path $base 'agents')
+  Remove-StaleInstalled (Join-Path $base 'agents') (Get-AgentNames 'agent.md')
   Install-Digest (Join-Path $base 'core-rules.md')
   Install-Instructions (Join-Path $base 'copilot-instructions.md')
 

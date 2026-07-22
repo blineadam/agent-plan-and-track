@@ -7,9 +7,17 @@
  * rules, enforced where the model can't skip them. Both Claude Code and Codex
  * expose a Stop event with a Claude-shaped payload (`stop_hook_active`,
  * `transcript_path`, `last_assistant_message`) and accept the same output
- * contract, so one script serves both. Copilot has no soft-warn Stop channel
- * (only block/allow) and an undocumented transcript format, so it relies on the
- * rules-digest guidance instead. No Copilot delivery-gate.
+ * contract, so one script serves both. Copilot's `agentStop` event does exist
+ * and was smoke-verified (CLI 1.0.73): it delivers a documented payload
+ * (camelCase, `transcriptPath`, `stop_hook_active`) plus a parseable typed
+ * JSONL transcript, so those claims aren't the blocker. The blocker is the
+ * output contract: no `systemMessage`/`additionalContext`, only
+ * `{"decision":"block"|"allow","reason"}`, and `block` forces a full extra
+ * agent turn. The documented soft-warn path (exit 2, stderr surfaced to the
+ * user) was observed landing only in `~/.copilot/logs` in headless mode, not
+ * visible to the user (interactive TUI untested), so warn-only has no working
+ * surface there. It isn't ported to Copilot until a smoke shows that exit-2
+ * stderr warning actually reaching the user.
  *
  * DEFAULT: WARN-ONLY. It surfaces a `systemMessage` and always allows the stop.
  * A Stop hook that traps the user in a loop is worse than the problem it solves,

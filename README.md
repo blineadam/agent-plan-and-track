@@ -55,8 +55,8 @@ and Copilot's own hook files get a `.bak` backup first if they'd changed,
 hook wiring is only added where it's missing on Claude and Codex,
 instruction files only get their clearly marked managed section touched,
 and model settings reset to the repo defaults each run (set
-`PT_KEEP_MODEL=1` to keep your own choice). Claude and Codex subagents
-stay in sync too. It also tidies up after itself: a skill or subagent this repo
+`PT_KEEP_MODEL=1` to keep your own choice). Claude, Codex, and Copilot
+subagents stay in sync too. It also tidies up after itself: a skill or subagent this repo
 used to ship but has since renamed or removed gets moved out
 of your config into a `.plan-and-track-pruned/` folder on a
 later install, while any name this repo never installed stays put.
@@ -106,7 +106,7 @@ research, and delegation to subagents.
 See [docs/skills.md](docs/skills.md) for the full catalog, including the
 maintenance and design skills. 
 See [docs/models.md](docs/models.md) for the model defaults each harness 
-gets, the tiered subagents Claude and Codex install, and per-tool notes.
+gets, the tiered subagents Claude, Codex, and Copilot install, and per-tool notes.
 
 ## Layout
 
@@ -134,9 +134,9 @@ skills/theme-factory/        apply or generate a cohesive color/font theme for a
 skills/slack-gif-creator/    create animated GIFs optimized for Slack with dimension/FPS/color constraints, validation tools, and animation guidance (portable)
 skills/webapp-testing/       drive a local web app in a real browser with Playwright: verify frontend behavior, debug UI, screenshot, read console logs (portable)
 skills/migration-discipline/ disciplines for large migrations/ports: ownership isolation, validation ladder, work-queue batching, durable migration state (portable)
-agents/                      tiered subagents (Claude .md + rendered Codex TOML): architect-reviewer,
-                              security-auditor, fable-advisor, planner (Fable); researcher, debugger,
-                              executor (Sonnet); mechanic (Haiku)
+agents/                      tiered subagents (Claude .md + rendered Codex TOML + rendered Copilot
+                              Markdown): architect-reviewer, security-auditor, fable-advisor, planner
+                              (Fable); researcher, debugger, executor (Sonnet); mechanic (Haiku)
 hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
 hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate + plan-gate

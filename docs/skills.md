@@ -56,9 +56,11 @@ correction into a rule for next time.
   and restores something closer to a real voice.
 
 A harness that can't run a given hook still gets the rule as a skill.
-That's why Copilot, which has no Stop event, gets gateguard but not
-delivery-gate. Tuning knobs for these hooks live in their script headers
-under `hooks/`.
+That's why Copilot gets gateguard but not delivery-gate: its `agentStop`
+event exists, but the only output it accepts is a block-or-allow decision,
+with no warn-only lever, and its stderr warn path didn't reach the user in
+testing. Tuning knobs for these hooks live in their script headers under
+`hooks/`.
 
 ## Maintenance skills
 

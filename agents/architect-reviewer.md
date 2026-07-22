@@ -1,6 +1,6 @@
 ---
 name: architect-reviewer
-description: Architecture and design review, pinned to Fable regardless of the session's default model. Delegate here before committing to a non-trivial design decision, such as a new module boundary, a data model change, a cross-cutting refactor, or an API shape, to get an independent judgment on tradeoffs, coupling, and long-term maintainability. Read-only: recommends, never implements. Reach for this when a decision is expensive to reverse once code is written around it, not for routine implementation choices where the approach is already obvious.
+description: Architecture and design review, pinned to the roster's strongest-judgment tier. Delegate here before committing to a non-trivial design decision, such as a new module boundary, a data model change, a cross-cutting refactor, or an API shape, to get an independent judgment on tradeoffs, coupling, and long-term maintainability. Read-only: recommends, never implements. Reach for this when a decision is expensive to reverse once code is written around it, not for routine implementation choices where the approach is already obvious.
 model: fable
 effort: xhigh
 tools: Read, Grep, Glob

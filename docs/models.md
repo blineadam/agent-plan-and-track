@@ -20,11 +20,12 @@ overwriting them; the Codex plan-mode effort still updates.
 
 ## Tiered subagents
 
-Tiered subagents (Claude and Codex) install to `~/.claude/agents/` and,
-rendered into Codex's native TOML format, `~/.codex/agents/`. Each is
-pinned to a model and effort that fits what the work needs: cheaper for
-routine delegation, stronger for judgment calls a same-topic skill can't
-guarantee a model tier for.
+Tiered subagents install to `~/.claude/agents/` and, rendered into each
+harness's own native format, `~/.codex/agents/` (TOML) and
+`~/.copilot/agents/` (Markdown custom agents). Each carries a model and
+effort assignment sized to the work: cheaper for routine delegation,
+stronger for judgment calls a same-topic skill can't guarantee a model
+tier for.
 
 - **`architect-reviewer`** (Fable, read-only) weighs a non-trivial design
   decision before it's locked in: coupling, blast radius, simpler
@@ -50,13 +51,16 @@ guarantee a model tier for.
 
 If your account doesn't have Fable access, agents pinned to it just fall
 back to your normal model. Codex gets the same eight agents, but only the
-effort level and permissions carry over there, not the model tier.
+effort level and permissions carry over there, not the model tier. Copilot
+also gets the same eight agents, but only tool permissions carry over
+there, not the model tier and not effort.
 
 Claude picks the right agent for the job automatically, or you can call
-one by name ("use the researcher agent to..."). Copilot CLI does have its
-own custom-agent and subagent-delegation system now, but this repo's
-installer doesn't render the roster for it yet, so for now these only
-install to Claude and Codex.
+one by name ("use the researcher agent to..."). Copilot CLI has its own
+custom-agent and subagent-delegation system, and the roster installs
+there too, rendered as native custom agents at
+`~/.copilot/agents/*.agent.md`; invoke one via `copilot --agent=<name>`,
+the `/agent` picker, or by naming the agent in a prompt.
 
 ## Per-tool notes
 

@@ -58,4 +58,4 @@ The default ladder for a spec-shaped task: `planner` writes the spec after readi
 
 ## Beyond Claude Code
 
-Copilot CLI has its own custom-agent system, but this repo's installer doesn't render the roster there yet: use an ad hoc delegation prompt, or its generic `Agent`-style tool if one is available in that session. Codex has native subagents (its own `agents/*.md`-equivalent TOML files), so name-based delegation by role works there too on standalone Codex CLI as of v0.138.0 (June 2026).
+Copilot CLI has its own custom-agent system, and this repo's installer renders the roster there too, as native Copilot custom agents (`~/.copilot/agents/*.agent.md`): name-based delegation works via `/agent`, `--agent`, or naming the agent in a prompt, but only tool permissions carry over, not the model tier or effort. Codex has native subagents (its own `agents/*.md`-equivalent TOML files), so name-based delegation by role works there too on standalone Codex CLI as of v0.138.0 (June 2026).
