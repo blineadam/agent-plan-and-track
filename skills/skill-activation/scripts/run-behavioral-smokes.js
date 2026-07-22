@@ -157,9 +157,33 @@ function activatedSkills(traceFile) {
 }
 
 // Reject both path separators (\ is a separator on Windows) plus `..`, so a
-// case id can't escape RESULTS_DIR when interpolated into a path.
+// case id can't escape RESULTS_DIR when interpolated into a path. Also used for
+// `fixture`, which likewise names a single direct-child directory.
 function idIsPathSafe(id) {
   return typeof id === 'string' && id !== '' && !id.includes('/') && !id.includes('\\') && !id.includes('..');
+}
+
+// An assertion `path` is a relative file path under the case dir (e.g.
+// "tasks/lessons.md"), so unlike an id/fixture it legitimately contains
+// separators. Reject absolute paths and any `..` segment so it can't escape the
+// case dir and read another case's artifact.
+function relPathIsContained(p) {
+  if (typeof p !== 'string' || p === '') return false;
+  const segments = p.split(/[\\/]/);
+  if (segments[0] === '') return false; // leading separator: absolute
+  if (/^[A-Za-z]:/.test(p)) return false; // Windows drive-absolute
+  return !segments.includes('..');
+}
+
+// Ids appearing more than once in the corpus. Duplicates collide on the same
+// <id>.jsonl / <id>/ paths, so at --run time the later case overwrites the
+// earlier and both would then score against the last writer's artifacts.
+function duplicateIds(cases) {
+  const counts = new Map();
+  for (const c of cases) {
+    if (typeof c.id === 'string' && c.id !== '') counts.set(c.id, (counts.get(c.id) || 0) + 1);
+  }
+  return new Set([...counts].filter(([, n]) => n > 1).map(([id]) => id));
 }
 
 // ---- --dry-run: static corpus lint (free) -----------------------------------
@@ -168,6 +192,14 @@ function modeDryRun(args) {
   if (!isFile(corpus)) die(`error: no corpus at ${corpus}`);
   const cases = readJsonl(corpus);
   const linted = cases.map(lintCase);
+  const dups = duplicateIds(cases);
+  linted.forEach((entry, i) => {
+    const id = cases[i].id;
+    if (dups.has(id)) {
+      entry.problems.push(`duplicate id '${id}': ids must be unique across the corpus`);
+      entry.problem_count = entry.problems.length;
+    }
+  });
   const problemCount = linted.reduce((sum, c) => sum + c.problem_count, 0);
   printJson({
     case_count: cases.length,
@@ -193,6 +225,8 @@ function lintCase(c) {
 
   if (typeof c.fixture !== 'string' || c.fixture === '') {
     problems.push('missing fixture');
+  } else if (!idIsPathSafe(c.fixture)) {
+    problems.push(`invalid fixture '${c.fixture}': must be a direct-child dir name, no path syntax`);
   } else if (!isDir(path.join(FIXTURES_BEHAVIORAL_DIR, c.fixture))) {
     problems.push(`fixture dir not found: ${c.fixture}`);
   }
@@ -202,7 +236,11 @@ function lintCase(c) {
   } else {
     c.assertions.forEach((a, i) => {
       if (!a || a.kind !== 'file_regex') problems.push(`assertions[${i}]: kind must be file_regex`);
-      if (!a || typeof a.path !== 'string' || a.path === '') problems.push(`assertions[${i}]: missing path`);
+      if (!a || typeof a.path !== 'string' || a.path === '') {
+        problems.push(`assertions[${i}]: missing path`);
+      } else if (!relPathIsContained(a.path)) {
+        problems.push(`assertions[${i}]: unsafe path '${a.path}': must stay inside the case dir`);
+      }
       if (!a || typeof a.regex !== 'string' || a.regex === '') {
         problems.push(`assertions[${i}]: missing regex`);
       } else {
@@ -222,8 +260,8 @@ function lintCase(c) {
 // Scans a trace for its terminal `result` event (the last object seen with
 // type==="result") and checks the four liveness conditions against it. These
 // field names (type/subtype/is_error/num_turns/total_cost_usd) are the Claude
-// Code stream-json contract; treated here as a working hypothesis pending
-// confirmation against a real trace.
+// Code stream-json result-event contract, confirmed against a real captured
+// trace.
 function checkLiveness(traceFile) {
   let text;
   try {
@@ -259,10 +297,13 @@ function checkLiveness(traceFile) {
 }
 
 // ---- Scoring (shared by --check and --run) ------------------------------------
-function scoreCase(c, resultsDir) {
+function scoreCase(c, resultsDir, dups) {
   const id = c.id;
   if (!idIsPathSafe(id)) {
     return { id: id ?? null, status: 'invalid', reason: `invalid id '${id}': path syntax not allowed`, activated: [] };
+  }
+  if (dups.has(id)) {
+    return { id, status: 'invalid', reason: `duplicate id '${id}': ids must be unique across the corpus`, activated: [] };
   }
 
   const trace = path.join(resultsDir, `${id}.jsonl`);
@@ -279,6 +320,9 @@ function scoreCase(c, resultsDir) {
 
   const caseDir = path.join(resultsDir, id);
   for (const a of c.assertions) {
+    if (!relPathIsContained(a.path)) {
+      return { id, status: 'invalid', reason: `unsafe assertion path '${a.path}'`, activated };
+    }
     const filePath = path.join(caseDir, a.path);
     if (!isFile(filePath)) {
       return { id, status: 'fail', reason: `missing file: ${a.path}`, activated };
@@ -294,7 +338,8 @@ function scoreCase(c, resultsDir) {
 }
 
 function scoreCases(cases, resultsDir) {
-  const cs = cases.map((c) => scoreCase(c, resultsDir));
+  const dups = duplicateIds(cases);
+  const cs = cases.map((c) => scoreCase(c, resultsDir, dups));
   return {
     total: cs.length,
     passed: cs.filter((r) => r.status === 'pass').length,
@@ -337,9 +382,12 @@ function modeRun(args) {
   const corpus = DEFAULT_CORPUS;
   if (!isFile(corpus)) die(`error: no corpus at ${corpus}`);
   const cases = readJsonl(corpus);
+  const dups = duplicateIds(cases);
 
   for (const c of cases) {
-    if (!idIsPathSafe(c.id)) continue; // scored as invalid below; never touch the filesystem with an unsafe id
+    // Scored as invalid below; never touch the filesystem (or spend) on an
+    // unsafe id/fixture or a duplicate id that would collide on <id> paths.
+    if (!idIsPathSafe(c.id) || !idIsPathSafe(c.fixture) || dups.has(c.id)) continue;
     const fixtureDir = path.join(FIXTURES_BEHAVIORAL_DIR, c.fixture);
     const caseDir = path.join(resultsDir, c.id);
     fs.cpSync(fixtureDir, caseDir, { recursive: true });
