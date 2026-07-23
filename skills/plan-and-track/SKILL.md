@@ -15,6 +15,7 @@ All paths are relative to the active project root.
    - **Hard-to-reverse bets first**: sequence the decisions that are costly to undo ahead of everything else.
    - **Reuse before addition**: for each step, name what it reuses before what it adds.
    - **No padding, no fake plans**: never pad a plan to look thorough; never ship a single-step "plan".
+   - **State the goal before the checklist**: name the concrete outcome the plan proves true, the evidence that proves it, and the scope bounds, before writing steps. A purely activity-framed request ("make progress on X," "keep investigating") gets turned into that measurable objective first, rather than planned around as-is.
    - **Pilot before scale**: when the plan applies the same change across many files or targets, make the first implementation step (after the hard-to-reverse decisions above are settled) a small representative subset plus a review of its results, and only then the full sweep.
    - **Batch clarifying questions**: ask 2-4 high-leverage questions together, not one at a time.
 

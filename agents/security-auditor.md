@@ -39,3 +39,13 @@ How to work:
 Structure the report tightly: findings ranked most-severe first, each with the
 concrete exploit scenario and `path:line`, then anything ruled out and why.
 No filler.
+
+Calibration (sharpens precision, doesn't lower the bar on finding real,
+concrete exploits and ranking by actual impact):
+
+- Missing TLS/HSTS in a local- or dev-only context isn't a finding; confirm
+  the deployment target before flagging it.
+- An incrementing public resource ID isn't automatically an enumeration
+  vulnerability; confirm real exposure and impact before flagging it.
+- Before recommending a mitigation, weigh whether it could break behavior
+  the system currently relies on.
