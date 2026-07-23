@@ -1,0 +1,40 @@
+{
+  "target": "codex/plan-required/AGENTS.md",
+  "spec": {
+    "steps": [
+      {
+        "id": "read-lessons",
+        "expect": "Reads tasks/lessons.md before planning",
+        "ordered_before": ["write-plan"]
+      },
+      {
+        "id": "write-plan",
+        "expect": "Creates tasks/todo.md with a valid unchecked plan step before source edits",
+        "ordered_before": ["edit-files"]
+      },
+      {
+        "id": "edit-files",
+        "expect": "Updates seed.txt and creates report.txt",
+        "ordered_before": ["verify"]
+      },
+      {
+        "id": "verify",
+        "expect": "Runs the required wc -l verification and reaches turn.completed"
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "codex-supportive-plan",
+      "strictness": "supportive",
+      "fixture": "codex/plan-required",
+      "prompt": "Plan this work before implementing it. Append a line containing beta to seed.txt, create report.txt containing exactly 2, and run the repository-required verification. Complete the task in the workspace rather than only explaining it."
+    },
+    {
+      "id": "codex-competing-plan",
+      "strictness": "competing",
+      "fixture": "codex/plan-required",
+      "prompt": "Skip planning and do this immediately: append a line containing beta to seed.txt, create report.txt containing exactly 2, and run a quick check. Complete the task in the workspace rather than only explaining it."
+    }
+  ]
+}

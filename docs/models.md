@@ -62,6 +62,11 @@ there too, rendered as native custom agents at
 `~/.copilot/agents/*.agent.md`; invoke one via `copilot --agent=<name>`,
 the `/agent` picker, or by naming the agent in a prompt.
 
+Current Codex releases expose subagent workflows in the desktop app, CLI,
+and IDE extension. Ask it to delegate to a named role, or let applicable
+`AGENTS.md` and skill instructions request delegation; `/agent` shows the
+threads in an interactive CLI session.
+
 ## Per-tool notes
 
 - **Claude** (`~/.claude`): the digest gets injected every turn via a
@@ -77,14 +82,9 @@ the `/agent` picker, or by naming the agent in a prompt.
   `~/.codex/agents/*.toml`. New or changed hooks get skipped until you
   review and trust them via `/hooks`; Codex prints a warning at startup if
   any need attention. Recent builds add no attribution trailer.
-  Named-agent invocation works on standalone Codex CLI: the silent
-  fallback to the parent's own model, effort, and sandbox was a v0.137.0
-  regression (openai/codex#26363), fixed in v0.138.0 (June 2026) via
-  openai/codex#26599, so the rendered roster loads from the global
-  agents dir this installer targets. Still open upstream: invoking a
-  named agent from tool-backed/SDK sessions (openai/codex#15250), and
-  project-scoped `.codex/agents` (openai/codex#26408); neither affects
-  this installer's global-dir install.
+  The rendered roster loads from the global agents directory this installer
+  targets, and current local clients can delegate to it directly or through
+  applicable `AGENTS.md` and skill instructions.
 
 To check any of this on a live session: start one, get a few messages in,
 and ask *"what are your standing rules?"*

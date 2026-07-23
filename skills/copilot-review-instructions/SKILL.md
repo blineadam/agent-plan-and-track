@@ -1,6 +1,6 @@
 ---
 name: copilot-review-instructions
-description: Generate or refresh path-scoped .github/instructions/*.instructions.md files so GitHub Copilot's PR review enforces a project's actual conventions instead of generic defaults. Gathers review-worthy rules from every source the project already has, including .ai-style-rules.md, the project's own instructions file (CLAUDE.md / AGENTS.md / .github/copilot-instructions.md), README, CONTRIBUTING, docs, plus a bounded source scan. Use whenever those conventions are created or change, or the project's directory/language layout changes (buckets and globs derive from it), and the project uses GitHub Copilot code review, either right after [[inherit-legacy-style]] captures implicit conventions or standalone. The generated artifact is Copilot-only, since no Claude or Codex equivalent exists.
+description: Generate or refresh path-scoped .github/instructions/*.instructions.md files so GitHub Copilot's PR review enforces a project's actual conventions instead of generic defaults. Gathers review-worthy rules from every source the project already has, including .ai-style-rules.md, the project's own instructions file (CLAUDE.md / AGENTS.md / .github/copilot-instructions.md), README, CONTRIBUTING, docs, plus a bounded source scan. Use whenever those conventions are created or change, or the project's directory/language layout changes (buckets and globs derive from it), and the project uses GitHub Copilot code review, either right after [[inherit-legacy-style]] captures implicit conventions or standalone. The generated artifact is Copilot-only.
 ---
 
 # copilot-review-instructions
@@ -168,8 +168,10 @@ skill's own origin PR:
 
 Installs and runs on all three harnesses: any agent can generate these files for
 a repo that uses Copilot's PR review, and [[inherit-legacy-style]] (portable)
-offers to invoke it. Only the output is Copilot-specific, since `applyTo` path
-scoping and `excludeAgent` are GitHub Copilot code-review features with no Claude
-Code or Codex equivalent. There's no harness-specific mechanism to gate, so the
-skill body is identical everywhere, unlike the guidance-plus-one-mechanism split
-in [[strategic-compact]] or [[skill-activation]].
+offers to invoke it. The generated output remains Copilot-specific: `applyTo`
+path scoping and `excludeAgent` are GitHub Copilot code-review features. For
+Codex, put project review constraints under `## Code Review Rules` in the
+closest applicable `AGENTS.md`; that is an instruction-file convention, not an
+artifact this skill generates. There's no harness-specific mechanism to gate, so
+the skill body is identical everywhere, unlike the guidance-plus-one-mechanism
+split in [[strategic-compact]] or [[skill-activation]].

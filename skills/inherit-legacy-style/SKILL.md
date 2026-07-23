@@ -63,8 +63,10 @@ the header, plus three mandatory sections:
 - **Soft (recommended)**: reference `.ai-style-rules.md` from the project's
   instructions file (`CLAUDE.md` / `AGENTS.md` /
   `.github/copilot-instructions.md`) so it loads every session.
-- **Hard (Claude Code only)**: soft, plus a `PreToolUse` hook on
-  Edit/Write in `settings.json` for mechanical enforcement.
+- **Hard (current Claude Code implementation)**: soft, plus a `PreToolUse`
+  hook on Edit/Write in `settings.json` for mechanical enforcement. Codex
+  supports lifecycle hooks, but this package does not add an equivalent Codex
+  enforcement hook.
 - **None**: keep the file; the user references it manually.
 
 Independent of persistence strength, if the project uses (or plans to use)

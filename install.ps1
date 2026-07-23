@@ -59,9 +59,9 @@ $MarkBegin       = '<!-- agent-plan-and-track:begin (managed block: edit in the 
 $MarkBeginPrefix = '<!-- agent-plan-and-track:begin ('
 $MarkEnd         = '<!-- agent-plan-and-track:end -->'
 
-# Claude-only skills: installed by Install-Claude, skipped for the other
-# harnesses. Everything else under skills/ is portable and installs everywhere.
-$ClaudeOnlySkills = @('skill-comply')
+# Non-Copilot skills: installed by Install-Claude and Install-Codex, skipped by
+# Install-Copilot. Everything else under skills/ is portable and installs everywhere.
+$NonCopilotSkills = @('skill-comply')
 
 # Per-destination manifest file name (see Remove-StaleInstalled below) recording
 # exactly what this repo installed there last time, so a stale prune only ever
@@ -142,13 +142,13 @@ function Write-Back($tmp, $file) {
   }
 }
 
-# Copy the portable skills (every skills/*/ dir except the Claude-only ones) into
+# Copy the portable skills (every skills/*/ dir except the non-Copilot ones) into
 # $dest, so a new skill is picked up on re-install with no edit here.
 function Copy-Skills($dest) {
   New-Item -ItemType Directory -Force -Path $dest | Out-Null
   $names = @()
   foreach ($dir in Get-ChildItem -LiteralPath (Join-Path $RepoDir 'skills') -Directory) {
-    if ($ClaudeOnlySkills -contains $dir.Name) { continue }
+    if ($NonCopilotSkills -contains $dir.Name) { continue }
     Copy-Tree $dir.FullName (Join-Path $dest $dir.Name)
     $names += $dir.Name
   }
@@ -170,11 +170,11 @@ function Copy-Agents($dest) {
 }
 
 # Newline-separated skill dir basenames. scope=all lists every skills/*/;
-# scope=portable skips the Claude-only ones. Mirrors Copy-Skills' loop.
+# scope=portable skips the non-Copilot ones. Mirrors Copy-Skills' loop.
 function Get-SkillNames($scope) {
   $names = @()
   foreach ($dir in Get-ChildItem -LiteralPath (Join-Path $RepoDir 'skills') -Directory) {
-    if ($scope -eq 'portable' -and $ClaudeOnlySkills -contains $dir.Name) { continue }
+    if ($scope -eq 'portable' -and $NonCopilotSkills -contains $dir.Name) { continue }
     $names += $dir.Name
   }
   return $names
@@ -619,9 +619,9 @@ function Install-Claude {
   $base = Join-Path $HomeDir '.claude'
   $scripts = Join-Path $base 'scripts'
   Copy-Skills (Join-Path $base 'skills')
-  foreach ($s in $ClaudeOnlySkills) {
+  foreach ($s in $NonCopilotSkills) {
     Copy-Tree (Join-Path (Join-Path $RepoDir 'skills') $s) (Join-Path (Join-Path $base 'skills') $s)
-    Write-Host "  skill (claude)  -> ~/.claude/skills/$s (Claude-only)"
+    Write-Host "  skill (non-Copilot) -> ~/.claude/skills/$s"
   }
   Remove-StaleInstalled (Join-Path $base 'skills') (Get-SkillNames 'all')
   Copy-Agents (Join-Path $base 'agents')
@@ -733,7 +733,11 @@ function Install-Codex {
   $codex = Join-Path $HomeDir '.codex'
   $scripts = Join-Path $codex 'scripts'
   Copy-Skills (Join-Path (Join-Path $HomeDir '.agents') 'skills')
-  Remove-StaleInstalled (Join-Path (Join-Path $HomeDir '.agents') 'skills') (Get-SkillNames 'portable')
+  foreach ($s in $NonCopilotSkills) {
+    Copy-Tree (Join-Path (Join-Path $RepoDir 'skills') $s) (Join-Path (Join-Path (Join-Path $HomeDir '.agents') 'skills') $s)
+    Write-Host "  skill (non-Copilot) -> ~/.agents/skills/$s"
+  }
+  Remove-StaleInstalled (Join-Path (Join-Path $HomeDir '.agents') 'skills') (Get-SkillNames 'all')
   Copy-CodexAgents (Join-Path $codex 'agents')
   Remove-StaleInstalled (Join-Path $codex 'agents') (Get-AgentNames 'toml')
   Install-Digest (Join-Path $codex 'core-rules.md')
@@ -747,12 +751,14 @@ function Install-Codex {
   New-Item -ItemType Directory -Force -Path $scripts | Out-Null
   if (-not (Test-Path -LiteralPath $hooks)) { [System.IO.File]::WriteAllText($hooks, '{"hooks":{}}', $Utf8NoBom) }
   # Shared scripts: the core-rules digest (replaces the old inline `cat`) plus
-  # gateguard + delivery-gate. Codex's Stop payload and apply_patch PreToolUse are
-  # Claude-shaped, so the same universal code runs here (dialect sniffed at runtime).
+  # gateguard + delivery-gate, plus the Codex-specific warn-only plan gate.
+  # Codex's Stop payload and apply_patch PreToolUse are Claude-shaped, so the
+  # universal scripts run here unchanged (dialect sniffed at runtime).
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/core-rules-digest.js') -Destination (Join-Path $scripts 'core-rules-digest.js') -Force
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/gateguard.js') -Destination (Join-Path $scripts 'gateguard.js') -Force
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/delivery-gate.js') -Destination (Join-Path $scripts 'delivery-gate.js') -Force
-  Write-Host "  scripts         -> ~/.codex/scripts/{core-rules-digest,gateguard,delivery-gate}.js"
+  Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/codex/plan-gate-pilot.js') -Destination (Join-Path $scripts 'plan-gate.js') -Force
+  Write-Host "  scripts         -> ~/.codex/scripts/{core-rules-digest,gateguard,delivery-gate,plan-gate}.js"
 
   $scriptsFwd = $scripts.Replace('\', '/')
   $raw = [System.IO.File]::ReadAllText($hooks)
@@ -773,6 +779,18 @@ function Install-Codex {
   } else {
     Merge-HookInto $hooks 'Stop' (Join-Path $RepoDir 'hooks/codex/stop-delivery-gate.json') $scriptsFwd
     Write-Host "  delivery hook   -> merged into hooks.json (Stop; warn-only, DELIVERY_GATE_BLOCK=1 to enforce)"
+  }
+  $hookSettings = [System.IO.File]::ReadAllText($hooks) | ConvertFrom-Json
+  $planPreCommand = "node `"$scriptsFwd/plan-gate.js`" --pre"
+  $planPostCommand = "node `"$scriptsFwd/plan-gate.js`" --post"
+  $hasPlanPre = @($hookSettings.hooks.PreToolUse | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPreCommand }).Count -gt 0
+  $hasPlanPost = @($hookSettings.hooks.PostToolUse | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPostCommand }).Count -gt 0
+  if ($hasPlanPre -and $hasPlanPost) {
+    Write-Host "  plan-gate hook  -- already present in hooks.json"
+  } else {
+    if (-not $hasPlanPre) { Merge-HookInto $hooks 'PreToolUse' (Join-Path $RepoDir 'hooks/codex/plan-gate-pilot-hooks.json') $scriptsFwd }
+    if (-not $hasPlanPost) { Merge-HookInto $hooks 'PostToolUse' (Join-Path $RepoDir 'hooks/codex/plan-gate-pilot-hooks.json') $scriptsFwd }
+    Write-Host "  plan-gate hook  -> repaired in hooks.json (PreToolUse + PostToolUse on apply_patch; warn-only)"
   }
   Write-Host "  done. Hooks need node at runtime. Start a new codex session to load."
 }

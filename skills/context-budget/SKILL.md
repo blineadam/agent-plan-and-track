@@ -48,10 +48,12 @@ It scans `~/.claude/skills`, `~/.copilot/skills`, `~/.agents/skills` (whichever
 exist) plus any dirs you pass, each harness's instruction file, and the
 `core-rules.md` digest. Token estimate is deliberately crude: **words × 1.3**, a relative bloat signal, not a tokenizer. Output JSON fields:
 
-- `harnesses.{claude,copilot,codex}.always_on_tokens`: **the number to drive
-  down, per harness** (that harness's skill frontmatter + its instruction file +
-  its digest). The three harnesses are mutually exclusive: a session pays *one*
-  column, never the sum: so the report is per-harness, not a single total.
+- `harnesses.{claude,copilot,codex}.always_on_tokens`: **the configured-source
+  number to drive down, per harness** (that harness's skill frontmatter + its
+  instruction file + its digest). The three harnesses are mutually exclusive: a
+  session pays *one* column, never the sum. For Codex, this is an upper-bound
+  estimate from the installed sources the scanner can see, not an exact
+  per-session token ledger.
 - `harnesses.*.skill_body_tokens`: on-demand; informational.
 - `repo_inventory`: skills from extra dirs you passed (e.g. the repo's own
   `./skills`). This is a pre-install *source* listing, **not** a session cost;
@@ -101,21 +103,27 @@ change.** After applying trims to skills or rules, remind the user to re-run
 `./install.sh all` (or `install.ps1 all` on Windows) so the changes propagate to
 every harness.
 
-## Claude-only addendum: MCP servers & agents
+## MCP servers & agents (outside the scanner)
 
-These live only in the Claude harness; gate any advice on them behind a
-"Claude only" note.
+These configurations can add session-dependent context cost, and the scanner
+does not parse them. In Claude, inspect `.mcp.json` / connected servers and
+`~/.claude/agents/*.md`. In Codex, inspect MCP server configuration in
+`~/.codex/config.toml` or `.codex/config.toml`, and custom agents in
+`~/.codex/agents/*.toml` or `.codex/agents/*.toml`.
 
-- **MCP tools** (`.mcp.json` / connected servers) are a large, often-overlooked
-  always-on cost: every tool's name + description + JSON schema loads up front; budget **~500 tokens per tool** as a rough default. A server exposing 30 tools
-  can outweigh the entire skills surface. Recommend disabling unused servers, or
-  harnesses that defer tool schemas until searched (see the deferred-tool
-  mechanism) so only fetched tools cost their schema.
-- **Subagent definitions** (`~/.claude/agents/*.md`) add always-on routing text
-  much like skill frontmatter: audit their descriptions the same way.
+- **MCP tools** are a large, often-overlooked cost when their names,
+  descriptions, and JSON schemas are available to a session. Budget **~500
+  tokens per tool** only as a rough heuristic; harness configuration and whether
+  tools are deferred make the actual cost session-dependent. A server exposing
+  30 tools can outweigh the entire skills surface. Recommend disabling unused
+  servers, or deferring tool schemas until searched where the harness supports
+  it.
+- **Custom-agent definitions** can add routing text much like skill frontmatter
+  when they are available to a session: audit their descriptions the same way.
 
-`scan-context.js` does **not** parse `.mcp.json` (schema cost isn't derivable
-from line count); estimate MCP cost separately with the ~500 tok/tool heuristic.
+`scan-context.js` does **not** parse MCP or custom-agent configuration (their
+session cost is not derivable from line count); estimate it separately with the
+rough MCP heuristic above.
 
 ## Design principles
 

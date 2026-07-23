@@ -1,0 +1,21 @@
+{
+  "cases": [
+    { "id": "fresh", "expect": "stamp" },
+    { "id": "new-todo-plan", "expect": "stamp" },
+    { "id": "stale", "expect": "silent" },
+    { "id": "malformed", "expect": "silent" },
+    { "id": "no-op", "expect": "silent" },
+    { "id": "non-todo-snapshot-redacted", "expect": "hash-only" },
+    { "id": "plan-plus-source", "expect": "stamp" },
+    { "id": "concurrent-post", "expect": "one-warning" },
+    { "id": "subagents", "expect": "one-warning" },
+    { "id": "migration", "expect": "migration-warning-no-stamp" },
+    { "id": "deleted-migration", "expect": "migration-warning-no-stamp" },
+    { "id": "symlink-escape", "expect": "silent" },
+    { "id": "parent-symlink-swap", "expect": "silent" },
+    { "id": "corrupt-duplicate-missing", "expect": "silent" },
+    { "id": "concurrent-unrelated-todo", "expect": "two-stamps" },
+    { "id": "scope-warning-once", "expect": "one-warning-after-three-source-patches" },
+    { "id": "expired-scope-prune", "expect": "stale-scope-pruned" }
+  ]
+}

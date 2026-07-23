@@ -28,7 +28,7 @@ portable guidance, one Claude-specific mechanism):
 
 - **Phase 0 (static pre-check): all 3 harnesses.** It only reads `SKILL.md`
   descriptions, so aim it at `~/.claude/skills`, `~/.copilot/skills`, or
-  `~/.codex/skills`.
+  `~/.agents/skills` for Codex.
 - **Phase 2 (runtime activation): Claude verified · Copilot likely · Codex
   no.** Claude Code emits a `Skill` tool_use in its `stream-json` trace
   (verified). Copilot exposes a `skill` tool plus `--output-format=json`, so the
@@ -57,7 +57,7 @@ thin `description`, or one with no trigger clause, is the usual root cause of a
 routing miss:
 
 ```bash
-# portable: swap the path for ~/.copilot/skills or ~/.codex/skills
+# portable: swap the path for ~/.copilot/skills or ~/.agents/skills on Codex
 node skills/skill-activation/scripts/run-activation-cases.js --precheck ~/.claude/skills
 ```
 

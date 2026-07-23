@@ -3,22 +3,23 @@ name: skill-comply
 description: Measure whether a skill, rule, or instruction file is actually followed by a fresh agent, even when the prompt doesn't reinforce it. Generate a behavioral spec and scenarios at 3 strictness levels, run each in a fresh non-interactive agent, classify the tool-call trace against the spec, and report compliance. Use to check "is this rule really being obeyed?" after adding or editing rules/skills. For whether the RIGHT skill is triggered at all, use skill-activation.
 ---
 
-# skill-comply (Claude Code only)
+# skill-comply
 
 Turn "the model forgets your rules in long sessions" from an assertion into a
 measurement. Given a target `.md` (a skill, a rule, or an instruction file),
 skill-comply checks whether a **fresh** agent run actually exhibits the expected
 behavior, including when the prompt gives it no reason to.
 
-**Claude-only.** The measurement depends on spawning fresh non-interactive
-`claude -p` runs and parsing their `stream-json` tool-call traces; no equivalent
-is wired up for Copilot/Codex, so this skill installs for Claude only. Adapted
-from the ECC `skill-comply` skill as a lean, subagent-driven workflow (no bundled
-Python package).
+Claude Code and Codex are supported. Claude runs use `claude -p` stream-json;
+Codex runs use the bundled adapter over `codex exec --ephemeral --json`.
+Copilot remains unsupported because this repo has no equivalent fresh-run trace
+adapter there. Adapted from the ECC `skill-comply` skill as a lean,
+subagent-driven workflow.
 
 > **Why fresh runs, not in-session subagents.** A subagent inherits this
 > session's context and installed rules, so it can't tell you whether the rule
-> *sticks on its own*. Each scenario must run in its own `claude -p` process.
+> *sticks on its own*. Each scenario must run in its own `claude -p` or
+> `codex exec --ephemeral` process.
 > These are real, billable runs: start with `--dry-run` (spec + scenarios only).
 
 ## When to use
@@ -73,15 +74,43 @@ claude -p "<scenario prompt>" --output-format stream-json --verbose \
   > trace.jsonl 2> trace.err
 ```
 
+For Codex, capture the installed adapter path before changing HOME or CODEX_HOME,
+then run it with normal sandboxing:
+
+```bash
+adapter="$HOME/.agents/skills/skill-comply/scripts/run-codex-cases.js"
+
+# free: lint and print the bundled supportive + competing pilot
+node "$adapter" --dry-run
+
+# billable: fresh ephemeral run per case, then liveness-first normalization
+COMPLY_ALLOW_SPEND=1 node "$adapter" --run RESULTS_DIR
+
+# free: re-check captured results
+node "$adapter" --check RESULTS_DIR
+```
+
+The adapter ignores user config, uses `--sandbox workspace-write`, and never
+uses a bypass flag. The model still needs API access, but its shell and file
+tools stay inside Codex's normal network-restricted sandbox and a disposable
+fixture workspace. Keep the auth link in the isolated CODEX_HOME outside that
+workspace.
+
 `--dry-run` mode stops here after printing the spec and scenarios: no `claude -p`
 runs, no cost.
 
 ### 4. Classify the trace against the spec (LLM judgment)
 
-For each scenario, read `trace.jsonl` and map its `tool_use` events onto the spec
+For each scenario, read `trace.jsonl` and map its tool events onto the spec
 steps: classification, not regex (a step can be satisfied by different tools).
 Then check the `ordered_before` constraints deterministically: a step that
 happened but out of order is a partial pass.
+
+For Codex, classify from the adapter's `summary.json`: completed command
+events, file-change events, the final plan artifact, and the terminal event.
+Require exactly one successful `turn.completed` first. Do not infer compliance
+from hidden reasoning, assistant prose, or a presumed skill-activation event;
+Codex's JSONL trace does not provide deterministic skill activation.
 
 ```json
 {

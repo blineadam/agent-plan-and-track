@@ -61,30 +61,30 @@ need_node() {
   command -v node >/dev/null 2>&1 || { echo "error: node is required (brew install node, or see https://nodejs.org)" >&2; exit 1; }
 }
 
-# Claude-only skills: installed by install_claude, skipped for the other
-# harnesses. Everything else under skills/ is portable and installs everywhere.
-CLAUDE_ONLY_SKILLS=("skill-comply")
+# Non-Copilot skills: installed by install_claude and install_codex, skipped by
+# install_copilot. Everything else under skills/ is portable and installs everywhere.
+NON_COPILOT_SKILLS=("skill-comply")
 
 # Per-destination manifest file name (see prune_stale below) recording exactly
 # what this repo installed there last time, so a stale prune only ever touches a
 # name it previously recorded, never one it never installed.
 MANIFEST_NAME=".plan-and-track-manifest"
 
-is_claude_only() {
+is_copilot_excluded() {
   local name="$1" s
-  for s in "${CLAUDE_ONLY_SKILLS[@]}"; do
+  for s in "${NON_COPILOT_SKILLS[@]}"; do
     [ "$s" = "$name" ] && return 0
   done
   return 1
 }
 
 # Newline-separated skill dir basenames. scope=all lists every skills/*/;
-# scope=portable skips the Claude-only ones. Mirrors copy_skills' loop.
+# scope=portable skips the non-Copilot ones. Mirrors copy_skills' loop.
 skill_names() {
   local scope="$1" dir name
   for dir in "$REPO_DIR"/skills/*/; do
     name="$(basename "$dir")"
-    [ "$scope" = portable ] && is_claude_only "$name" && continue
+    [ "$scope" = portable ] && is_copilot_excluded "$name" && continue
     printf '%s\n' "$name"
   done
 }
@@ -155,14 +155,14 @@ prune_stale() {
   fi
 }
 
-# Portable skills: every skills/*/ dir except the Claude-only ones, so a new
+# Portable skills: every skills/*/ dir except the non-Copilot ones, so a new
 # skill is picked up by re-installing with no install.sh edit.
 copy_skills() {
   local dest="$1" dir name names=""
   mkdir -p "$dest"
   for dir in "$REPO_DIR"/skills/*/; do
     name="$(basename "$dir")"
-    is_claude_only "$name" && continue
+    is_copilot_excluded "$name" && continue
     cp -R "${dir%/}" "$dest/"
     names="$names${names:+,}$name"
   done
@@ -498,10 +498,10 @@ install_instructions() {
 install_claude() {
   echo "Claude Code (user scope: ~/.claude)"
   copy_skills "$HOME/.claude/skills"
-  local claude_skill
-  for claude_skill in "${CLAUDE_ONLY_SKILLS[@]}"; do
-    cp -R "$REPO_DIR/skills/$claude_skill" "$HOME/.claude/skills/"
-    echo "  skill (claude)  -> ~/.claude/skills/$claude_skill (Claude-only)"
+  local non_copilot_skill
+  for non_copilot_skill in "${NON_COPILOT_SKILLS[@]}"; do
+    cp -R "$REPO_DIR/skills/$non_copilot_skill" "$HOME/.claude/skills/"
+    echo "  skill (non-Copilot) -> ~/.claude/skills/$non_copilot_skill"
   done
   prune_stale "$HOME/.claude/skills" "$(skill_names all)"
   copy_agents "$HOME/.claude/agents"
@@ -643,7 +643,12 @@ install_copilot() {
 install_codex() {
   echo "Codex (user scope: ~/.codex; skills in ~/.agents/skills)"
   copy_skills "$HOME/.agents/skills"
-  prune_stale "$HOME/.agents/skills" "$(skill_names portable)"
+  local non_copilot_skill
+  for non_copilot_skill in "${NON_COPILOT_SKILLS[@]}"; do
+    cp -R "$REPO_DIR/skills/$non_copilot_skill" "$HOME/.agents/skills/"
+    echo "  skill (non-Copilot) -> ~/.agents/skills/$non_copilot_skill"
+  done
+  prune_stale "$HOME/.agents/skills" "$(skill_names all)"
   copy_codex_agents "$HOME/.codex/agents"
   prune_stale "$HOME/.codex/agents" "$(agent_names toml)"
   install_digest "$HOME/.codex/core-rules.md"
@@ -658,12 +663,14 @@ install_codex() {
   mkdir -p "$HOME/.codex" "$cscripts"
   [ -f "$hooks" ] || echo '{"hooks":{}}' > "$hooks"
   # Shared scripts: the core-rules digest (replaces the old inline `cat`) plus
-  # gateguard + delivery-gate. Codex's Stop payload and apply_patch PreToolUse are
-  # Claude-shaped, so the same universal code runs here (dialect sniffed at runtime).
+  # gateguard + delivery-gate, plus the Codex-specific warn-only plan gate.
+  # Codex's Stop payload and apply_patch PreToolUse are Claude-shaped, so the
+  # universal scripts run here unchanged (dialect sniffed at runtime).
   cp "$REPO_DIR/hooks/core-rules-digest.js" "$cscripts/core-rules-digest.js"
   cp "$REPO_DIR/hooks/gateguard.js" "$cscripts/gateguard.js"
   cp "$REPO_DIR/hooks/delivery-gate.js" "$cscripts/delivery-gate.js"
-  echo "  scripts         -> ~/.codex/scripts/{core-rules-digest,gateguard,delivery-gate}.js"
+  cp "$REPO_DIR/hooks/codex/plan-gate-pilot.js" "$cscripts/plan-gate.js"
+  echo "  scripts         -> ~/.codex/scripts/{core-rules-digest,gateguard,delivery-gate,plan-gate}.js"
   # Match either the new digest command or an old install's inline `cat ...core-rules.md`,
   # so upgrading never double-merges the hook.
   if grep -q 'core-rules' "$hooks"; then
@@ -692,6 +699,18 @@ install_codex() {
       '.hooks.Stop = ((.hooks.Stop // []) + $h[0].hooks.Stop)' \
       "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
     echo "  delivery hook   -> merged into $hooks (Stop; warn-only, DELIVERY_GATE_BLOCK=1 to enforce)"
+  fi
+  local plan_pre plan_post
+  plan_pre="$(jq --arg command "node \"$cscripts/plan-gate.js\" --pre" '[.hooks.PreToolUse[]?.hooks[]?.command | select(. == $command)] | length > 0' "$hooks")"
+  plan_post="$(jq --arg command "node \"$cscripts/plan-gate.js\" --post" '[.hooks.PostToolUse[]?.hooks[]?.command | select(. == $command)] | length > 0' "$hooks")"
+  if [ "$plan_pre" = true ] && [ "$plan_post" = true ]; then
+    echo "  plan-gate hook  -- already present in hooks.json"
+  else
+    tmp="$(mktemp)"
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/codex/plan-gate-pilot-hooks.json" "$cscripts") --argjson add_pre "$([ "$plan_pre" = true ] && echo false || echo true)" --argjson add_post "$([ "$plan_post" = true ] && echo false || echo true)" \
+      'if $add_pre then .hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse) else . end | if $add_post then .hooks.PostToolUse = ((.hooks.PostToolUse // []) + $h[0].hooks.PostToolUse) else . end' \
+      "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
+    echo "  plan-gate hook  -> repaired in $hooks (PreToolUse + PostToolUse on apply_patch; warn-only)"
   fi
   echo "  done. Hooks need node at runtime. Start a new codex session to load."
 }
