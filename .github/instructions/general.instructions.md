@@ -40,6 +40,11 @@ just a suggestion.
   `git clean`, force-push, rewriting shared history) or a commit/revert that
   overwrites another session's or agent's in-flight work, unless the PR
   description shows it was explicitly requested.
+- Flag a `gh ... pr create`/`pr edit` invocation that passes the PR body
+  inline via `-b`/`--body` with literal `\n` escapes instead of
+  `--body-file`/`-F` backed by a real file or a process-substitution stream
+  of actual newlines. Flag a body edit that deletes an image already present
+  in the existing PR description.
 
 ## Scope discipline
 

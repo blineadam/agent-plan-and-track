@@ -100,6 +100,13 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `hooks/claude/suggest-compact.js`, plus the JSON that wires a shared
   script into that harness's hook contract). Don't reject a harness-specific
   script under `hooks/<harness>/` as misplaced just because it isn't JSON.
+- A hook that needs its own fixture-driven regression tests places them at
+  `hooks/<harness>/scripts/run-<name>-*.js` plus
+  `hooks/<harness>/fixtures/<name>/cases.json`, mirroring the skill
+  scripts/fixtures convention one level down (e.g.
+  `hooks/codex/scripts/run-plan-gate-pilot-fixtures.js` next to
+  `hooks/codex/plan-gate-pilot.js`). Flag a hook test harness placed
+  anywhere else.
 
 ## Installers and cross-platform portability
 

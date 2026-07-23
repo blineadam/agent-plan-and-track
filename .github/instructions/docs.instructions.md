@@ -60,7 +60,8 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   file with no named section to anchor it.
 - A skill vendored wholesale from an external repo (e.g. `canvas-design`,
   `frontend-design`, `theme-factory`, `slack-gif-creator`, `webapp-testing`,
-  all from `anthropics/skills`) must carry an
+  all from `anthropics/skills`; `security-threat-model`, from
+  `openai/skills`) must carry an
   HTML comment right after its frontmatter naming the source URL, the exact
   edits made (not a vague "lightly edited"), and pointing at a sibling
   `LICENSE.txt` with the upstream license text. Flag a vendored skill missing
@@ -69,6 +70,16 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   it's vendored under `skills/` at all rather than fetched live at install
   time, the way `install-office-skills.sh` handles the restricted
   `docx`/`pdf`/`pptx`/`xlsx` skills.
+- A skill or standing rule that's merely *inspired by* another repo's idea
+  but rewritten from scratch, not vendored wholesale, gets a one-line
+  "adapted from X" credit instead: in `AGENTS.md`'s Skills section for a
+  skill (e.g. `humanizer`, `plow-ahead`), or in `AGENTS.md`'s rule-mechanism
+  section for a rule folded into `rules/agent-guidelines.md`/
+  `rules/core-rules.md` (e.g. the action-first output rule adapted from
+  `ayghri/i-have-adhd`). No in-file HTML comment or `LICENSE.txt` for this
+  case; that's only for the wholesale-vendored case above. Flag a rewritten,
+  externally-inspired skill or rule merged in without that one-line
+  `AGENTS.md` credit.
 
 ## Subagent definition files
 
