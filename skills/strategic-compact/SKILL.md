@@ -67,5 +67,7 @@ Tune via environment variables:
 - `COMPACT_CONTEXT_THRESHOLD`: context tokens before the size-based nudge (default 120000, or 250000 once context growth proves a 1M window; `0` disables it).
 - `COMPACT_CONTEXT_INTERVAL`: extra tokens of growth before it re-nudges (default 60000; 40000 on a proven 1M window).
 
-Copilot and Codex don't get this hook (their harnesses don't expose the same
-transcript/`/compact` mechanics). The decision guide above is the portable part.
+Only this hook's transcript-derived token signal is Claude-specific. Codex
+supports manual `/compact` and lifecycle hooks, but this package does not
+install a Codex auto-suggest hook. Copilot also gets the portable decision guide
+without this hook.

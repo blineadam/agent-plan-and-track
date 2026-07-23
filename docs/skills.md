@@ -65,8 +65,8 @@ testing. Tuning knobs for these hooks live in their script headers under
 ## Maintenance skills
 
 These maintain the rules and skills themselves, rather than the everyday
-coding workflow above. Portable where that's safe, Claude-only where the
-mechanism genuinely only exists in Claude. Most are adapted from
+coding workflow above. Portable where that's safe, Claude-and-Codex-only where
+Copilot lacks the needed mechanism. Most are adapted from
 [affaan-m/ecc](https://github.com/affaan-m/ecc); `skill-activation` and
 `copilot-review-instructions` were built here.
 
@@ -77,7 +77,7 @@ For writing a new skill or rule and checking that it actually works:
 | Skill | What it does | Where |
 | --- | --- | --- |
 | **`rules-distill`** | Finds principles that show up across your skills but aren't rules yet, and proposes promoting them. | All 3 |
-| **`skill-comply`** | Checks whether a fresh agent actually follows a given rule. | Claude only |
+| **`skill-comply`** | Checks whether a fresh agent actually follows a given rule. | Claude + Codex |
 | **`skill-activation`** | Checks whether the *right* skill fires for a prompt, a routing check that's a sibling to `skill-comply`. | All 3 (the runtime check itself is Claude-only) |
 
 ### Session and context upkeep
@@ -86,8 +86,8 @@ For keeping a live session, and the always-on config behind it, healthy:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
-| **`strategic-compact`** | Nudges you to `/compact` at logical boundaries instead of mid-task; a Claude-only hook backs this up. | All 3 |
-| **`context-budget`** | Audits always-on context cost and flags what's too big. | All 3 |
+| **`strategic-compact`** | Guides manual `/compact` at logical boundaries; its current auto-suggest hook is Claude Code-only. | All 3 |
+| **`context-budget`** | Audits configured always-on context input and flags what's too big; Codex's number is a source upper-bound, not an exact session total. | All 3 |
 
 ### Generated docs for agents
 
@@ -95,8 +95,8 @@ For turning a project's conventions into documentation other agents can read:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
-| **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`. | All 3 |
-| **`copilot-review-instructions`** | Generates path-scoped `.github/instructions/*.instructions.md` PR-review directives from a project's documented conventions (style rules, instructions file, README, docs). | All 3 (Copilot-only output) |
+| **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`; the current hard implementation is Claude Code-specific. | All 3 |
+| **`copilot-review-instructions`** | Generates path-scoped `.github/instructions/*.instructions.md` PR-review directives from a project's documented conventions (style rules, instructions file, README, docs). Codex review rules belong under `## Code Review Rules` in the closest applicable `AGENTS.md`. | All 3 (Copilot-only output) |
 
 ## Design, document, and browser-testing skills
 

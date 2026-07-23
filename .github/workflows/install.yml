@@ -43,6 +43,7 @@ jobs:
             "$HOME/.claude/scripts/suggest-compact.js" \
             "$HOME/.claude/scripts/plan-gate.js" \
             "$HOME/.codex/scripts/core-rules-digest.js" \
+            "$HOME/.codex/scripts/plan-gate.js" \
             "$HOME/.copilot/scripts/core-rules-digest.js" \
             "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md" \
             "$HOME/.copilot/copilot-instructions.md"; do
@@ -53,6 +54,12 @@ jobs:
           [ "$(jq -r .model "$HOME/.copilot/settings.json")" = "auto" ]
           grep -q 'plan_mode_reasoning_effort = "xhigh"' "$HOME/.codex/config.toml"
           grep -q 'agent-plan-and-track:begin' "$HOME/.claude/CLAUDE.md"
+          test -f "$HOME/.claude/skills/skill-comply/SKILL.md" \
+            || { echo "FAIL: Claude skill-comply missing"; exit 1; }
+          test -f "$HOME/.agents/skills/skill-comply/SKILL.md" \
+            || { echo "FAIL: Codex skill-comply missing"; exit 1; }
+          test ! -e "$HOME/.copilot/skills/skill-comply" \
+            || { echo "FAIL: Copilot unexpectedly installed skill-comply"; exit 1; }
           # No unresolved placeholder leaked into any installed config.
           ! grep -rq '__SCRIPTS__' "$HOME/.claude" "$HOME/.codex" "$HOME/.copilot"
           # The digest hook command points at a script that actually exists...
@@ -63,6 +70,13 @@ jobs:
           # ...and it was merged exactly once (no double-merge across two installs).
           n="$(jq '[.. | .command? // empty | select(test("core-rules-digest"))] | length' "$HOME/.claude/settings.json")"
           [ "$n" = "1" ] || { echo "FAIL: expected 1 digest hook, found $n"; exit 1; }
+          n="$(jq '[.. | .command? // empty | select(test("plan-gate\\.js"))] | length' "$HOME/.codex/hooks.json")"
+          [ "$n" = "2" ] || { echo "FAIL: expected 2 Codex plan-gate hook commands, found $n"; exit 1; }
+          jq 'del(.hooks.PostToolUse)' "$HOME/.codex/hooks.json" > "$RUNNER_TEMP/partial-codex-hooks.json"
+          mv "$RUNNER_TEMP/partial-codex-hooks.json" "$HOME/.codex/hooks.json"
+          ./install.sh codex >/dev/null
+          n="$(jq '[.. | .command? // empty | select(test("plan-gate\\.js"))] | length' "$HOME/.codex/hooks.json")"
+          [ "$n" = "2" ] || { echo "FAIL: Codex installer did not repair a partial plan-gate pair"; exit 1; }
           # Codex TOML agents: one rendered file per agents/*.md source.
           agent_md_count="$(ls agents/*.md | wc -l | tr -d ' ')"
           agent_toml_count="$(ls "$HOME/.codex/agents"/*.toml | wc -l | tr -d ' ')"
@@ -97,6 +111,7 @@ jobs:
           node skills/skill-activation/scripts/run-activation-cases.js --precheck "$HOME/.claude/skills" >/dev/null
           node skills/skill-activation/scripts/run-behavioral-smokes.js --dry-run >/dev/null
           node skills/context-budget/scripts/scan-context.js ./skills >/dev/null
+          node hooks/codex/scripts/run-plan-gate-pilot-fixtures.js >/dev/null
           node skills/rules-distill/scripts/scan-rules.js >/dev/null
           node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
       - name: Office skills installer (stubbed fetch, no network)
@@ -254,6 +269,7 @@ jobs:
             "$H\.claude\scripts\suggest-compact.js",
             "$H\.claude\scripts\plan-gate.js",
             "$H\.codex\scripts\core-rules-digest.js",
+            "$H\.codex\scripts\plan-gate.js",
             "$H\.copilot\scripts\core-rules-digest.js",
             "$H\.claude\CLAUDE.md", "$H\.codex\AGENTS.md",
             "$H\.copilot\copilot-instructions.md"
@@ -266,6 +282,9 @@ jobs:
           if ($c -ne 'auto') { throw "copilot model != auto" }
           if ((Get-Content -Raw "$H\.codex\config.toml") -notmatch 'plan_mode_reasoning_effort = "xhigh"') { throw "codex effort missing" }
           if ((Get-Content -Raw "$H\.claude\CLAUDE.md") -notmatch 'agent-plan-and-track:begin') { throw "managed block missing" }
+          if (-not (Test-Path -LiteralPath "$H\.claude\skills\skill-comply\SKILL.md")) { throw "Claude skill-comply missing" }
+          if (-not (Test-Path -LiteralPath "$H\.agents\skills\skill-comply\SKILL.md")) { throw "Codex skill-comply missing" }
+          if (Test-Path -LiteralPath "$H\.copilot\skills\skill-comply") { throw "Copilot unexpectedly installed skill-comply" }
           # No unresolved placeholder leaked into any installed config.
           $leak = Get-ChildItem -Recurse -File "$H\.claude","$H\.codex","$H\.copilot" |
                   Select-String -SimpleMatch '__SCRIPTS__' -List
@@ -280,6 +299,17 @@ jobs:
           $raw = Get-Content -Raw "$H\.claude\settings.json"
           $n = ([regex]::Matches($raw, 'core-rules-digest')).Count
           if ($n -ne 1) { throw "expected 1 digest hook, found $n" }
+          $codexRaw = Get-Content -Raw "$H\.codex\hooks.json"
+          $n = ([regex]::Matches($codexRaw, 'plan-gate\.js')).Count
+          if ($n -ne 2) { throw "expected 2 Codex plan-gate hook commands, found $n" }
+          $codexHooks = $codexRaw | ConvertFrom-Json
+          $codexHooks.hooks.PostToolUse = @()
+          [System.IO.File]::WriteAllText("$H\.codex\hooks.json", ($codexHooks | ConvertTo-Json -Depth 16), [System.Text.UTF8Encoding]::new($false))
+          $repairOut = (.\install.ps1 codex 6>&1 | Out-String)
+          if ($repairOut -notmatch 'plan-gate hook\s+-> repaired') { throw "Codex installer did not report partial plan-gate repair" }
+          $codexRaw = Get-Content -Raw "$H\.codex\hooks.json"
+          $n = ([regex]::Matches($codexRaw, 'plan-gate\.js')).Count
+          if ($n -ne 2) { throw "Codex installer did not repair a partial plan-gate pair" }
           # Codex TOML agents: one rendered file per agents/*.md source.
           $agentMdCount = (Get-ChildItem 'agents\*.md').Count
           $agentTomlCount = (Get-ChildItem "$H\.codex\agents\*.toml").Count
@@ -329,6 +359,7 @@ jobs:
           node skills\skill-activation\scripts\run-activation-cases.js --precheck "$H\.claude\skills" | Out-Null; Assert-Node 'run-activation --precheck'
           node skills\skill-activation\scripts\run-behavioral-smokes.js --dry-run | Out-Null; Assert-Node 'run-behavioral-smokes --dry-run'
           node skills\context-budget\scripts\scan-context.js .\skills | Out-Null; Assert-Node 'scan-context'
+          node hooks\codex\scripts\run-plan-gate-pilot-fixtures.js | Out-Null; Assert-Node 'plan-gate fixtures'
           node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
           node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'
       - name: Office skills installer (stubbed fetch, no network)

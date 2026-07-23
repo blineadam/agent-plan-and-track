@@ -83,15 +83,22 @@ whatever's checked out, normally the latest `main`, but tagged releases
 ### First run in a new project
 
 The installer is per-machine; each project still needs its own context.
-The first time you use Claude Code in a new repo, run its built-in
-`/init`. Then run `/inherit-legacy-style` (works in Codex, Claude Code, or
-Copilot), and `/copilot-review-instructions` too if the project's on
-GitHub:
+Start by generating the harness's project instructions, then capture the
+repo's conventions. Claude Code uses slash commands for these skills:
 
 ```text
 /init                         # generate the project's own CLAUDE.md
 /inherit-legacy-style         # capture its implicit conventions in .ai-style-rules.md
 /copilot-review-instructions  # if on GitHub: teach Copilot's PR review those conventions
+```
+
+Codex also has `/init`, which generates `AGENTS.md`; invoke installed skills
+with `$skill-name` (or pick them from `/skills`):
+
+```text
+/init                          # generate the project's own AGENTS.md
+$inherit-legacy-style          # capture its implicit conventions in .ai-style-rules.md
+$copilot-review-instructions   # if on GitHub: teach Copilot's PR review those conventions
 ```
 
 ## What you get
@@ -119,7 +126,7 @@ skills/humanizer/            strip AI-writing tells, restore a natural voice (po
 skills/rules-distill/        distill cross-cutting skill principles into rules (portable)
 skills/strategic-compact/    when to /compact at logical boundaries (portable)
 skills/context-budget/       audit always-on context cost, flag bloat (portable)
-skills/skill-comply/         measure whether a rule/skill is actually followed (Claude-only)
+skills/skill-comply/         measure whether a rule/skill is actually followed (Claude + Codex)
 skills/skill-activation/     routing regression: does the right skill fire? (static: all 3; runtime: Claude)
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
@@ -141,7 +148,7 @@ hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copi
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
 hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate + plan-gate
 hooks/copilot/                Copilot wiring: throttled digest + gateguard
-hooks/codex/                  Codex wiring: digest + gateguard + delivery-gate
+hooks/codex/                  Codex wiring: digest + gateguard + delivery-gate + warn-only plan gate
 install.sh                    per-tool installer
 docs/skills.md                full skill catalog
 docs/models.md                model defaults, tiered subagents, per-tool notes
@@ -161,8 +168,9 @@ To change a shared rule, edit `rules/core-rules.md` and/or
 `rules/agent-guidelines.md` and re-run `./install.sh all`. Digest changes
 are live immediately; restart Copilot/Codex sessions for instruction
 changes. To add a skill, drop it in `skills/<name>/SKILL.md` (the
-`description` field tells the agent *when* to use it) and re-install; if
-it's Claude-only, add it to `CLAUDE_ONLY_SKILLS` in `install.sh`.
+`description` field tells the agent *when* to use it) and re-install; add a
+harness-scope exception in both installers only when the skill cannot be
+portable.
 
 For per-harness quirks (how each tool loads the digest, restart
 requirements, known caveats), see
