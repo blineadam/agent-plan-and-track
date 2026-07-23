@@ -1,6 +1,7 @@
 {
   "cases": [
     { "id": "fresh", "expect": "stamp" },
+    { "id": "new-todo-plan", "expect": "stamp" },
     { "id": "stale", "expect": "silent" },
     { "id": "malformed", "expect": "silent" },
     { "id": "no-op", "expect": "silent" },
@@ -14,7 +15,7 @@
     { "id": "parent-symlink-swap", "expect": "silent" },
     { "id": "corrupt-duplicate-missing", "expect": "silent" },
     { "id": "concurrent-unrelated-todo", "expect": "two-stamps" },
-    { "id": "scope-warning-once", "expect": "one-warning-after-four-source-patches" },
+    { "id": "scope-warning-once", "expect": "one-warning-after-three-source-patches" },
     { "id": "expired-scope-prune", "expect": "stale-scope-pruned" }
   ]
 }

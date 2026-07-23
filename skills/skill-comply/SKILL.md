@@ -74,18 +74,20 @@ claude -p "<scenario prompt>" --output-format stream-json --verbose \
   > trace.jsonl 2> trace.err
 ```
 
-For Codex, put the cases in the adapter's documented JSON shape, then run it
-from an isolated HOME and CODEX_HOME with normal sandboxing:
+For Codex, capture the installed adapter path before changing HOME or CODEX_HOME,
+then run it with normal sandboxing:
 
 ```bash
+adapter="$HOME/.agents/skills/skill-comply/scripts/run-codex-cases.js"
+
 # free: lint and print the bundled supportive + competing pilot
-node scripts/run-codex-cases.js --dry-run
+node "$adapter" --dry-run
 
 # billable: fresh ephemeral run per case, then liveness-first normalization
-COMPLY_ALLOW_SPEND=1 node scripts/run-codex-cases.js --run RESULTS_DIR
+COMPLY_ALLOW_SPEND=1 node "$adapter" --run RESULTS_DIR
 
 # free: re-check captured results
-node scripts/run-codex-cases.js --check RESULTS_DIR
+node "$adapter" --check RESULTS_DIR
 ```
 
 The adapter ignores user config, uses `--sandbox workspace-write`, and never

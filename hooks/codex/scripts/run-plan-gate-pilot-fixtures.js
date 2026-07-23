@@ -99,6 +99,16 @@ async function fresh() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+async function newTodoPlan() {
+  const f = fixture();
+  const input = event(f.root, 'tasks/todo.md');
+  run('--pre', input, f.env);
+  source(f.root, 'tasks/todo.md', validPlan('New'));
+  assert.strictEqual(run('--post', input, f.env), '');
+  assert.strictEqual(scope(f.root, input).stamped, true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 async function stale() {
   const f = fixture();
   source(f.root, 'tasks/todo.md', validPlan('Old'));
@@ -287,18 +297,21 @@ async function expiredScopePrune() {
   fs.writeFileSync(scopeFile(f.root, expired), JSON.stringify({ paths: ['old.js'], stamped: false, warned: false }), 'utf8');
   const staleTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
   fs.utimesSync(scopeFile(f.root, expired), staleTime, staleTime);
+  fs.writeFileSync(scopeFile(f.root, expired) + '.lock', '', 'utf8');
+  fs.utimesSync(scopeFile(f.root, expired) + '.lock', staleTime, staleTime);
   source(f.root, 'new.js', 'old\n');
   const input = event(f.root, 'new.js');
   run('--pre', input, f.env);
   assert.strictEqual(fs.existsSync(scopeFile(f.root, expired)), false);
+  assert.strictEqual(fs.existsSync(scopeFile(f.root, expired) + '.lock'), false);
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
-const HANDLERS = { fresh, stale, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-scope-prune': expiredScopePrune };
+const HANDLERS = { fresh, 'new-todo-plan': newTodoPlan, stale, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-scope-prune': expiredScopePrune };
 
 async function main() {
   const fixtureCases = JSON.parse(fs.readFileSync(CASES, 'utf8')).cases;
-  assert.strictEqual(fixtureCases.length, 16, 'expected the complete sixteen-case matrix');
+  assert.strictEqual(fixtureCases.length, 17, 'expected the complete seventeen-case matrix');
   for (const fixtureCase of fixtureCases) {
     assert.strictEqual(typeof HANDLERS[fixtureCase.id], 'function', `no handler for ${fixtureCase.id}`);
     await HANDLERS[fixtureCase.id]();

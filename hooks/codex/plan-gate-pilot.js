@@ -8,7 +8,7 @@
  * hook response. The installer copies this source to plan-gate.js.
  *
  * State is keyed by sha256([session_id, canonical cwd, tool_use_id]). A
- * sibling per-session+cow scope record counts changed source paths. Missing
+ * sibling per-session+cwd scope record counts changed source paths. Missing
  * correlation, malformed input/state, snapshots, or filesystem failures fail
  * open. Warnings are the sole output, one JSON object with systemMessage.
  */
@@ -79,7 +79,7 @@ function pruneState() {
   for (const directory of ['transactions', 'scopes']) {
     try {
       const stateDir = path.join(STATE_DIR, directory);
-      const names = fs.readdirSync(stateDir).filter((name) => directory === 'transactions' ? /\.(?:json|claim)$/.test(name) : /\.json$/.test(name));
+      const names = fs.readdirSync(stateDir).filter((name) => directory === 'transactions' ? /\.(?:json|claim)$/.test(name) : /\.json(?:\.lock)?$/.test(name));
       let removed = 0;
       for (const name of names) {
         if (removed >= PRUNE_LIMIT) break;
@@ -340,10 +340,9 @@ function post(input, c) {
     let migrationDeleted = false;
     let planValid = false;
     for (const file of changed.filter(isTodo)) {
-      if (!file.snapshot.exists) continue;
       const baseline = decode(file.snapshot);
       if (!file.after.exists) {
-        if (MIGRATION_HEADING_RE.test(baseline)) migrationDeleted = true;
+        if (file.snapshot.exists && MIGRATION_HEADING_RE.test(baseline)) migrationDeleted = true;
         continue;
       }
       const result = decode(file.after);

@@ -197,7 +197,9 @@ function runScenario(resultsDir, casesPath, scenario) {
     path.join(caseDir, 'meta.json'),
     JSON.stringify({ exit_code: run.status === null ? 1 : run.status }, null, 2) + '\n'
   );
-  fs.cpSync(workspace, path.join(caseDir, 'workspace'), {
+  const capturedWorkspace = path.join(caseDir, 'workspace');
+  fs.rmSync(capturedWorkspace, { recursive: true, force: true });
+  fs.cpSync(workspace, capturedWorkspace, {
     recursive: true,
     filter: (source) => path.basename(source) !== '.git',
   });
