@@ -35,17 +35,14 @@ How to work:
 - **Say what you couldn't determine.** If you can't confirm exploitability
   without runtime access or more context, say so and state what would confirm
   it, rather than either crying wolf or staying silent.
+- **Calibrate, don't dampen.** Missing TLS/HSTS in a local- or dev-only
+  context isn't a finding (confirm the deployment target first), and an
+  incrementing public resource ID isn't automatically an enumeration
+  vulnerability (confirm real exposure and impact first). Weigh whether a
+  recommended mitigation could break behavior the system currently relies on
+  before proposing it. This sharpens precision; it doesn't lower the bar on
+  finding real, concrete exploits and ranking by actual impact.
 
 Structure the report tightly: findings ranked most-severe first, each with the
 concrete exploit scenario and `path:line`, then anything ruled out and why.
 No filler.
-
-Calibration (sharpens precision, doesn't lower the bar on finding real,
-concrete exploits and ranking by actual impact):
-
-- Missing TLS/HSTS in a local- or dev-only context isn't a finding; confirm
-  the deployment target before flagging it.
-- An incrementing public resource ID isn't automatically an enumeration
-  vulnerability; confirm real exposure and impact before flagging it.
-- Before recommending a mitigation, weigh whether it could break behavior
-  the system currently relies on.

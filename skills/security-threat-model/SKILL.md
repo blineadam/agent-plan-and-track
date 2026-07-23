@@ -3,13 +3,22 @@ name: security-threat-model
 description: "Repo-grounded threat modeling: enumerates trust boundaries, assets, attacker capabilities, abuse paths, and mitigations, then writes a concise Markdown threat model. Trigger only when the user explicitly asks to threat-model a codebase or path, enumerate threats/abuse paths, or do AppSec threat modeling. Do not trigger for general architecture summaries, code review, or non-security design work."
 ---
 
+<!-- Adapted from the Apache-2.0 licensed original at https://github.com/openai/skills
+(skills/.curated/security-threat-model). Modified: retitled the H1 to match
+this skill's registered name, added the security-auditor subagent routing
+paragraph below, collapsed the upstream's "### N)" workflow subsections into
+a single flat numbered list under one Workflow heading, removed a duplicated
+assets bullet between what were upstream steps 2 and 3, reordered the
+reference sections ahead of Workflow per this repo's own skill-anatomy
+convention, and trimmed prose throughout. Full license text: LICENSE.txt in
+this directory. -->
+
 # Security Threat Model
 
-Adapted from openai/skills' `security-threat-model` (Apache-2.0). Deliver an
-AppSec-grade threat model specific to the repo or path in scope, not a
-generic checklist. Anchor every architectural claim to repo evidence, keep
-assumptions explicit, and prioritize realistic attacker goals and concrete
-impacts over generic checklists.
+Deliver an AppSec-grade threat model specific to the repo or path in scope,
+not a generic checklist. Anchor every architectural claim to repo evidence,
+keep assumptions explicit, and prioritize realistic attacker goals and
+concrete impacts over generic checklists.
 
 When the tiered subagent roster is available, route the actual
 trust-boundary mapping and threat-ranking analysis to the `security-auditor`
@@ -17,14 +26,34 @@ subagent per [[efficient-frontier]] (it's pinned to the roster's
 strongest-judgment tier for exactly this kind of call); fall back to inline
 analysis only when the roster isn't available.
 
-## Quick start
+## Risk prioritization guidance (illustrative, not exhaustive)
 
-- Collect the repo root and any in-scope paths, plus intended usage,
-  deployment model, internet exposure, and auth expectations if known.
-- Use `references/prompt-template.md`'s repo-summary and output-contract
-  prompts, and follow that output contract closely.
+- High: pre-auth RCE, auth bypass, cross-tenant access, sensitive data
+  exfiltration, key/token theft, model or config integrity compromise,
+  sandbox escape.
+- Medium: targeted DoS of critical components, partial data exposure,
+  rate-limit bypass with measurable impact, log/metrics poisoning that
+  affects detection.
+- Low: low-sensitivity info leaks, easily-mitigated noisy DoS, issues that
+  need unlikely preconditions.
+
+## References
+
+- `references/prompt-template.md`: the output contract and full prompt
+  template. Follow it closely, especially the evidence-anchor and
+  Mermaid-diagram rules.
+- `references/security-controls-and-assets.md`: an optional
+  controls/asset checklist.
+
+Load only the reference files you need. Keep the final result concise,
+grounded, and reviewable.
 
 ## Workflow
+
+Before starting, collect the repo root and any in-scope paths, plus intended
+usage, deployment model, internet exposure, and auth expectations if known.
+Use `references/prompt-template.md`'s repo-summary and output-contract
+prompts throughout, and follow that output contract closely.
 
 1. **Scope and extract the system model.** Identify primary components, data
    stores, integrations, how the system runs (server/CLI/library/worker),
@@ -69,25 +98,3 @@ analysis only when the roster isn't available.
    compact `flowchart TD`/`LR`, `-->` only, quoted short node labels, no
    paths/URLs/`title`/`style`, plain-word edge labels). Write the result to
    `<repo-or-dir-name>-threat-model.md`.
-
-## Risk prioritization guidance (illustrative, not exhaustive)
-
-- High: pre-auth RCE, auth bypass, cross-tenant access, sensitive data
-  exfiltration, key/token theft, model or config integrity compromise,
-  sandbox escape.
-- Medium: targeted DoS of critical components, partial data exposure,
-  rate-limit bypass with measurable impact, log/metrics poisoning that
-  affects detection.
-- Low: low-sensitivity info leaks, easily-mitigated noisy DoS, issues that
-  need unlikely preconditions.
-
-## References
-
-- `references/prompt-template.md`: the output contract and full prompt
-  template. Follow it closely, especially the evidence-anchor and
-  Mermaid-diagram rules.
-- `references/security-controls-and-assets.md`: an optional
-  controls/asset checklist.
-
-Load only the reference files you need. Keep the final result concise,
-grounded, and reviewable.
