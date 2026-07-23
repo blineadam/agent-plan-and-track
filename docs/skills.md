@@ -62,6 +62,16 @@ with no warn-only lever, and its stderr warn path didn't reach the user in
 testing. Tuning knobs for these hooks live in their script headers under
 `hooks/`.
 
+## Security
+
+Adapted from [openai/skills](https://github.com/openai/skills), for
+AppSec-grade threat modeling of a repo or path rather than the everyday
+coding workflow above:
+
+| Skill | What it does | Where |
+| --- | --- | --- |
+| **`security-threat-model`** | Enumerates trust boundaries, assets, attacker capabilities, and abuse paths for a repo or path, and writes a concise Markdown threat model. | All 3 |
+
 ## Maintenance skills
 
 These maintain the rules and skills themselves, rather than the everyday
