@@ -67,9 +67,11 @@ name: nightly style refresh
 # Review-wait is a bounded poll loop in this same job (not a second
 # pull_request_review-triggered workflow): a PR opened with the default
 # GITHUB_TOKEN doesn't trigger other workflow runs, so an event-driven split
-# would silently never fire. If the poll step fails (no Copilot review within
-# 15 minutes), the run goes red and the PR is left open for a human -- that
-# is the intended degrade path, not a bug.
+# would silently never fire. It requires proof that the captured PR head has
+# both a Copilot review and a completed, successful Actions-backed full
+# agentic review. If the poll step fails (no such proof within 15 minutes),
+# the run goes red and the PR is left open for a human -- that is the intended
+# degrade path, not a bug.
 #
 # install.sh wires this repo's own PreToolUse hooks into the runner's
 # ~/.claude/settings.json; PLANGATE_DISABLED and GATEGUARD_DISABLED are set
@@ -214,15 +216,20 @@ jobs:
         run: |
           set -euo pipefail
           pr="${{ steps.pr.outputs.number }}"
+          head_sha="$(gh api "repos/${{ github.repository }}/pulls/$pr" --jq .head.sha)"
           gh api "repos/${{ github.repository }}/pulls/$pr/requested_reviewers" \
             -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
           for i in $(seq 1 30); do
-            done_count="$(gh api "repos/${{ github.repository }}/pulls/$pr/reviews" \
-              --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length')"
-            [ "$done_count" -gt 0 ] && exit 0
+            matching_review="$(gh api "repos/${{ github.repository }}/pulls/$pr/reviews" \
+              --jq "[.[] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" and .commit_id == \"$head_sha\")] | length")"
+            successful_full_run="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$head_sha&event=dynamic&per_page=100" \
+              --jq "[.workflow_runs[] | select(.head_sha == \"$head_sha\" and .path == \"dynamic/agents/copilot-pull-request-reviewer\" and .status == \"completed\" and .conclusion == \"success\")] | length")"
+            if [ "$matching_review" -gt 0 ] && [ "$successful_full_run" -gt 0 ]; then
+              exit 0
+            fi
             sleep 30
           done
-          echo "Copilot review did not land within 15 minutes; leaving PR #$pr open" >&2
+          echo "Full Copilot review proof did not land within 15 minutes; leaving PR #$pr open" >&2
           exit 1
 
       - name: Fetch Copilot's review for session 2
