@@ -298,9 +298,16 @@ function terminateChildTree(child, force) {
   if (!child || !child.pid) return;
   if (process.platform === 'win32') {
     try {
-      childProcess.spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+      const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT;
+      const taskkill = systemRoot ? path.join(systemRoot, 'System32', 'taskkill.exe') : 'taskkill.exe';
+      const killer = childProcess.spawn(taskkill, ['/PID', String(child.pid), '/T', '/F'], {
         stdio: 'ignore',
         windowsHide: true,
+      });
+      killer.on('error', () => {
+        try {
+          child.kill();
+        } catch {}
       });
     } catch {
       try {
