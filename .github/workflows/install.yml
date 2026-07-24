@@ -140,7 +140,9 @@ jobs:
           node "$HOME/.copilot/scripts/core-rules-digest.js" --copilot >/dev/null
           node skills/skill-activation/scripts/run-activation-cases.js --dry-run >/dev/null
           node skills/skill-activation/scripts/run-activation-cases.js --precheck "$HOME/.claude/skills" >/dev/null
+          node skills/skill-activation/scripts/run-activation-cases.js --precheck-agents agents "$HOME" >/dev/null
           node skills/skill-activation/scripts/run-behavioral-smokes.js --dry-run >/dev/null
+          node skills/skill-activation/scripts/run-live-runner-fixtures.js >/dev/null
           node skills/context-budget/scripts/scan-context.js ./skills >/dev/null
           node skills/skill-comply/scripts/run-codex-cases.js --dry-run >/dev/null
           node hooks/codex/scripts/run-plan-gate-pilot-fixtures.js >/dev/null
@@ -426,7 +428,9 @@ jobs:
           node "$H\.copilot\scripts\core-rules-digest.js" --copilot | Out-Null; Assert-Node 'copilot digest'
           node skills\skill-activation\scripts\run-activation-cases.js --dry-run | Out-Null; Assert-Node 'run-activation --dry-run'
           node skills\skill-activation\scripts\run-activation-cases.js --precheck "$H\.claude\skills" | Out-Null; Assert-Node 'run-activation --precheck'
+          node skills\skill-activation\scripts\run-activation-cases.js --precheck-agents agents "$H" | Out-Null; Assert-Node 'run-activation --precheck-agents'
           node skills\skill-activation\scripts\run-behavioral-smokes.js --dry-run | Out-Null; Assert-Node 'run-behavioral-smokes --dry-run'
+          node skills\skill-activation\scripts\run-live-runner-fixtures.js | Out-Null; Assert-Node 'live runner fixtures'
           node skills\context-budget\scripts\scan-context.js .\skills | Out-Null; Assert-Node 'scan-context'
           node skills\skill-comply\scripts\run-codex-cases.js --dry-run | Out-Null; Assert-Node 'skill-comply Codex dry-run'
           node hooks\codex\scripts\run-plan-gate-pilot-fixtures.js | Out-Null; Assert-Node 'Codex plan-gate fixtures'

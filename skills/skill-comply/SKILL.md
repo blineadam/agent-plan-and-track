@@ -94,7 +94,11 @@ The adapter ignores user config, uses `--sandbox workspace-write`, and never
 uses a bypass flag. The model still needs API access, but its shell and file
 tools stay inside Codex's normal network-restricted sandbox and a disposable
 fixture workspace. Keep the auth link in the isolated CODEX_HOME outside that
-workspace.
+workspace. Live cases default to a 900000 ms timeout; set
+`LIVE_CASE_TIMEOUT_MS` to an integer from 1 to 2,147,483,647 to override it.
+Each case's `meta.json` records the exit code, signal, timeout/spawn status,
+byte-capture truncation, parent interruption, and duration. Any non-clean
+metadata makes the case non-live.
 
 `--dry-run` mode stops here after printing the spec and scenarios: no `claude -p`
 runs, no cost.

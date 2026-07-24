@@ -31,7 +31,7 @@
  * Usage:
  *   node run-behavioral-smokes.js --dry-run [CORPUS]        # lint the corpus (free); exit 1 on any problem
  *   node run-behavioral-smokes.js --check RESULTS_DIR [CORPUS]  # score pre-captured results (free)
- *   node run-behavioral-smokes.js --run [RESULTS_DIR]        # invoke claude -p per case (COSTS money)
+ *   node run-behavioral-smokes.js --run [RESULTS_DIR] [CORPUS] # invoke claude -p per case (COSTS money)
  *
  * CORPUS defaults to the sibling fixtures/behavioral-cases.jsonl. Fixture dirs
  * default to fixtures/behavioral/<fixture>/.
@@ -64,21 +64,52 @@
  * Tuning (env):
  *   ACTIVATION_ALLOW_SPEND   set to 1 to permit --run to call claude -p (same
  *                            gate as run-activation-cases.js; same owning skill)
+ *   LIVE_CASE_TIMEOUT_MS     per-case timeout for live runs (default 900000)
+ *   LIVE_CLAUDE_TEST_SCRIPT  absolute fake-CLI script path used only by free fixtures
  */
 'use strict';
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const SCRIPT_DIR = __dirname;
 const DEFAULT_CORPUS = path.join(SCRIPT_DIR, '..', 'fixtures', 'behavioral-cases.jsonl');
-const FIXTURES_BEHAVIORAL_DIR = path.join(SCRIPT_DIR, '..', 'fixtures', 'behavioral');
+const FORCE_SETTLE_MS = 100;
+const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+const MAX_TIMER_MS = 2_147_483_647;
+const TERMINATE_GRACE_MS = 1000;
+
+let activeRun = null;
+let parentInterrupted = false;
+let parentSignalCount = 0;
 
 function die(msg, code) {
   process.stderr.write(msg + '\n');
   process.exit(code === undefined ? 1 : code);
+}
+
+function liveCaseTimeout() {
+  const raw = process.env.LIVE_CASE_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return 900000;
+  if (!/^[0-9]+$/.test(raw)) {
+    die(`error: LIVE_CASE_TIMEOUT_MS must be an integer from 1 to ${MAX_TIMER_MS}`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_TIMER_MS) {
+    die(`error: LIVE_CASE_TIMEOUT_MS must be an integer from 1 to ${MAX_TIMER_MS}`);
+  }
+  return value;
+}
+
+function claudeInvocation() {
+  const script = process.env.LIVE_CLAUDE_TEST_SCRIPT;
+  if (script === undefined || script === '') return { command: 'claude', prefixArgs: [] };
+  if (!path.isAbsolute(script) || !isFile(script)) {
+    die('error: LIVE_CLAUDE_TEST_SCRIPT must name an absolute file');
+  }
+  return { command: process.execPath, prefixArgs: [script] };
 }
 
 // jq pretty-print parity: 2-space indent + a trailing newline.
@@ -191,7 +222,8 @@ function modeDryRun(args) {
   const corpus = args[0] || DEFAULT_CORPUS;
   if (!isFile(corpus)) die(`error: no corpus at ${corpus}`);
   const cases = readJsonl(corpus);
-  const linted = cases.map(lintCase);
+  const fixturesDir = path.join(path.dirname(corpus), 'behavioral');
+  const linted = cases.map((c) => lintCase(c, fixturesDir));
   const dups = duplicateIds(cases);
   linted.forEach((entry, i) => {
     const id = cases[i].id;
@@ -209,7 +241,7 @@ function modeDryRun(args) {
   process.exit(problemCount > 0 ? 1 : 0);
 }
 
-function lintCase(c) {
+function lintCase(c, fixturesDir) {
   const problems = [];
 
   if (!idIsPathSafe(c.id)) {
@@ -227,7 +259,7 @@ function lintCase(c) {
     problems.push('missing fixture');
   } else if (!idIsPathSafe(c.fixture)) {
     problems.push(`invalid fixture '${c.fixture}': must be a direct-child dir name, no path syntax`);
-  } else if (!isDir(path.join(FIXTURES_BEHAVIORAL_DIR, c.fixture))) {
+  } else if (!isDir(path.join(fixturesDir, c.fixture))) {
     problems.push(`fixture dir not found: ${c.fixture}`);
   }
 
@@ -254,6 +286,59 @@ function lintCase(c) {
   }
 
   return { id: c.id ?? null, problem_count: problems.length, problems };
+}
+
+function readRunMetadata(metaPath) {
+  if (!isFile(metaPath)) return { present: false, clean: true, reason: '' };
+  let metadata;
+  try {
+    metadata = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  } catch {
+    return { present: true, clean: false, reason: 'invalid run metadata' };
+  }
+  const expectedKeys = [
+    'exit_code',
+    'signal',
+    'timed_out',
+    'spawn_error',
+    'stdout_truncated',
+    'stderr_truncated',
+    'interrupted',
+    'duration_ms',
+  ];
+  const valid =
+    metadata &&
+    typeof metadata === 'object' &&
+    !Array.isArray(metadata) &&
+    Object.keys(metadata).length === expectedKeys.length &&
+    expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(metadata, key)) &&
+    (metadata.exit_code === null || Number.isInteger(metadata.exit_code)) &&
+    (metadata.signal === null || typeof metadata.signal === 'string') &&
+    typeof metadata.timed_out === 'boolean' &&
+    (metadata.spawn_error === null || typeof metadata.spawn_error === 'string') &&
+    typeof metadata.stdout_truncated === 'boolean' &&
+    typeof metadata.stderr_truncated === 'boolean' &&
+    typeof metadata.interrupted === 'boolean' &&
+    Number.isInteger(metadata.duration_ms) &&
+    metadata.duration_ms >= 0;
+  if (!valid) return { present: true, clean: false, reason: 'invalid run metadata' };
+  if (metadata.interrupted) {
+    return { present: true, clean: false, reason: 'live run interrupted', metadata };
+  }
+  if (metadata.timed_out) return { present: true, clean: false, reason: 'live run timed out', metadata };
+  if (metadata.spawn_error !== null) {
+    return { present: true, clean: false, reason: `live run spawn error: ${metadata.spawn_error}`, metadata };
+  }
+  if (metadata.stdout_truncated || metadata.stderr_truncated) {
+    return { present: true, clean: false, reason: 'live run output truncated', metadata };
+  }
+  if (metadata.signal !== null) {
+    return { present: true, clean: false, reason: `live run ended by signal ${metadata.signal}`, metadata };
+  }
+  if (metadata.exit_code !== 0) {
+    return { present: true, clean: false, reason: `live run exited ${metadata.exit_code}`, metadata };
+  }
+  return { present: true, clean: true, reason: '', metadata };
 }
 
 // ---- Liveness ----------------------------------------------------------------
@@ -297,7 +382,7 @@ function checkLiveness(traceFile) {
 }
 
 // ---- Scoring (shared by --check and --run) ------------------------------------
-function scoreCase(c, resultsDir, dups) {
+function scoreCase(c, resultsDir, dups, runState) {
   const id = c.id;
   if (!idIsPathSafe(id)) {
     return { id: id ?? null, status: 'invalid', reason: `invalid id '${id}': path syntax not allowed`, activated: [] };
@@ -305,9 +390,22 @@ function scoreCase(c, resultsDir, dups) {
   if (dups.has(id)) {
     return { id, status: 'invalid', reason: `duplicate id '${id}': ids must be unique across the corpus`, activated: [] };
   }
+  if (runState && !runState.attempted.has(id)) {
+    return {
+      id,
+      status: 'invalid',
+      reason: runState.interrupted ? 'interrupted before start' : 'not attempted during this run',
+      activated: [],
+    };
+  }
 
   const trace = path.join(resultsDir, `${id}.jsonl`);
   const activated = activatedSkills(trace);
+
+  const metadata = readRunMetadata(path.join(resultsDir, `${id}.meta.json`));
+  if (!metadata.clean) {
+    return { id, status: 'invalid', reason: metadata.reason, activated };
+  }
 
   const liveness = checkLiveness(trace);
   if (!liveness.ok) {
@@ -337,9 +435,9 @@ function scoreCase(c, resultsDir, dups) {
   return { id, status: 'pass', reason: 'ok', activated };
 }
 
-function scoreCases(cases, resultsDir) {
+function scoreCases(cases, resultsDir, runState) {
   const dups = duplicateIds(cases);
-  const cs = cases.map((c) => scoreCase(c, resultsDir, dups));
+  const cs = cases.map((c) => scoreCase(c, resultsDir, dups, runState));
   return {
     total: cs.length,
     passed: cs.filter((r) => r.status === 'pass').length,
@@ -357,44 +455,245 @@ function modeCheck(args) {
   if (!isDir(resultsDir)) die(`error: no results dir at ${resultsDir}`);
   if (!isFile(corpus)) die(`error: no corpus at ${corpus}`);
   const cases = readJsonl(corpus);
-  printJson(scoreCases(cases, resultsDir));
+  const report = scoreCases(cases, resultsDir);
+  printJson(report);
+  if (report.failed > 0 || report.invalid > 0) process.exitCode = 1;
 }
 
 // ---- --run: billable, invokes claude -p per case -------------------------------
-function hasClaude() {
-  const isWin = process.platform === 'win32';
-  const probe = isWin
-    ? spawnSync('where', ['claude'], { encoding: 'utf8' })
-    : spawnSync('command', ['-v', 'claude'], { encoding: 'utf8', shell: true });
-  return probe.status === 0;
+function hasClaude(invocation) {
+  if (invocation.prefixArgs.length > 0) return true;
+  if (process.platform === 'win32') {
+    return spawnSync('where.exe', ['claude'], { encoding: 'utf8' }).status === 0;
+  }
+  for (const entry of (process.env.PATH || '').split(path.delimiter)) {
+    const candidate = path.join(entry || process.cwd(), 'claude');
+    try {
+      if (isFile(candidate)) {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return true;
+      }
+    } catch {}
+  }
+  return false;
 }
 
-function modeRun(args) {
+function terminateChildTree(child, force) {
+  if (!child || !child.pid) return;
+  if (process.platform === 'win32') {
+    try {
+      const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT;
+      const taskkill = systemRoot ? path.join(systemRoot, 'System32', 'taskkill.exe') : 'taskkill.exe';
+      const killer = spawn(taskkill, ['/PID', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      killer.on('error', () => {
+        try {
+          child.kill();
+        } catch {}
+      });
+    } catch {
+      try {
+        child.kill();
+      } catch {}
+    }
+    return;
+  }
+  try {
+    process.kill(-child.pid, force ? 'SIGKILL' : 'SIGTERM');
+  } catch {
+    try {
+      child.kill(force ? 'SIGKILL' : 'SIGTERM');
+    } catch {}
+  }
+}
+
+function handleParentSignal(signal) {
+  parentSignalCount++;
+  parentInterrupted = true;
+  if (activeRun) activeRun.interrupt(parentSignalCount > 1);
+  process.exitCode = signal === 'SIGINT' ? 130 : 143;
+  if (parentSignalCount > 1) process.exit(process.exitCode);
+}
+
+process.on('SIGINT', () => handleParentSignal('SIGINT'));
+process.on('SIGTERM', () => handleParentSignal('SIGTERM'));
+
+async function runChildCase(index, total, id, command, args, options, timeoutMs) {
+  const started = Date.now();
+  process.stderr.write(`[${index}/${total}] ${id} start elapsed=0ms outcome=running\n`);
+  let child;
+  let interrupted = false;
+  let spawnError = null;
+  let timedOut = false;
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
+  let stdoutTruncated = false;
+  let stderrTruncated = false;
+  const stdoutChunks = [];
+  const stderrChunks = [];
+
+  const capture = (chunk, chunks, seen, truncated) => {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    const remaining = Math.max(0, MAX_OUTPUT_BYTES - seen);
+    if (remaining > 0) chunks.push(buffer.subarray(0, remaining));
+    return {
+      seen: seen + buffer.length,
+      truncated: truncated || buffer.length > remaining,
+    };
+  };
+
+  const result = await new Promise((resolve) => {
+    let closeResult = null;
+    let forceSettleTimer = null;
+    let forceStageStarted = false;
+    let graceTimer = null;
+    let timeoutTimer = null;
+    let terminationStarted = false;
+    let settled = false;
+    const finish = (exitCode, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      clearTimeout(graceTimer);
+      clearTimeout(forceSettleTimer);
+      activeRun = null;
+      resolve({ exitCode, signal });
+    };
+    try {
+      child = spawn(command, args, {
+        ...options,
+        detached: process.platform !== 'win32',
+        shell: false,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+    } catch (err) {
+      spawnError = err && err.message ? err.message : String(err);
+      finish(null, null);
+      return;
+    }
+    const startForceStage = () => {
+      if (forceStageStarted) return;
+      forceStageStarted = true;
+      clearTimeout(graceTimer);
+      terminateChildTree(child, true);
+      forceSettleTimer = setTimeout(() => {
+        finish(
+          closeResult ? closeResult.exitCode : null,
+          closeResult ? closeResult.signal : null
+        );
+      }, FORCE_SETTLE_MS);
+    };
+    const terminate = (force) => {
+      if (force) {
+        terminationStarted = true;
+        startForceStage();
+        return;
+      }
+      if (terminationStarted) return;
+      terminationStarted = true;
+      terminateChildTree(child, false);
+      graceTimer = setTimeout(startForceStage, TERMINATE_GRACE_MS);
+    };
+    const interrupt = (force) => {
+      interrupted = true;
+      terminate(force);
+    };
+    activeRun = { interrupt, terminate };
+    child.stdout.on('data', (chunk) => {
+      const captured = capture(chunk, stdoutChunks, stdoutBytes, stdoutTruncated);
+      stdoutBytes = captured.seen;
+      stdoutTruncated = captured.truncated;
+    });
+    child.stderr.on('data', (chunk) => {
+      const captured = capture(chunk, stderrChunks, stderrBytes, stderrTruncated);
+      stderrBytes = captured.seen;
+      stderrTruncated = captured.truncated;
+    });
+    child.on('error', (err) => {
+      spawnError = err && err.message ? err.message : String(err);
+    });
+    child.on('close', (exitCode, signal) => {
+      closeResult = { exitCode, signal };
+      if (!terminationStarted) finish(exitCode, signal);
+    });
+    child.stdin.end(options.input || '');
+    timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      terminate(false);
+    }, timeoutMs);
+  });
+
+  const metadata = {
+    exit_code: result.exitCode,
+    signal: result.signal,
+    timed_out: timedOut,
+    spawn_error: spawnError,
+    stdout_truncated: stdoutTruncated,
+    stderr_truncated: stderrTruncated,
+    interrupted,
+    duration_ms: Date.now() - started,
+  };
+  let outcome = 'success';
+  if (metadata.interrupted) outcome = 'interrupted';
+  else if (metadata.timed_out) outcome = 'timeout';
+  else if (metadata.spawn_error) outcome = 'spawn_error';
+  else if (metadata.stdout_truncated || metadata.stderr_truncated) outcome = 'truncated';
+  else if (metadata.signal) outcome = `signal:${metadata.signal}`;
+  else if (metadata.exit_code !== 0) outcome = `exit:${metadata.exit_code}`;
+  process.stderr.write(
+    `[${index}/${total}] ${id} complete elapsed=${metadata.duration_ms}ms outcome=${outcome}\n`
+  );
+  return {
+    stdout: Buffer.concat(stdoutChunks),
+    stderr: Buffer.concat(stderrChunks),
+    metadata,
+  };
+}
+
+async function modeRun(args) {
   if (process.env.ACTIVATION_ALLOW_SPEND !== '1') {
     process.stderr.write('refusing: --run invokes claude -p (billable, executes tool calls).\n');
     die('Run inside an isolated container/VM, then set ACTIVATION_ALLOW_SPEND=1.', 2);
   }
-  if (!hasClaude()) die('error: claude CLI not found');
+  const timeoutMs = liveCaseTimeout();
+  const invocation = claudeInvocation();
+  if (!hasClaude(invocation)) die('error: claude CLI not found');
 
   const resultsDir = args[0] || fs.mkdtempSync(path.join(os.tmpdir(), 'behavioral-'));
   if (!isDir(resultsDir)) fs.mkdirSync(resultsDir, { recursive: true });
 
-  const corpus = DEFAULT_CORPUS;
+  const corpus = args[1] || DEFAULT_CORPUS;
   if (!isFile(corpus)) die(`error: no corpus at ${corpus}`);
   const cases = readJsonl(corpus);
   const dups = duplicateIds(cases);
+  const fixturesDir = path.join(path.dirname(corpus), 'behavioral');
+  const attempted = new Set();
 
-  for (const c of cases) {
+  for (let caseIndex = 0; caseIndex < cases.length; caseIndex++) {
+    if (parentInterrupted) break;
+    const c = cases[caseIndex];
     // Scored as invalid below; never touch the filesystem (or spend) on an
     // unsafe id/fixture or a duplicate id that would collide on <id> paths.
     if (!idIsPathSafe(c.id) || !idIsPathSafe(c.fixture) || dups.has(c.id)) continue;
-    const fixtureDir = path.join(FIXTURES_BEHAVIORAL_DIR, c.fixture);
+    attempted.add(c.id);
+    const fixtureDir = path.join(fixturesDir, c.fixture);
     const caseDir = path.join(resultsDir, c.id);
+    fs.rmSync(caseDir, { recursive: true, force: true });
+    for (const suffix of ['.jsonl', '.err', '.meta.json']) {
+      fs.rmSync(path.join(resultsDir, `${c.id}${suffix}`), { force: true });
+    }
     fs.cpSync(fixtureDir, caseDir, { recursive: true });
 
-    const res = spawnSync(
-      'claude',
+    const run = await runChildCase(
+      caseIndex + 1,
+      cases.length,
+      c.id,
+      invocation.command,
       [
+        ...invocation.prefixArgs,
         '-p',
         c.prompt,
         '--output-format',
@@ -405,19 +704,28 @@ function modeRun(args) {
         '--max-turns',
         String(c.max_turns),
       ],
-      { cwd: caseDir, input: '', encoding: 'utf8', maxBuffer: 1024 * 1024 * 64 }
+      { cwd: caseDir, input: '' },
+      timeoutMs
     );
-    fs.writeFileSync(path.join(resultsDir, `${c.id}.jsonl`), res.stdout || '');
-    fs.writeFileSync(path.join(resultsDir, `${c.id}.err`), res.stderr || '');
+    fs.writeFileSync(path.join(resultsDir, `${c.id}.jsonl`), run.stdout);
+    fs.writeFileSync(path.join(resultsDir, `${c.id}.err`), run.stderr);
+    fs.writeFileSync(
+      path.join(resultsDir, `${c.id}.meta.json`),
+      JSON.stringify(run.metadata, null, 2) + '\n'
+    );
   }
 
   // Retained (not deleted) so a failing case's trace/working dir can be
   // inspected; rm it when done.
   process.stderr.write(`# results retained at ${resultsDir}: inspect failing cases, then rm\n`);
-  printJson(scoreCases(cases, resultsDir));
+  const report = scoreCases(cases, resultsDir, { attempted, interrupted: parentInterrupted });
+  printJson(report);
+  if (report.failed > 0 || report.invalid > 0 || parentInterrupted) {
+    process.exitCode = process.exitCode || 1;
+  }
 }
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   const flag = argv[0] || '';
   if (flag === '--dry-run') {
@@ -425,7 +733,7 @@ function main() {
   } else if (flag === '--check') {
     modeCheck(argv.slice(1));
   } else if (flag === '--run') {
-    modeRun(argv.slice(1));
+    await modeRun(argv.slice(1));
   } else if (flag.startsWith('-')) {
     die(`error: unknown flag ${flag}`);
   } else {
@@ -433,4 +741,4 @@ function main() {
   }
 }
 
-main();
+main().catch((err) => die(`error: ${err && err.message}`));

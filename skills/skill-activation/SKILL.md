@@ -52,20 +52,39 @@ portable guidance, one Claude-specific mechanism):
 
 ## Phase 0: Static router-signal pre-check (free)
 
-Before spending anything on live runs, lint the descriptions: a missing or
-thin `description`, or one with no trigger clause, is the usual root cause of a
+Before spending anything on live runs, lint the descriptions. Route first:
+front-load user intent, trigger terms, and the nearest negative boundary, while
+preserving clauses that prevent known misroutes. A missing or thin
+`description`, or one with no trigger clause, is the usual root cause of a
 routing miss:
 
 ```bash
 # portable: swap the path for ~/.copilot/skills or ~/.agents/skills on Codex
 node skills/skill-activation/scripts/run-activation-cases.js --precheck ~/.claude/skills
+
+# repository subagent definitions
+node skills/skill-activation/scripts/run-activation-cases.js --precheck-agents agents
+
+# also compare installed Claude, Codex, and Copilot description semantics
+node skills/skill-activation/scripts/run-activation-cases.js \
+  --precheck-agents agents "$HOME"
 ```
 
 Flags each skill with `weak_router_signal: true` (description under
 `DESC_TOKEN_FLOOR` words, default 12, or no "use / when / after / before /
-trigger" clause). Fix those first; often the runtime failure disappears without
-a single billed run. (Body length and always-on cost are [[context-budget]]'s
-job, not this skill's.)
+trigger" clause) and `desc_overlong: true` when the decoded description exceeds
+`DESC_CHAR_CEILING`, default 500. The latter is an informational authoring
+target, not a schema issue or exit-code condition: aim for a few sentences or a
+short paragraph around that length when every routing signal survives, but
+shorter and evidence-backed longer descriptions are both valid. The separate
+1,024-character format maximum remains a strict schema limit. Plain legal YAML
+scalars are fine; quote only when YAML requires it, especially for colon-space
+(`: `), using double quotes by default and single quotes only when their
+contents can be represented safely. The agent precheck also enforces the
+repo's fixed key order, model/effort pairs, and closed source-tool vocabulary.
+Fix weak signals first; often the runtime failure disappears without a single
+billed run. (Body length and always-on cost are [[context-budget]]'s job, not
+this skill's.)
 
 ## Phase 1: Maintain the corpus
 
@@ -116,7 +135,12 @@ with restricted mounts and no network egress, and never pass
 `--dangerously-skip-permissions`. The script refuses `--run` unless
 `ACTIVATION_ALLOW_SPEND=1`. A case passes iff `expect_skill` activated and
 `forbid_skill` did not; the check itself is deterministic (a name is in the
-trace or not), so `--check` is free and repeatable.
+trace or not), so `--check` is free and repeatable. Live runs default to a
+900000 ms per-case timeout; set `LIVE_CASE_TIMEOUT_MS` to an integer from 1 to
+2,147,483,647 to override it. Each run writes `<id>.meta.json` beside the trace,
+and a nonzero exit, signal, timeout, parent interruption, spawn error, or
+truncated capture always fails. Checks also accept legacy trace directories
+without metadata.
 
 ## Phase 3: Report & act
 
@@ -165,8 +189,8 @@ just a listing).
 
 - `--dry-run [CORPUS]`: lint the corpus (free); exit 1 on any problem.
 - `--check RESULTS_DIR [CORPUS]`: score pre-captured results (free).
-- `--run [RESULTS_DIR]`: invoke `claude -p` per case (billable, behind the same
-  `ACTIVATION_ALLOW_SPEND=1` gate).
+- `--run [RESULTS_DIR] [CORPUS]`: invoke `claude -p` per case (billable, behind
+  the same `ACTIVATION_ALLOW_SPEND=1` gate).
 
 Scoring is liveness-first: a trace's terminal `result` event must show
 `subtype: "success"`, a falsy `is_error`, `num_turns > 0`, and
@@ -174,3 +198,9 @@ Scoring is liveness-first: a trace's terminal `result` event must show
 `invalid`, never a pass and never a negative, distinct from a real behavioral
 failure. Only a live run is checked for activation, and only a live,
 activated run is checked against its file assertions.
+
+Run the free process-control fixtures after changing either live runner:
+
+```bash
+node skills/skill-activation/scripts/run-live-runner-fixtures.js
+```

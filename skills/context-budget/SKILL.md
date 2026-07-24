@@ -79,9 +79,15 @@ For each flagged or heavy component, assign a bucket:
 
 Guidance:
 
-- **Frontmatter is prime real estate.** A verbose skill `description` is paid
-  every turn across every session. Tighten it to the trigger + one-line purpose;
-  push the "how" into the body.
+- **Frontmatter is prime real estate.** Optimize a skill `description` for
+  routing first: front-load user intent, trigger terms, and the nearest negative
+  boundary, and preserve clauses that prevent known misroutes. Aim for a few
+  sentences or a short paragraph, usually about 500 decoded characters when
+  every routing signal survives; shorter and evidence-backed longer descriptions
+  are valid. Push "how" detail into the body, but never trim failure-scar routing
+  clauses just to hit the target. The separate 1,024-character format maximum
+  remains strict; the 500-character review target is informational, not a CI or
+  schema cap.
 - **Oversized body ≠ remove.** If a 500-line skill rarely fires, its body is
   fine: flag it lazy-load only if it also loads constantly.
 - **Instruction files and the digest are the heaviest always-on items.** Trims
