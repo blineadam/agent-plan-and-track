@@ -66,6 +66,23 @@ const DESC_CHAR_CEILING = intEnv('DESC_CHAR_CEILING', 500);
 // This repo's skill frontmatter convention is exactly `name` + `description`, nothing else.
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const AGENT_FRONTMATTER_KEYS = ['name', 'description', 'model', 'effort', 'tools'];
+const AGENT_MODEL_EFFORT = new Map([
+  ['fable', 'xhigh'],
+  ['opus', 'xhigh'],
+  ['sonnet', 'high'],
+  ['haiku', 'medium'],
+]);
+const AGENT_TOOL_NAMES = new Set([
+  'Read',
+  'Grep',
+  'Glob',
+  'Edit',
+  'Write',
+  'MultiEdit',
+  'Bash',
+  'WebFetch',
+  'WebSearch',
+]);
 const FORCE_SETTLE_MS = 100;
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const TERMINATE_GRACE_MS = 1000;
@@ -209,9 +226,9 @@ function modePrecheck(args) {
       desc_words: words,
       has_trigger: hasTrigger,
       weak_router_signal: weak,
-      desc_chars: desc.trim().length,
-      desc_overlong: desc.trim().length > DESC_CHAR_CEILING,
-      description_length_ok: desc.trim().length >= 1 && desc.trim().length <= 1024,
+      desc_chars: desc.length,
+      desc_overlong: desc.length > DESC_CHAR_CEILING,
+      description_length_ok: desc.trim().length >= 1 && desc.length <= 1024,
       name_matches_folder: nameMatchesFolder,
       name_pattern_ok: namePatternOk,
       extra_frontmatter_keys: extraFrontmatterKeys,
@@ -254,6 +271,15 @@ function modePrecheckAgents(args) {
     const descriptionChars = description.length;
     const descriptionLengthOk = descriptionChars >= 1 && descriptionChars <= 1024;
     const frontmatterInvalidYaml = hasInvalidFrontmatterValue(file);
+    const model = frontmatterScalar(file, 'model');
+    const effort = frontmatterScalar(file, 'effort');
+    const tools = frontmatterScalar(file, 'tools')
+      .split(',')
+      .map((tool) => tool.trim())
+      .filter(Boolean);
+    const modelEffortOk = AGENT_MODEL_EFFORT.get(model) === effort;
+    const unknownTools = tools.filter((tool) => !AGENT_TOOL_NAMES.has(tool));
+    const toolVocabularyOk = tools.length > 0 && unknownTools.length === 0;
     const result = {
       agent: expectedName,
       description_chars: descriptionChars,
@@ -262,6 +288,9 @@ function modePrecheckAgents(args) {
       name_pattern_ok: namePatternOk,
       description_length_ok: descriptionLengthOk,
       frontmatter_invalid_yaml: frontmatterInvalidYaml,
+      model_effort_ok: modelEffortOk,
+      tool_vocabulary_ok: toolVocabularyOk,
+      unknown_tools: unknownTools,
     };
     if (installedHome) {
       result.claude_description_matches =
@@ -286,6 +315,8 @@ function modePrecheckAgents(args) {
       !agent.name_pattern_ok ||
       !agent.description_length_ok ||
       agent.frontmatter_invalid_yaml ||
+      !agent.model_effort_ok ||
+      !agent.tool_vocabulary_ok ||
       (installedHome &&
         (!agent.claude_description_matches ||
           !agent.codex_description_matches ||
