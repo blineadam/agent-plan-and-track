@@ -13,6 +13,9 @@
     { "id": "stamped-session-bypasses-threshold", "expect": "silent-after-stamp" },
     { "id": "warn-mode-demotes", "expect": "warn-context" },
     { "id": "disabled-mode-silent", "expect": "silent" },
-    { "id": "mutation-threshold-one-denies-first", "expect": "deny-on-first-call" }
+    { "id": "mutation-threshold-one-denies-first", "expect": "deny-on-first-call" },
+    { "id": "heredoc-hyphen-delim-body-not-classified", "expect": "silent" },
+    { "id": "quoted-heredoc-op-not-hiding-command", "expect": "silent" },
+    { "id": "comment-strips-following-command", "expect": "silent" }
   ]
 }

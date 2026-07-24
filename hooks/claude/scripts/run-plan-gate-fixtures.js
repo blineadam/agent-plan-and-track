@@ -234,6 +234,43 @@ async function mutationThresholdOneDeniesFirst() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+async function heredocHyphenDelimBodyNotClassified() {
+  const f = fixture();
+  const session = 'sess-heredoc-hyphen';
+  // A non-identifier delimiter ('END-PR' has a hyphen) must still open a
+  // heredoc, so the body's "git push" text is stripped, not classified.
+  const command = "gh pr create --body-file - <<'END-PR'\nremember to git push once this merges\nEND-PR";
+  assert.strictEqual(run(bashEvent(command, session), f.env), '');
+  assert.strictEqual(fs.existsSync(mutationMarker(f.root, session, 'gh-pr-create')), true);
+  assert.strictEqual(fs.existsSync(mutationMarker(f.root, session, 'git-push')), false);
+  assert.strictEqual(fs.readdirSync(mutationsDir(f.root, session)).length, 1);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function quotedHeredocOpNotHiding() {
+  const f = fixture();
+  const session = 'sess-quoted-heredoc-op';
+  // The `<<EOF` is inside double quotes, so it is NOT a heredoc operator and
+  // must not swallow the real `git push` that follows the `;`.
+  const command = 'echo "see <<EOF for usage" ; git push origin main';
+  assert.strictEqual(run(bashEvent(command, session), f.env), '');
+  assert.strictEqual(fs.existsSync(mutationMarker(f.root, session, 'git-push')), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function commentStripsFollowingCommand() {
+  const f = fixture();
+  const session = 'sess-comment';
+  // `# ...` is a comment, so the `git push` after it never runs and must not
+  // be classified.
+  assert.strictEqual(run(bashEvent('echo done # then git push origin main', session), f.env), '');
+  assert.strictEqual(fs.existsSync(mutationsDir(f.root, session)), false);
+  // Liveness: a real git push in the same session is still counted from zero.
+  assert.strictEqual(run(bashEvent('git push origin main', session), f.env), '');
+  assert.strictEqual(fs.existsSync(mutationMarker(f.root, session, 'git-push')), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 const HANDLERS = {
   'npm-test-silent': npmTestSilent,
   'git-push-help-silent': gitPushHelpSilent,
@@ -249,6 +286,9 @@ const HANDLERS = {
   'warn-mode-demotes': warnModeDemotes,
   'disabled-mode-silent': disabledModeSilent,
   'mutation-threshold-one-denies-first': mutationThresholdOneDeniesFirst,
+  'heredoc-hyphen-delim-body-not-classified': heredocHyphenDelimBodyNotClassified,
+  'quoted-heredoc-op-not-hiding-command': quotedHeredocOpNotHiding,
+  'comment-strips-following-command': commentStripsFollowingCommand,
 };
 
 async function main() {

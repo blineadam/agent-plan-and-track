@@ -126,6 +126,7 @@ jobs:
           node skills/context-budget/scripts/scan-context.js ./skills >/dev/null
           node skills/skill-comply/scripts/run-codex-cases.js --dry-run >/dev/null
           node hooks/codex/scripts/run-plan-gate-pilot-fixtures.js >/dev/null
+          node hooks/claude/scripts/run-plan-gate-fixtures.js >/dev/null
           node skills/rules-distill/scripts/scan-rules.js >/dev/null
           node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
       - name: Office skills installer (stubbed fetch, no network)
@@ -329,10 +330,10 @@ jobs:
           # the mutation gate), each checked and repaired per entry like the
           # Codex pair above.
           $claudeSettings = Get-Content -Raw "$H\.claude\settings.json" | ConvertFrom-Json
-          $hasPlanStamp = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Skill|Edit|Write|MultiEdit' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js' }).Count -gt 0
-          if (-not $hasPlanStamp) { throw "expected 1 Claude plan-gate stamp PreToolUse entry, found none" }
-          $hasPlanBash = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js' }).Count -gt 0
-          if (-not $hasPlanBash) { throw "expected 1 Claude plan-gate Bash PreToolUse entry, found none" }
+          $stampCount = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Skill|Edit|Write|MultiEdit' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js' }).Count
+          if ($stampCount -ne 1) { throw "expected 1 Claude plan-gate stamp PreToolUse entry, found $stampCount" }
+          $bashCount = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js' }).Count
+          if ($bashCount -ne 1) { throw "expected 1 Claude plan-gate Bash PreToolUse entry, found $bashCount" }
           $claudeSettings.hooks.PreToolUse = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -ne 'Bash' })
           [System.IO.File]::WriteAllText("$H\.claude\settings.json", ($claudeSettings | ConvertTo-Json -Depth 16), [System.Text.UTF8Encoding]::new($false))
           .\install.ps1 claude | Out-Null
@@ -389,7 +390,8 @@ jobs:
           node skills\skill-activation\scripts\run-behavioral-smokes.js --dry-run | Out-Null; Assert-Node 'run-behavioral-smokes --dry-run'
           node skills\context-budget\scripts\scan-context.js .\skills | Out-Null; Assert-Node 'scan-context'
           node skills\skill-comply\scripts\run-codex-cases.js --dry-run | Out-Null; Assert-Node 'skill-comply Codex dry-run'
-          node hooks\codex\scripts\run-plan-gate-pilot-fixtures.js | Out-Null; Assert-Node 'plan-gate fixtures'
+          node hooks\codex\scripts\run-plan-gate-pilot-fixtures.js | Out-Null; Assert-Node 'Codex plan-gate fixtures'
+          node hooks\claude\scripts\run-plan-gate-fixtures.js | Out-Null; Assert-Node 'Claude plan-gate fixtures'
           node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
           node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'
       - name: Office skills installer (stubbed fetch, no network)

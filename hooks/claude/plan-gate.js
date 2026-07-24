@@ -91,7 +91,8 @@
  *                             gh-pr-merge), so a value above 3 effectively
  *                             disables this gate.
  *   PLANGATE_LINT_DISABLED   "1" turns off the tasks/todo.md content lint
- *                             only (stamp gate and scope gate still apply).
+ *                             only (stamp gate, scope gate, and mutation gate
+ *                             still apply).
  */
 'use strict';
 
@@ -263,97 +264,142 @@ function withSessionLock(sessionId, input, fn) {
 
 // --- Mutation gate: outward git/gh mutation counting ---
 
-// Drops heredoc body lines before any command splitting, so a body that
-// merely mentions a mutating command (e.g. a PR description piped in via
-// `<<EOF`) is never classified. A `<<[-]WORD` (WORD optionally single- or
-// double-quoted) opens a body that runs through the first line exactly
-// equal to WORD (the `<<-` form also strips the body's own leading tabs
-// before comparing, per shell heredoc semantics); the marker line itself
-// (the command line carrying `<<WORD`) is kept, only the body is dropped.
-function stripHeredocBodies(command) {
-  const lines = String(command || '').split('\n');
-  const kept = [];
-  let terminator = null;
-  let stripTabs = false;
-  for (const line of lines) {
-    if (terminator !== null) {
-      const compare = stripTabs ? line.replace(/^\t+/, '') : line;
-      if (compare === terminator) terminator = null;
-      continue; // drop body lines and the terminator line itself
-    }
-    kept.push(line);
-    const m = /<<(-)?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/.exec(line);
-    if (m) {
-      terminator = m[3];
-      stripTabs = m[1] === '-';
-    }
-  }
-  return kept.join('\n');
-}
-
-// Quote-aware split into command-position segments. Tracks single/double
-// quote state and backslash escapes (outside single quotes, where bash
-// never treats backslash as an escape); splits at `;`, `&`, `|`, and
-// newline outside quotes (so `&&`/`||`/backgrounding all split too, since
-// each is a run of the single-char separators), and treats `$(` and a
-// backtick as the start of a new command position. Quote-awareness is what
-// keeps `git commit -m "then git push it"` from ever splitting into a
-// second, classifiable segment.
+// Quote-aware split of a Bash command into command-position segments, with
+// shell comments and heredoc bodies removed in the same pass so neither a
+// `# ...` comment nor a `<<EOF ... EOF` body (e.g. a PR description piped to
+// `gh pr create`) is ever classified. Comment, heredoc, and separator
+// recognition all happen ONLY in unquoted context: a `#`, a `<<`, or a `;`
+// inside quotes is literal text, not shell syntax. That is what keeps
+// `git commit -m "then git push"` from splitting and `echo "text <<EOF"`
+// from swallowing a real following command.
+//
+// Command substitutions (`$(...)`, backticks) and subshells (`(...)`) are
+// deliberately NOT descended into: a mutation buried in one (`echo $(git
+// push)`) is an accepted false negative, the same class as `env git push`,
+// `/usr/bin/git push`, or an aliased `git`. The backstop targets the plain
+// `git push` / `gh pr ...` forms a session actually uses to ship, not exotic
+// nesting.
 function splitShellSegments(command) {
-  const text = stripHeredocBodies(command);
+  const text = String(command || '');
+  const n = text.length;
   const segments = [];
   let current = '';
   let inSingle = false;
   let inDouble = false;
-  for (let i = 0; i < text.length; i++) {
+  const pendingHeredocs = []; // delimiters whose bodies follow the current line
+  let i = 0;
+
+  while (i < n) {
     const ch = text[i];
+
     if (inSingle) {
       current += ch;
       if (ch === "'") inSingle = false;
+      i += 1;
       continue;
     }
     if (inDouble) {
-      if (ch === '\\' && i + 1 < text.length) {
+      if (ch === '\\' && i + 1 < n) {
         current += ch + text[i + 1];
-        i += 1;
+        i += 2;
         continue;
       }
       current += ch;
       if (ch === '"') inDouble = false;
+      i += 1;
       continue;
     }
-    if (ch === '\\' && i + 1 < text.length) {
+
+    // Unquoted context below.
+    if (ch === '\\' && i + 1 < n) {
       current += ch + text[i + 1];
-      i += 1;
+      i += 2;
       continue;
     }
     if (ch === "'") {
       inSingle = true;
       current += ch;
+      i += 1;
       continue;
     }
     if (ch === '"') {
       inDouble = true;
       current += ch;
+      i += 1;
       continue;
     }
-    if (ch === ';' || ch === '&' || ch === '|' || ch === '\n') {
+
+    // A `#` at a word boundary starts a comment that runs to end of line.
+    if (ch === '#' && (current === '' || /\s/.test(current[current.length - 1]))) {
+      while (i < n && text[i] !== '\n') i += 1;
+      continue; // leave the '\n' for the separator branch to close the segment
+    }
+
+    // Heredoc operator `<<` or `<<-` (not `<<<`, a here-string): record the
+    // delimiter (quoted 'X'/"X" or a bare word) and skip its body once the
+    // command line ends. Multiple heredocs on one line strip in order.
+    if (ch === '<' && text[i + 1] === '<' && text[i + 2] !== '<') {
+      let j = i + 2;
+      let stripTabs = false;
+      if (text[j] === '-') {
+        stripTabs = true;
+        j += 1;
+      }
+      while (j < n && (text[j] === ' ' || text[j] === '\t')) j += 1;
+      let word = '';
+      if (text[j] === "'" || text[j] === '"') {
+        const quote = text[j];
+        j += 1;
+        while (j < n && text[j] !== quote) {
+          word += text[j];
+          j += 1;
+        }
+        if (j < n) j += 1; // consume the closing quote
+      } else {
+        while (j < n && !/[\s;&|<>()]/.test(text[j])) {
+          word += text[j];
+          j += 1;
+        }
+      }
+      if (word) {
+        pendingHeredocs.push({ word, stripTabs });
+        i = j; // consumed the operator + delimiter; keep scanning this line
+        continue;
+      }
+      current += ch; // no delimiter parsed: treat `<` as ordinary text
+      i += 1;
+      continue;
+    }
+
+    if (ch === '\n') {
       segments.push(current);
       current = '';
+      i += 1;
+      // Drop the bodies of any heredocs this line opened, in order.
+      while (pendingHeredocs.length && i < n) {
+        const { word, stripTabs } = pendingHeredocs.shift();
+        for (;;) {
+          let lineEnd = text.indexOf('\n', i);
+          const atEnd = lineEnd === -1;
+          if (atEnd) lineEnd = n;
+          const line = text.slice(i, lineEnd);
+          const compare = stripTabs ? line.replace(/^\t+/, '') : line;
+          i = atEnd ? n : lineEnd + 1;
+          if (compare === word || atEnd) break;
+        }
+      }
       continue;
     }
-    if (ch === '`') {
+
+    if (ch === ';' || ch === '&' || ch === '|') {
       segments.push(current);
       current = '';
+      i += 1;
       continue;
     }
-    if (ch === '$' && text[i + 1] === '(') {
-      segments.push(current);
-      current = '';
-      i += 1; // skip the '(' too; its own contents get split further downstream
-      continue;
-    }
+
     current += ch;
+    i += 1;
   }
   segments.push(current);
   return segments;
@@ -604,7 +650,7 @@ function scopeMsg(threshold) {
 
 function mutationMsg(threshold) {
   return [
-    `[PlanGate] This session has made ${threshold} distinct outward git/gh mutations (push, PR create, PR merge) without a plan: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this command.`,
+    `[PlanGate] This command would bring this session to ${threshold} distinct outward git/gh mutations (push, PR create, PR merge) without a plan: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this command.`,
     '(PLANGATE_MUTATION_THRESHOLD sets the mutation-count trigger, default 2; PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
   ].join('\n');
 }
@@ -639,7 +685,7 @@ function emitGateDecision(msg) {
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
-          additionalContext: msg + '\n(Warn-only mode: the edit proceeds.)',
+          additionalContext: msg + '\n(Warn-only mode: the tool call proceeds.)',
         },
       })
     );
