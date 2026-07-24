@@ -229,6 +229,76 @@ async function testPrecheckLengths(binDir) {
     schemaReport.skills[0].description_length_ok === false,
     '1025 characters passed the 1-1024 schema range'
   );
+
+  const whitespaceRoot = path.join(scratchRoot, 'precheck-schema-whitespace');
+  writeSkillFixture(whitespaceRoot, 'whitespace-limit', ` ${makeDescription(1024)}`);
+  const whitespaceRun = await runNode(
+    ACTIVATION_RUNNER,
+    ['--precheck', whitespaceRoot],
+    baseEnv(binDir)
+  );
+  const whitespaceReport = parseReport(whitespaceRun, 'precheck whitespace maximum');
+  assert(
+    whitespaceRun.code === 1 &&
+      whitespaceReport.skills[0].desc_chars === 1025 &&
+      whitespaceReport.skills[0].description_length_ok === false,
+    'leading whitespace hid a decoded description over the schema maximum'
+  );
+}
+
+async function testAgentSchema(binDir) {
+  const root = path.join(scratchRoot, 'precheck-agent-schema');
+  const cases = [
+    {
+      name: 'bad-pair',
+      model: 'haiku',
+      effort: 'xhigh',
+      tools: 'Read, Grep, Glob',
+    },
+    {
+      name: 'bad-tool',
+      model: 'sonnet',
+      effort: 'high',
+      tools: 'Read, UnknownTool',
+    },
+  ];
+  fs.mkdirSync(root, { recursive: true });
+  for (const agent of cases) {
+    fs.writeFileSync(
+      path.join(root, `${agent.name}.md`),
+      [
+        '---',
+        `name: ${agent.name}`,
+        'description: Use when testing invalid agent schemas.',
+        `model: ${agent.model}`,
+        `effort: ${agent.effort}`,
+        `tools: ${agent.tools}`,
+        '---',
+        '',
+        'Test agent.',
+        '',
+      ].join('\n')
+    );
+  }
+  const run = await runNode(
+    ACTIVATION_RUNNER,
+    ['--precheck-agents', root],
+    baseEnv(binDir)
+  );
+  const report = parseReport(run, 'precheck agent schema');
+  assert(run.code === 1, `invalid agent schemas exited ${run.code}, expected 1`);
+  assert(report.schema_issue_count === 2, 'invalid agent schemas did not both count');
+  assert(
+    report.agents.find((agent) => agent.agent === 'bad-pair').model_effort_ok === false,
+    'invalid model/effort pair passed'
+  );
+  const badTool = report.agents.find((agent) => agent.agent === 'bad-tool');
+  assert(
+    badTool.tool_vocabulary_ok === false &&
+      badTool.unknown_tools.length === 1 &&
+      badTool.unknown_tools[0] === 'UnknownTool',
+    'unknown agent tool passed'
+  );
 }
 
 async function testMalformedInstalledToml(binDir) {
@@ -952,6 +1022,7 @@ async function main() {
   const binDir = path.join(scratchRoot, 'bin');
   fakeScripts = writeFakeExecutables(binDir);
   await testPrecheckLengths(binDir);
+  await testAgentSchema(binDir);
   await testMalformedInstalledToml(binDir);
   await testActivation(binDir);
   await testBehavioral(binDir);
