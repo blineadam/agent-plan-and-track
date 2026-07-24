@@ -303,10 +303,11 @@ function installedFrontmatterDescription(file) {
 function installedTomlDescription(file) {
   if (!isFile(file)) return null;
   for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const match = /^description[ \t]*=[ \t]*("(?:\\.|[^"])*")[ \t]*$/.exec(line);
-    if (!match) continue;
+    const separator = line.indexOf('=');
+    if (separator < 0 || line.slice(0, separator).trim() !== 'description') continue;
     try {
-      return JSON.parse(match[1]);
+      const decoded = JSON.parse(line.slice(separator + 1).trim());
+      return typeof decoded === 'string' ? decoded : null;
     } catch {
       return null;
     }
@@ -464,9 +465,16 @@ function terminateChildTree(child, force) {
   if (!child || !child.pid) return;
   if (process.platform === 'win32') {
     try {
-      spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+      const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT;
+      const taskkill = systemRoot ? path.join(systemRoot, 'System32', 'taskkill.exe') : 'taskkill.exe';
+      const killer = spawn(taskkill, ['/PID', String(child.pid), '/T', '/F'], {
         stdio: 'ignore',
         windowsHide: true,
+      });
+      killer.on('error', () => {
+        try {
+          child.kill();
+        } catch {}
       });
     } catch {
       try {
