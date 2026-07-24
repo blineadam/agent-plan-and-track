@@ -301,7 +301,7 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for required checks on the PR head
+      - name: Wait for required checks, then squash-merge and delete the branch
         if: steps.pr.outputs.has_pr == '1'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -321,6 +321,18 @@ jobs:
           # CLEAN, so this loop already keeps polling until every check has
           # settled, not just the required ones. The explicit failed-check
           # check below is a belt-and-suspenders hard stop on top of that.
+          #
+          # The merge attempt lives inside this same loop, right after the
+          # status looks CLEAN, instead of as a separate one-shot step after
+          # the loop exits. mergeStateStatus is a poll snapshot, not a lock:
+          # main can advance between the poll and a later merge call ("Head
+          # branch is out of date"), and mergeStateStatus has also been
+          # observed reporting CLEAN before this repo's ruleset actually
+          # finished evaluating ("the base branch policy prohibits the
+          # merge"). Both are transient races, not permanent failures, so on
+          # either one this loop logs it and keeps polling/retrying rather
+          # than failing the run; any other merge error is treated as real
+          # and stops immediately.
           for i in $(seq 1 80); do
             info="$(gh pr view "$pr" --json mergeStateStatus,statusCheckRollup)"
             merge_status="$(echo "$info" | jq -r '.mergeStateStatus')"
@@ -330,21 +342,36 @@ jobs:
               exit 1
             fi
             case "$merge_status" in
-              CLEAN|HAS_HOOKS) exit 0 ;;
+              CLEAN|HAS_HOOKS)
+                if merge_err="$(gh pr merge "$pr" --squash --delete-branch 2>&1)"; then
+                  echo "$merge_err"
+                  exit 0
+                fi
+                case "$merge_err" in
+                  *"out of date"*|*"base branch policy prohibits"*)
+                    echo "merge attempt hit a transient race, retrying: $merge_err" >&2 ;;
+                  *)
+                    echo "$merge_err" >&2; exit 1 ;;
+                esac
+                ;;
               DIRTY)
                 echo "PR has merge conflicts (mergeStateStatus=$merge_status)" >&2; exit 1 ;;
-              *) ;; # BEHIND, BLOCKED, UNSTABLE, UNKNOWN -- still settling, keep polling
+              BEHIND)
+                # BEHIND doesn't self-clear like the other transient statuses: it
+                # means the head ref is genuinely out of date against base, and
+                # nothing else in this workflow pushes new commits to the PR
+                # branch to resolve that. Update it the same way the "Update
+                # branch" button does; the resulting synchronize event re-runs
+                # checks on the new head, which this same loop already waits on.
+                echo "PR branch is behind base; updating it" >&2
+                gh api --method PUT "repos/${{ github.repository }}/pulls/$pr/update-branch" >/dev/null 2>&1 || true
+                ;;
+              *) ;; # BLOCKED, UNSTABLE, UNKNOWN -- still settling, keep polling
             esac
             sleep 15
           done
           echo "PR did not reach a mergeable state within 20 minutes; leaving PR #$pr open" >&2
           exit 1
-
-      - name: Squash-merge and delete the branch
-        if: steps.pr.outputs.has_pr == '1'
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: gh pr merge "${{ steps.pr.outputs.number }}" --squash --delete-branch
 
       - name: Advance the run checkpoint to the examined commit
         if: steps.preflight.outputs.skip == '0'
