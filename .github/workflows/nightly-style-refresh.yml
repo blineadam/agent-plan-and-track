@@ -356,7 +356,17 @@ jobs:
                 ;;
               DIRTY)
                 echo "PR has merge conflicts (mergeStateStatus=$merge_status)" >&2; exit 1 ;;
-              *) ;; # BEHIND, BLOCKED, UNSTABLE, UNKNOWN -- still settling, keep polling
+              BEHIND)
+                # BEHIND doesn't self-clear like the other transient statuses: it
+                # means the head ref is genuinely out of date against base, and
+                # nothing else in this workflow pushes new commits to the PR
+                # branch to resolve that. Update it the same way the "Update
+                # branch" button does; the resulting synchronize event re-runs
+                # checks on the new head, which this same loop already waits on.
+                echo "PR branch is behind base; updating it" >&2
+                gh api --method PUT "repos/${{ github.repository }}/pulls/$pr/update-branch" >/dev/null 2>&1 || true
+                ;;
+              *) ;; # BLOCKED, UNSTABLE, UNKNOWN -- still settling, keep polling
             esac
             sleep 15
           done
