@@ -78,6 +78,7 @@ const SCRIPT_DIR = __dirname;
 const DEFAULT_CORPUS = path.join(SCRIPT_DIR, '..', 'fixtures', 'behavioral-cases.jsonl');
 const FORCE_SETTLE_MS = 100;
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+const MAX_TIMER_MS = 2_147_483_647;
 const TERMINATE_GRACE_MS = 1000;
 
 let activeRun = null;
@@ -92,10 +93,12 @@ function die(msg, code) {
 function liveCaseTimeout() {
   const raw = process.env.LIVE_CASE_TIMEOUT_MS;
   if (raw === undefined || raw === '') return 900000;
-  if (!/^[0-9]+$/.test(raw)) die('error: LIVE_CASE_TIMEOUT_MS must be a positive integer');
+  if (!/^[0-9]+$/.test(raw)) {
+    die(`error: LIVE_CASE_TIMEOUT_MS must be an integer from 1 to ${MAX_TIMER_MS}`);
+  }
   const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    die('error: LIVE_CASE_TIMEOUT_MS must be a positive integer');
+  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_TIMER_MS) {
+    die(`error: LIVE_CASE_TIMEOUT_MS must be an integer from 1 to ${MAX_TIMER_MS}`);
   }
   return value;
 }
