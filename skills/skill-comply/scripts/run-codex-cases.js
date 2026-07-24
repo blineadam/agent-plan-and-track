@@ -179,7 +179,7 @@ function summarize(id, strictness, metadata, events, workspace) {
     stdout_truncated: metadata.stdout_truncated,
     stderr_truncated: metadata.stderr_truncated,
     duration_ms: metadata.duration_ms,
-    interrupted: false,
+    interrupted: metadata.interrupted,
     observable_events: observable,
     plan_artifact: planArtifact,
   };
@@ -192,7 +192,8 @@ function metadataIsClean(metadata) {
     metadata.timed_out === false &&
     metadata.spawn_error === null &&
     metadata.stdout_truncated === false &&
-    metadata.stderr_truncated === false
+    metadata.stderr_truncated === false &&
+    metadata.interrupted === false
   );
 }
 
@@ -204,6 +205,7 @@ function validMetadata(metadata) {
     'spawn_error',
     'stdout_truncated',
     'stderr_truncated',
+    'interrupted',
     'duration_ms',
   ];
   return (
@@ -218,13 +220,14 @@ function validMetadata(metadata) {
     (metadata.spawn_error === null || typeof metadata.spawn_error === 'string') &&
     typeof metadata.stdout_truncated === 'boolean' &&
     typeof metadata.stderr_truncated === 'boolean' &&
+    typeof metadata.interrupted === 'boolean' &&
     Number.isInteger(metadata.duration_ms) &&
     metadata.duration_ms >= 0
   );
 }
 
 function normalizeMetadata(metadata) {
-  if (metadata === null) {
+  if (metadata === undefined) {
     return {
       exit_code: 0,
       signal: null,
@@ -232,6 +235,7 @@ function normalizeMetadata(metadata) {
       spawn_error: null,
       stdout_truncated: false,
       stderr_truncated: false,
+      interrupted: false,
       duration_ms: 0,
     };
   }
@@ -250,6 +254,7 @@ function normalizeMetadata(metadata) {
       spawn_error: null,
       stdout_truncated: false,
       stderr_truncated: false,
+      interrupted: false,
       duration_ms: 0,
     };
   }
@@ -261,7 +266,7 @@ function checkScenario(resultsDir, scenario) {
   const tracePath = path.join(caseDir, 'trace.jsonl');
   const metaPath = path.join(caseDir, 'meta.json');
   if (!fs.existsSync(tracePath)) fail(`${scenario.id}: missing trace.jsonl`);
-  const meta = normalizeMetadata(fs.existsSync(metaPath) ? readJson(metaPath) : null);
+  const meta = normalizeMetadata(fs.existsSync(metaPath) ? readJson(metaPath) : undefined);
   if (!validMetadata(meta)) fail(`${scenario.id}: invalid meta.json`);
   const workspace = path.join(caseDir, 'workspace');
   const events = meta.stdout_truncated ? [] : parseTrace(tracePath);
@@ -328,7 +333,7 @@ function terminateChildTree(child, force) {
 function handleParentSignal(signal) {
   parentSignalCount++;
   parentInterrupted = true;
-  if (activeRun) activeRun.terminate(parentSignalCount > 1);
+  if (activeRun) activeRun.interrupt(parentSignalCount > 1);
   process.exitCode = signal === 'SIGINT' ? 130 : 143;
   if (parentSignalCount > 1) process.exit(process.exitCode);
 }
@@ -340,6 +345,7 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
   const started = Date.now();
   process.stderr.write(`[${index}/${total}] ${id} start elapsed=0ms outcome=running\n`);
   let child;
+  let interrupted = false;
   let spawnError = null;
   let timedOut = false;
   let stdoutBytes = 0;
@@ -412,7 +418,11 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
       terminateChildTree(child, false);
       graceTimer = setTimeout(startForceStage, TERMINATE_GRACE_MS);
     };
-    activeRun = { terminate };
+    const interrupt = (force) => {
+      interrupted = true;
+      terminate(force);
+    };
+    activeRun = { interrupt, terminate };
     child.stdout.on('data', (chunk) => {
       const captured = capture(chunk, stdoutChunks, stdoutBytes, stdoutTruncated);
       stdoutBytes = captured.seen;
@@ -444,10 +454,12 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
     spawn_error: spawnError,
     stdout_truncated: stdoutTruncated,
     stderr_truncated: stderrTruncated,
+    interrupted,
     duration_ms: Date.now() - started,
   };
   let outcome = 'success';
-  if (metadata.timed_out) outcome = 'timeout';
+  if (metadata.interrupted) outcome = 'interrupted';
+  else if (metadata.timed_out) outcome = 'timeout';
   else if (metadata.spawn_error) outcome = 'spawn_error';
   else if (metadata.stdout_truncated || metadata.stderr_truncated) outcome = 'truncated';
   else if (metadata.signal) outcome = `signal:${metadata.signal}`;
