@@ -429,6 +429,7 @@ function readRunMetadata(metaPath) {
     'spawn_error',
     'stdout_truncated',
     'stderr_truncated',
+    'interrupted',
     'duration_ms',
   ];
   const valid =
@@ -443,9 +444,13 @@ function readRunMetadata(metaPath) {
     (metadata.spawn_error === null || typeof metadata.spawn_error === 'string') &&
     typeof metadata.stdout_truncated === 'boolean' &&
     typeof metadata.stderr_truncated === 'boolean' &&
+    typeof metadata.interrupted === 'boolean' &&
     Number.isInteger(metadata.duration_ms) &&
     metadata.duration_ms >= 0;
   if (!valid) return { present: true, clean: false, reason: 'invalid run metadata' };
+  if (metadata.interrupted) {
+    return { present: true, clean: false, reason: 'live run interrupted', metadata };
+  }
   if (metadata.timed_out) return { present: true, clean: false, reason: 'live run timed out', metadata };
   if (metadata.spawn_error !== null) {
     return { present: true, clean: false, reason: `live run spawn error: ${metadata.spawn_error}`, metadata };
@@ -496,7 +501,7 @@ function terminateChildTree(child, force) {
 function handleParentSignal(signal) {
   parentSignalCount++;
   parentInterrupted = true;
-  if (activeRun) activeRun.terminate(parentSignalCount > 1);
+  if (activeRun) activeRun.interrupt(parentSignalCount > 1);
   process.exitCode = signal === 'SIGINT' ? 130 : 143;
   if (parentSignalCount > 1) process.exit(process.exitCode);
 }
@@ -508,6 +513,7 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
   const started = Date.now();
   process.stderr.write(`[${index}/${total}] ${id} start elapsed=0ms outcome=running\n`);
   let child;
+  let interrupted = false;
   let spawnError = null;
   let timedOut = false;
   let stdoutBytes = 0;
@@ -580,7 +586,11 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
       terminateChildTree(child, false);
       graceTimer = setTimeout(startForceStage, TERMINATE_GRACE_MS);
     };
-    activeRun = { terminate };
+    const interrupt = (force) => {
+      interrupted = true;
+      terminate(force);
+    };
+    activeRun = { interrupt, terminate };
     child.stdout.on('data', (chunk) => {
       const captured = capture(chunk, stdoutChunks, stdoutBytes, stdoutTruncated);
       stdoutBytes = captured.seen;
@@ -612,10 +622,12 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
     spawn_error: spawnError,
     stdout_truncated: stdoutTruncated,
     stderr_truncated: stderrTruncated,
+    interrupted,
     duration_ms: Date.now() - started,
   };
   let outcome = 'success';
-  if (metadata.timed_out) outcome = 'timeout';
+  if (metadata.interrupted) outcome = 'interrupted';
+  else if (metadata.timed_out) outcome = 'timeout';
   else if (metadata.spawn_error) outcome = 'spawn_error';
   else if (metadata.stdout_truncated || metadata.stderr_truncated) outcome = 'truncated';
   else if (metadata.signal) outcome = `signal:${metadata.signal}`;
