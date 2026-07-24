@@ -48,6 +48,10 @@ gets, the tiered subagents Claude, Codex, and Copilot install, and per-tool note
 
 ## Install
 
+The hooks run on Node.js, and the macOS/Linux installer also needs `jq`.
+The installer checks for both up front and tells you what to install if
+one is missing.
+
 ```sh
 git clone https://github.com/blineadam/agent-plan-and-track.git
 cd agent-plan-and-track
@@ -62,58 +66,28 @@ powershell -ExecutionPolicy Bypass -File install.ps1 all
 powershell -ExecutionPolicy Bypass -File install-office-skills.ps1
 ```
 
-You can safely run the installer again any time. It updates the files this
-repo manages and leaves anything you've added yourself alone: skills are
-copied straight over since this repo is their source of truth, the digest
-and Copilot's own hook files get a `.bak` backup first if they'd changed,
-hook wiring is only added where it's missing on Claude and Codex,
-instruction files only get their clearly marked managed section touched,
-and model settings reset to the repo defaults each run (set
-`PT_KEEP_MODEL=1` to keep your own choice). Claude, Codex, and Copilot
-subagents stay in sync too. It also tidies up after itself: a skill or subagent this repo
-used to ship but has since renamed or removed gets moved out
-of your config into a `.plan-and-track-pruned/` folder on a
-later install, while any name this repo never installed stays put.
-
-The macOS/Linux installer needs `jq`; the Windows one doesn't. Both check
-for Node.js first, since the hooks need it, and will tell you what to
-install if it's missing:
-
-```bash
-brew install node
-```
-
-```powershell
-winget install OpenJS.NodeJS.LTS
-```
-
-### Updates
-
-To update, `git pull` and rerun the installer for your OS. It deploys
-whatever's checked out, normally the latest `main`, but tagged releases
-(`vX.Y.Z`, on the Releases tab) are known-good snapshots you can pin with
+Re-running is safe any time: each run updates the files this repo manages
+and leaves anything you've added yourself alone. A skill or subagent this
+repo has since renamed or removed gets moved into a `.plan-and-track-pruned/`
+folder rather than deleted. The per-file rules are in the `install.sh`
+header. To update, `git pull` and rerun; tagged releases (`vX.Y.Z`, on the
+Releases tab) are known-good snapshots you can pin with
 `git checkout v1.0.0` first.
 
 ### First run in a new project
 
 The installer is per-machine; each project still needs its own context.
 Start by generating the harness's project instructions, then capture the
-repo's conventions. Claude Code uses slash commands for these skills:
+repo's conventions:
 
 ```text
-/init                         # generate the project's own CLAUDE.md
+/init                         # generate the project's own CLAUDE.md (AGENTS.md on Codex)
 /inherit-legacy-style         # capture its implicit conventions in .ai-style-rules.md
 /copilot-review-instructions  # if on GitHub: teach Copilot's PR review those conventions
 ```
 
-Codex also has `/init`, which generates `AGENTS.md`; invoke installed skills
-with `$skill-name` (or pick them from `/skills`):
-
-```text
-/init                          # generate the project's own AGENTS.md
-$inherit-legacy-style          # capture its implicit conventions in .ai-style-rules.md
-$copilot-review-instructions   # if on GitHub: teach Copilot's PR review those conventions
-```
+On Codex, invoke the installed skills with `$skill-name` instead of a
+slash, or pick them from `/skills`.
 
 ## Layout
 
