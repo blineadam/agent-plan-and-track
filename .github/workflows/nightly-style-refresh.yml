@@ -291,7 +291,7 @@ jobs:
             sha="$(git rev-parse --short HEAD)"
             jq -c '.[]' "$replies" | while IFS= read -r entry; do
               id="$(jq -r '.comment_id // empty' <<<"$entry" 2>/dev/null || true)"
-              body="$(jq -r '.reply // empty' <<<"$entry" 2>/dev/null | sed "s/{FIX_COMMIT}/$sha/g")"
+              body="$(jq -r '.reply // empty' <<<"$entry" 2>/dev/null | sed "s/{FIX_COMMIT}/$sha/g" || true)"
               if [ -z "$id" ] || [ -z "$body" ]; then
                 echo "skipping malformed reply entry" >&2
                 continue
