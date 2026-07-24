@@ -301,6 +301,86 @@ async function testAgentSchema(binDir) {
   );
 }
 
+async function testQuotedScalarEscapes(binDir) {
+  const invalidDescription = 'description: "Use ' + '\\' + 'q when testing"';
+  const validDescription = 'description: "Use ' + '\\' + 'e when testing"';
+  const validDecoded = 'Use \u001b when testing';
+
+  const skillsRoot = path.join(scratchRoot, 'precheck-scalar-escapes');
+  for (const [name, description] of [
+    ['invalid-escape', invalidDescription],
+    ['valid-escape', validDescription],
+  ]) {
+    const skillDir = path.join(skillsRoot, name);
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDir, 'SKILL.md'),
+      ['---', `name: ${name}`, description, '---', '', `# ${name}`, ''].join('\n')
+    );
+  }
+  const skillRun = await runNode(
+    ACTIVATION_RUNNER,
+    ['--precheck', skillsRoot],
+    baseEnv(binDir)
+  );
+  const skillReport = parseReport(skillRun, 'precheck skill scalar escapes');
+  assert(skillRun.code === 1, `invalid skill escape exited ${skillRun.code}, expected 1`);
+  assert(skillReport.schema_issue_count === 1, 'invalid skill escape was not isolated');
+  assert(
+    skillReport.skills.find((skill) => skill.skill === 'invalid-escape')
+      .frontmatter_invalid_yaml === true,
+    'invalid skill escape passed'
+  );
+  const validSkill = skillReport.skills.find((skill) => skill.skill === 'valid-escape');
+  assert(
+    validSkill.frontmatter_invalid_yaml === false &&
+      validSkill.desc_chars === validDecoded.length,
+    'valid YAML skill escape was rejected or decoded incorrectly'
+  );
+
+  const agentsRoot = path.join(scratchRoot, 'precheck-agent-scalar-escapes');
+  fs.mkdirSync(agentsRoot, { recursive: true });
+  for (const [name, description] of [
+    ['invalid-escape', invalidDescription],
+    ['valid-escape', validDescription],
+  ]) {
+    fs.writeFileSync(
+      path.join(agentsRoot, `${name}.md`),
+      [
+        '---',
+        `name: ${name}`,
+        description,
+        'model: fable',
+        'effort: xhigh',
+        'tools: Read',
+        '---',
+        '',
+        'Test agent.',
+        '',
+      ].join('\n')
+    );
+  }
+  const agentRun = await runNode(
+    ACTIVATION_RUNNER,
+    ['--precheck-agents', agentsRoot],
+    baseEnv(binDir)
+  );
+  const agentReport = parseReport(agentRun, 'precheck agent scalar escapes');
+  assert(agentRun.code === 1, `invalid agent escape exited ${agentRun.code}, expected 1`);
+  assert(agentReport.schema_issue_count === 1, 'invalid agent escape was not isolated');
+  assert(
+    agentReport.agents.find((agent) => agent.agent === 'invalid-escape')
+      .frontmatter_invalid_yaml === true,
+    'invalid agent escape passed'
+  );
+  const validAgent = agentReport.agents.find((agent) => agent.agent === 'valid-escape');
+  assert(
+    validAgent.frontmatter_invalid_yaml === false &&
+      validAgent.description_chars === validDecoded.length,
+    'valid YAML agent escape was rejected or decoded incorrectly'
+  );
+}
+
 async function testTimeoutMaximum(binDir) {
   const root = path.join(scratchRoot, 'timeout-maximum');
   fs.mkdirSync(root, { recursive: true });
@@ -1095,6 +1175,7 @@ async function main() {
   fakeScripts = writeFakeExecutables(binDir);
   await testPrecheckLengths(binDir);
   await testAgentSchema(binDir);
+  await testQuotedScalarEscapes(binDir);
   await testTimeoutMaximum(binDir);
   await testMalformedInstalledToml(binDir);
   await testActivation(binDir);
