@@ -50,7 +50,7 @@
  *   extra_frontmatter_keys     any top-level frontmatter key besides name/description
  *   frontmatter_invalid_yaml   a frontmatter key: value line YAML would reject: an unquoted value
  *                              containing a colon-space, or a quoted value containing an unescaped
- *                              copy of its own delimiter (counts into schema_issue_count)
+ *                              delimiter or invalid escape (counts into schema_issue_count)
  */
 'use strict';
 
@@ -416,11 +416,60 @@ function decodeScalar(value) {
   if (!q || value[value.length - 1] !== q) return value;
   const inner = value.slice(1, -1);
   if (q === "'") return inner.replace(/''/g, "'");
-  try {
-    return JSON.parse(value);
-  } catch {
-    return inner;
+  const decoded = decodeDoubleQuotedScalar(inner);
+  return decoded.valid ? decoded.value : inner;
+}
+
+function decodeDoubleQuotedScalar(inner) {
+  const escapes = new Map([
+    ['0', '\0'],
+    ['a', '\x07'],
+    ['b', '\b'],
+    ['t', '\t'],
+    ['\t', '\t'],
+    ['n', '\n'],
+    ['v', '\v'],
+    ['f', '\f'],
+    ['r', '\r'],
+    ['e', '\x1b'],
+    [' ', ' '],
+    ['"', '"'],
+    ['/', '/'],
+    ['\\', '\\'],
+    ['N', '\x85'],
+    ['_', '\xa0'],
+    ['L', '\u2028'],
+    ['P', '\u2029'],
+  ]);
+  let decoded = '';
+  for (let i = 0; i < inner.length; i++) {
+    const char = inner[i];
+    if (char === '"') return { valid: false, value: inner };
+    if (char !== '\\') {
+      if (char.charCodeAt(0) < 0x20 && char !== '\t') return { valid: false, value: inner };
+      decoded += char;
+      continue;
+    }
+    const escape = inner[++i];
+    if (escape === undefined) return { valid: false, value: inner };
+    if (escapes.has(escape)) {
+      decoded += escapes.get(escape);
+      continue;
+    }
+    const digits = escape === 'x' ? 2 : escape === 'u' ? 4 : escape === 'U' ? 8 : 0;
+    if (digits === 0) return { valid: false, value: inner };
+    const hex = inner.slice(i + 1, i + 1 + digits);
+    if (hex.length !== digits || !/^[0-9A-Fa-f]+$/.test(hex)) {
+      return { valid: false, value: inner };
+    }
+    const codePoint = Number.parseInt(hex, 16);
+    if (codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+      return { valid: false, value: inner };
+    }
+    decoded += String.fromCodePoint(codePoint);
+    i += digits;
   }
+  return { valid: true, value: decoded };
 }
 
 // The frontmatter `name:` value plus every top-level key present, single-line
@@ -683,12 +732,9 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
 // with one), so it is judged by the quoted rules; anything else is plain.
 //   plain scalar    -> a colon-space (": ") sequence, which YAML reads as a
 //                      nested mapping key, invalidating the whole block
-//   quoted scalar   -> no matching closing delimiter, or an unescaped instance
-//                      of its own delimiter inside the quotes, either of which
-//                      ends the scalar somewhere YAML does not expect. YAML
-//                      escapes these as \" inside "..." and as '' inside '...',
-//                      and \" only counts as escaped after an even-length run
-//                      of backslashes, since \\ is itself an escaped backslash.
+//   quoted scalar   -> no matching closing delimiter, an unescaped instance of
+//                      its own delimiter inside the quotes, or an unknown or
+//                      malformed double-quoted escape sequence.
 // The unescaped-delimiter case is the one that bites when a value is
 // single-quoted to avoid escaping embedded double quotes: adding an apostrophe
 // later breaks it.
@@ -712,9 +758,8 @@ function hasInvalidFrontmatterValue(file) {
     }
     if (value.length < 2 || value[value.length - 1] !== q) return true;
     const inner = value.slice(1, -1);
-    const unescaped =
-      q === '"' ? /(?:^|[^\\])(?:\\\\)*"/.test(inner) : inner.replace(/''/g, '').includes("'");
-    if (unescaped) return true;
+    if (q === '"' && !decodeDoubleQuotedScalar(inner).valid) return true;
+    if (q === "'" && inner.replace(/''/g, '').includes("'")) return true;
   }
   return false;
 }
