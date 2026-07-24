@@ -1,6 +1,6 @@
 ---
 name: efficient-frontier
-description: "Use when a piece of work fits a tiered subagent instead of the main session: implementing or executing an already-written plan, spec, or todo batch; delegating the drafting of an implementation plan or spec to the planner tier (for starting a task's own tasks/todo.md workflow, use plan-and-track instead); research or codebase mapping across many files; reproducing a bug; a fully-specified mechanical edit; or a high-stakes security or architecture judgment. Also use before spawning any subagent (planner, executor, researcher, mechanic, debugger, security-auditor, architect-reviewer, fable-advisor), when picking which tier fits a piece of delegated work, or when reviewing what a subagent handed back."
+description: "Use before choosing or spawning a tiered subagent, or reviewing a subagent handback. Covers planning, execution, research, debugging, mechanical work, and high-stakes security/architecture review. Use plan-and-track to create the task's plan."
 ---
 
 # Efficient Frontier

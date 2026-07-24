@@ -1,6 +1,6 @@
 ---
 name: copilot-review-instructions
-description: Generate or refresh path-scoped .github/instructions/*.instructions.md files so GitHub Copilot's PR review enforces a project's actual conventions instead of generic defaults. Gathers review-worthy rules from every source the project already has, including .ai-style-rules.md, the project's own instructions file (CLAUDE.md / AGENTS.md / .github/copilot-instructions.md), README, CONTRIBUTING, docs, plus a bounded source scan. Use whenever those conventions are created or change, or the project's directory/language layout changes (buckets and globs derive from it), and the project uses GitHub Copilot code review, either right after [[inherit-legacy-style]] captures implicit conventions or standalone. The generated artifact is Copilot-only.
+description: Use to generate or refresh path-scoped GitHub Copilot review instructions when a Copilot-reviewed project's conventions or directory/language layout change, after inherit-legacy-style or standalone. Only the output is Copilot-specific.
 ---
 
 # copilot-review-instructions
