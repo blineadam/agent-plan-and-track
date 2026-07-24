@@ -136,8 +136,8 @@ with restricted mounts and no network egress, and never pass
 trace or not), so `--check` is free and repeatable. Live runs default to a
 900000 ms per-case timeout; set `LIVE_CASE_TIMEOUT_MS` to a positive integer to
 override it. Each run writes `<id>.meta.json` beside the trace, and a nonzero
-exit, signal, timeout, spawn error, or truncated capture always fails. Checks
-also accept legacy trace directories without metadata.
+exit, signal, timeout, parent interruption, spawn error, or truncated capture
+always fails. Checks also accept legacy trace directories without metadata.
 
 ## Phase 3: Report & act
 
