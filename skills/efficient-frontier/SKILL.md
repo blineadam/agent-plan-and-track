@@ -1,6 +1,6 @@
 ---
 name: efficient-frontier
-description: "Use before subagent selection/handback review: high-stakes security/architecture; plan drafting (task plans: plan-and-track), existing-spec execution, repo research, bug repro, mechanical edits."
+description: "Use before subagent selection/spawn or handback review: high-stakes security/architecture; plan drafting (task plan: plan-and-track); plan/spec/todo execution; research; bug repro; mechanical edits."
 ---
 
 # Efficient Frontier
