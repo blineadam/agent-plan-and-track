@@ -77,6 +77,19 @@ jobs:
           ./install.sh codex >/dev/null
           n="$(jq '[.. | .command? // empty | select(test("plan-gate\\.js"))] | length' "$HOME/.codex/hooks.json")"
           [ "$n" = "2" ] || { echo "FAIL: Codex installer did not repair a partial plan-gate pair"; exit 1; }
+          # Claude plan-gate: two additive PreToolUse entries on the same command
+          # (Skill|Edit|Write|MultiEdit for the stamp/scope/lint gates, Bash for
+          # the mutation gate), each checked and repaired per entry like the
+          # Codex pair above.
+          n="$(jq '[.hooks.PreToolUse[]? | select(.matcher=="Skill|Edit|Write|MultiEdit") | .hooks[]? | select(.command|test("plan-gate\\.js"))] | length' "$HOME/.claude/settings.json")"
+          [ "$n" = "1" ] || { echo "FAIL: expected 1 Claude plan-gate stamp PreToolUse entry, found $n"; exit 1; }
+          n="$(jq '[.hooks.PreToolUse[]? | select(.matcher=="Bash") | .hooks[]? | select(.command|test("plan-gate\\.js"))] | length' "$HOME/.claude/settings.json")"
+          [ "$n" = "1" ] || { echo "FAIL: expected 1 Claude plan-gate Bash PreToolUse entry, found $n"; exit 1; }
+          jq '.hooks.PreToolUse |= map(select(.matcher != "Bash"))' "$HOME/.claude/settings.json" > "$RUNNER_TEMP/partial-claude-settings.json"
+          mv "$RUNNER_TEMP/partial-claude-settings.json" "$HOME/.claude/settings.json"
+          ./install.sh claude >/dev/null
+          n="$(jq '[.hooks.PreToolUse[]? | select(.matcher=="Bash") | .hooks[]? | select(.command|test("plan-gate\\.js"))] | length' "$HOME/.claude/settings.json")"
+          [ "$n" = "1" ] || { echo "FAIL: Claude installer did not re-add the deleted plan-gate Bash entry"; exit 1; }
           # Codex TOML agents: one rendered file per agents/*.md source.
           agent_md_count="$(ls agents/*.md | wc -l | tr -d ' ')"
           agent_toml_count="$(ls "$HOME/.codex/agents"/*.toml | wc -l | tr -d ' ')"
@@ -311,6 +324,21 @@ jobs:
           $codexRaw = Get-Content -Raw "$H\.codex\hooks.json"
           $n = ([regex]::Matches($codexRaw, 'plan-gate\.js')).Count
           if ($n -ne 2) { throw "Codex installer did not repair a partial plan-gate pair" }
+          # Claude plan-gate: two additive PreToolUse entries on the same command
+          # (Skill|Edit|Write|MultiEdit for the stamp/scope/lint gates, Bash for
+          # the mutation gate), each checked and repaired per entry like the
+          # Codex pair above.
+          $claudeSettings = Get-Content -Raw "$H\.claude\settings.json" | ConvertFrom-Json
+          $hasPlanStamp = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Skill|Edit|Write|MultiEdit' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js' }).Count -gt 0
+          if (-not $hasPlanStamp) { throw "expected 1 Claude plan-gate stamp PreToolUse entry, found none" }
+          $hasPlanBash = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js' }).Count -gt 0
+          if (-not $hasPlanBash) { throw "expected 1 Claude plan-gate Bash PreToolUse entry, found none" }
+          $claudeSettings.hooks.PreToolUse = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -ne 'Bash' })
+          [System.IO.File]::WriteAllText("$H\.claude\settings.json", ($claudeSettings | ConvertTo-Json -Depth 16), [System.Text.UTF8Encoding]::new($false))
+          .\install.ps1 claude | Out-Null
+          $claudeSettings = Get-Content -Raw "$H\.claude\settings.json" | ConvertFrom-Json
+          $hasPlanBash = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js' }).Count -gt 0
+          if (-not $hasPlanBash) { throw "Claude installer did not re-add the deleted plan-gate Bash entry" }
           # Codex TOML agents: one rendered file per agents/*.md source.
           $agentMdCount = (Get-ChildItem 'agents\*.md').Count
           $agentTomlCount = (Get-ChildItem "$H\.codex\agents\*.toml").Count

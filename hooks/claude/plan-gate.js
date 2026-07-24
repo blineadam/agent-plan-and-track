@@ -44,6 +44,22 @@
  * next to the session's stamp file) so a denied edit is never counted and
  * repeated denials can't inflate the total.
  *
+ * MUTATION GATE: the scope gate's blind spot is a PR-shaped task that never
+ * touches 3 distinct files (e.g. "push this branch, open a PR, merge it")
+ * but still runs an outward, hard-to-reverse git/gh mutation without ever
+ * having planned. A Bash call is classified by detectOutwardMutations() into
+ * a subset of {git-push, gh-pr-create, gh-pr-merge} (conservative: a
+ * full-path invocation, `env git`, or a shell alias is an accepted false
+ * negative, not chased). Once a session's distinct mutation-kind count would
+ * reach PLANGATE_MUTATION_THRESHOLD (default 2) without a stamp, that Bash
+ * call is denied the same hard way as tasks/todo.md and the scope gate above
+ * (deny-until-stamped, not gateguard's deny-once: a bare retry of the same
+ * command is denied again); only the plan-and-track stamp unlocks.
+ * CLAUDE-ONLY, same portable-skill + Claude-only-hook split as the rest of
+ * this file: Codex fires no hookable shell event (only apply_patch) to
+ * classify this way, and Copilot has no Skill tool or comparable PreToolUse
+ * hook wired here either.
+ *
  * CONTENT LINT: once a session is stamped, tasks/todo.md writes still get a
  * lighter check: every NEW unchecked step inside a `## Plan` section (not
  * Review/Context/preamble) must end in an owner tag, e.g. `(executor)`,
@@ -69,6 +85,11 @@
  *   PLANGATE_WARN            "1" demotes deny to a non-blocking warning.
  *   PLANGATE_SCOPE_THRESHOLD distinct-file count that trips the scope gate
  *                             (default 3).
+ *   PLANGATE_MUTATION_THRESHOLD distinct-outward-mutation-kind count that
+ *                             trips the mutation gate (default 2). Only 3
+ *                             kinds exist (git-push, gh-pr-create,
+ *                             gh-pr-merge), so a value above 3 effectively
+ *                             disables this gate.
  *   PLANGATE_LINT_DISABLED   "1" turns off the tasks/todo.md content lint
  *                             only (stamp gate and scope gate still apply).
  */
@@ -240,6 +261,192 @@ function withSessionLock(sessionId, input, fn) {
   }
 }
 
+// --- Mutation gate: outward git/gh mutation counting ---
+
+// Drops heredoc body lines before any command splitting, so a body that
+// merely mentions a mutating command (e.g. a PR description piped in via
+// `<<EOF`) is never classified. A `<<[-]WORD` (WORD optionally single- or
+// double-quoted) opens a body that runs through the first line exactly
+// equal to WORD (the `<<-` form also strips the body's own leading tabs
+// before comparing, per shell heredoc semantics); the marker line itself
+// (the command line carrying `<<WORD`) is kept, only the body is dropped.
+function stripHeredocBodies(command) {
+  const lines = String(command || '').split('\n');
+  const kept = [];
+  let terminator = null;
+  let stripTabs = false;
+  for (const line of lines) {
+    if (terminator !== null) {
+      const compare = stripTabs ? line.replace(/^\t+/, '') : line;
+      if (compare === terminator) terminator = null;
+      continue; // drop body lines and the terminator line itself
+    }
+    kept.push(line);
+    const m = /<<(-)?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/.exec(line);
+    if (m) {
+      terminator = m[3];
+      stripTabs = m[1] === '-';
+    }
+  }
+  return kept.join('\n');
+}
+
+// Quote-aware split into command-position segments. Tracks single/double
+// quote state and backslash escapes (outside single quotes, where bash
+// never treats backslash as an escape); splits at `;`, `&`, `|`, and
+// newline outside quotes (so `&&`/`||`/backgrounding all split too, since
+// each is a run of the single-char separators), and treats `$(` and a
+// backtick as the start of a new command position. Quote-awareness is what
+// keeps `git commit -m "then git push it"` from ever splitting into a
+// second, classifiable segment.
+function splitShellSegments(command) {
+  const text = stripHeredocBodies(command);
+  const segments = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inSingle) {
+      current += ch;
+      if (ch === "'") inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '\\' && i + 1 < text.length) {
+        current += ch + text[i + 1];
+        i += 1;
+        continue;
+      }
+      current += ch;
+      if (ch === '"') inDouble = false;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < text.length) {
+      current += ch + text[i + 1];
+      i += 1;
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      current += ch;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      current += ch;
+      continue;
+    }
+    if (ch === ';' || ch === '&' || ch === '|' || ch === '\n') {
+      segments.push(current);
+      current = '';
+      continue;
+    }
+    if (ch === '`') {
+      segments.push(current);
+      current = '';
+      continue;
+    }
+    if (ch === '$' && text[i + 1] === '(') {
+      segments.push(current);
+      current = '';
+      i += 1; // skip the '(' too; its own contents get split further downstream
+      continue;
+    }
+    current += ch;
+  }
+  segments.push(current);
+  return segments;
+}
+
+// Classifies one Bash command into the (closed) set of outward, hard-to-
+// reverse git/gh mutations it contains: a subset of {git-push,
+// gh-pr-create, gh-pr-merge}. Conservative by design: a full-path
+// invocation (`/usr/bin/git`), `env git`, or a shell alias is an accepted
+// false negative, not chased.
+function detectOutwardMutations(command) {
+  const kinds = new Set();
+  for (const rawSegment of splitShellSegments(command)) {
+    const trimmed = rawSegment.trim();
+    if (!trimmed) continue;
+    const tokens = trimmed.split(/\s+/);
+    // Leading VAR=value assignments and a leading literal `command` never
+    // change which program actually runs.
+    while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) tokens.shift();
+    if (tokens[0] === 'command') tokens.shift();
+    if (!tokens.length) continue;
+
+    if (tokens[0] === 'git') {
+      let i = 1;
+      // Skip git global options that precede the subcommand: `-C <arg>`/
+      // `-c <arg>` each consume the next token; `--git-dir=...`/`-C=...`
+      // are self-contained.
+      while (i < tokens.length) {
+        const t = tokens[i];
+        if (t === '-C' || t === '-c') {
+          i += 2;
+          continue;
+        }
+        if (/^(--git-dir=|-C=)/.test(t)) {
+          i += 1;
+          continue;
+        }
+        break;
+      }
+      if (tokens[i] === 'push') {
+        const excluded = tokens.some((t) => t === '--help' || t === '-h' || t === '--dry-run' || t === '-n');
+        if (!excluded) kinds.add('git-push');
+      }
+    } else if (tokens[0] === 'gh') {
+      let i = 1;
+      // Skip `-R <arg>`/`--repo <arg>`, the gh equivalent of git's -C.
+      while (i < tokens.length) {
+        const t = tokens[i];
+        if (t === '-R' || t === '--repo') {
+          i += 2;
+          continue;
+        }
+        break;
+      }
+      const excluded = tokens.some((t) => t === '--help' || t === '--dry-run');
+      if (!excluded) {
+        const remaining = tokens.slice(i).filter((t) => !/^-/.test(t));
+        if (remaining[0] === 'pr' && remaining[1] === 'create') kinds.add('gh-pr-create');
+        if (remaining[0] === 'pr' && remaining[1] === 'merge') kinds.add('gh-pr-merge');
+      }
+    }
+  }
+  return kinds;
+}
+
+// Validated PLANGATE_MUTATION_THRESHOLD: same shape as scopeThreshold(), a
+// positive integer floored at 1, else the default.
+function mutationThreshold() {
+  const raw = process.env.PLANGATE_MUTATION_THRESHOLD;
+  if (raw === undefined || raw === '') return 2;
+  const n = Number.parseInt(raw, 10);
+  return Number.isInteger(n) && n >= 1 ? n : 2;
+}
+
+function mutationsDir(sessionId, input) {
+  return stampPath(sessionId, input) + '.mutations';
+}
+
+// No hashing needed here (unlike fileMarkerPath): the kind set is closed and
+// small ({git-push, gh-pr-create, gh-pr-merge}), so the literal kind string
+// is already a safe filename.
+function mutationMarkerPath(sessionId, input, kind) {
+  return path.join(mutationsDir(sessionId, input), kind);
+}
+
+function distinctMutationCount(sessionId, input) {
+  try {
+    return fs.readdirSync(mutationsDir(sessionId, input)).length;
+  } catch {
+    return 0;
+  }
+}
+
 // --- Content lint: todo-step owner tags ---
 
 // Hardcoded rather than parsed from skills/efficient-frontier/SKILL.md (that
@@ -395,6 +602,13 @@ function scopeMsg(threshold) {
   ].join('\n');
 }
 
+function mutationMsg(threshold) {
+  return [
+    `[PlanGate] This session has made ${threshold} distinct outward git/gh mutations (push, PR create, PR merge) without a plan: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this command.`,
+    '(PLANGATE_MUTATION_THRESHOLD sets the mutation-count trigger, default 2; PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
+  ].join('\n');
+}
+
 function lintMsg(offenders) {
   // firstLine already carries its own "- [ ]" marker, so indent only: a
   // second leading "- " here would print as a double bullet.
@@ -538,6 +752,44 @@ function main() {
         process.stderr.write(`[PlanGate] could not write session stamp: ${err && err.message}\n`);
       }
     }
+    process.exit(0);
+  }
+
+  // Mutation-gate branch: a Bash call that makes an outward git/gh mutation
+  // is counted toward PLANGATE_MUTATION_THRESHOLD the same way the scope
+  // gate counts edited files. Fast path first: most Bash calls classify to
+  // an empty Set, so this exits before any filesystem work on the hot path
+  // every Bash call hits.
+  if (toolName === 'Bash') {
+    const kinds = detectOutwardMutations(String(toolInput.command || ''));
+    if (kinds.size === 0) process.exit(0);
+    const mstamp = stampPath(input.session_id, input);
+    if (fs.existsSync(mstamp)) process.exit(0);
+
+    withSessionLock(input.session_id, input, () => {
+      const threshold = mutationThreshold();
+      const newKinds = [...kinds].filter((k) => !fs.existsSync(mutationMarkerPath(input.session_id, input, k)));
+      const wouldBeCount = distinctMutationCount(input.session_id, input) + newKinds.length;
+
+      if (wouldBeCount >= threshold) {
+        emitGateDecision(mutationMsg(threshold));
+        // A real deny must not record any new kind (it would inflate the
+        // count on retry, defeating deny-until-stamped). PLANGATE_WARN=1
+        // lets the call proceed, so it falls through and records like any
+        // other allowed call.
+        if (process.env.PLANGATE_WARN !== '1') return;
+      }
+
+      // Allowed (or warned-but-proceeding): record each newly seen kind so a
+      // future call doesn't re-count it, and repeated denials of an
+      // unrecorded kind never inflate the total.
+      try {
+        fs.mkdirSync(mutationsDir(input.session_id, input), { recursive: true });
+        for (const k of newKinds) fs.writeFileSync(mutationMarkerPath(input.session_id, input, k), '');
+      } catch {
+        /* best effort: worst case a later call re-detects the same kind */
+      }
+    });
     process.exit(0);
   }
 
