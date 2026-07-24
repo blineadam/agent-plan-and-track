@@ -48,9 +48,10 @@ gets, the tiered subagents Claude, Codex, and Copilot install, and per-tool note
 
 ## Install
 
-The hooks run on Node.js, and the macOS/Linux installer also needs `jq`.
-The installer checks for both up front and tells you what to install if
-one is missing.
+The hooks run on Node.js; the installer checks for it before touching
+anything. The macOS/Linux installer also needs `jq` for the Claude and
+Codex targets (not required for Copilot-only): install it first, since a
+missing `jq` is caught partway through rather than up front.
 
 ```sh
 git clone https://github.com/blineadam/agent-plan-and-track.git
