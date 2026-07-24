@@ -1,6 +1,6 @@
 ---
 name: skill-activation
-description: Measure whether the RIGHT skill is triggered for a prompt (routing/activation regression, not compliance). Maintain a corpus of trigger prompts mapped to the skill that should fire, run each in a fresh agent, and deterministically check the stream-json trace for the expected (and not the forbidden) Skill activation. Use after adding or renaming a skill, when two skills have overlapping triggers, or when the wrong skill keeps firing. Also use its behavioral-smoke harness to regression-check that a trimmed skill body still produces the output its SKILL.md mandates; for LLM-judged compliance across strictness levels rather than a pinned deterministic check, use skill-comply instead.
+description: Use after adding or renaming a skill, when triggers overlap or misroute, or after trimming a skill body. Tests routing and trimmed-body behavior; use skill-comply for broader compliance.
 ---
 
 # skill-activation
@@ -10,7 +10,7 @@ assertion into a measurement: given a prompt that *should* fire skill X, does a
 **fresh** agent actually activate X, and not a neighbouring skill with an
 overlapping trigger?
 
-This is the routing sibling of [[skill-comply]] (a Claude-only skill; Codex and Copilot don't install it). Keep the two straight:
+This is the routing sibling of [[skill-comply]], which is supported on Claude Code and Codex and is not installed on Copilot. Keep the two straight:
 
 - **skill-activation**: is the **right skill picked**? Tests the `description`
   frontmatter (the router signal).
