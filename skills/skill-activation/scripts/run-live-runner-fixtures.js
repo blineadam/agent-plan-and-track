@@ -301,6 +301,62 @@ async function testAgentSchema(binDir) {
   );
 }
 
+async function testTimeoutMaximum(binDir) {
+  const root = path.join(scratchRoot, 'timeout-maximum');
+  fs.mkdirSync(root, { recursive: true });
+  const activationCorpus = path.join(root, 'activation.jsonl');
+  writeJsonl(activationCorpus, [
+    { id: 'must-not-start', prompt: 'success', expect_skill: 'fixture-skill' },
+  ]);
+  const behavioralCorpus = makeBehavioralCorpus(root, [
+    {
+      id: 'must-not-start',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'must-not-start',
+      assertions: [],
+    },
+  ]);
+  const codexCorpus = makeCodexCorpus(root, [
+    { id: 'must-not-start', strictness: 'supportive', prompt: 'success' },
+  ]);
+  const cases = [
+    {
+      label: 'activation',
+      runner: ACTIVATION_RUNNER,
+      args: ['--run', activationCorpus],
+      gate: { ACTIVATION_ALLOW_SPEND: '1' },
+    },
+    {
+      label: 'behavioral',
+      runner: BEHAVIORAL_RUNNER,
+      args: ['--run', path.join(root, 'behavioral-results'), behavioralCorpus],
+      gate: { ACTIVATION_ALLOW_SPEND: '1' },
+    },
+    {
+      label: 'Codex',
+      runner: findCodexRunner(),
+      args: ['--run', path.join(root, 'codex-results'), codexCorpus],
+      gate: { COMPLY_ALLOW_SPEND: '1' },
+    },
+  ];
+  for (const entry of cases) {
+    const marker = path.join(root, `${entry.label}-spawned`);
+    const run = await runNode(
+      entry.runner,
+      entry.args,
+      baseEnv(binDir, {
+        ...entry.gate,
+        LIVE_CASE_TIMEOUT_MS: '2147483648',
+        FAKE_SPAWN_MARKER: marker,
+      })
+    );
+    assert(run.code !== 0, `${entry.label} accepted a timeout above Node's timer limit`);
+    assert(!fs.existsSync(marker), `${entry.label} spawned before rejecting an over-limit timeout`);
+  }
+}
+
 async function testMalformedInstalledToml(binDir) {
   const root = path.join(scratchRoot, 'precheck-agent-toml');
   const agentsDir = path.join(root, 'agents');
@@ -913,6 +969,11 @@ async function testParentSignal(binDir) {
       prompt: `signal-case parent-clean-sigterm activity64=${activationActivity64}`,
       expect_skill: 'fixture-skill',
     },
+    {
+      id: 'must-not-start',
+      prompt: 'success',
+      expect_skill: 'fixture-skill',
+    },
   ]);
   let activationSent = false;
   const activationRun = await runNode(
@@ -920,7 +981,7 @@ async function testParentSignal(binDir) {
     ['--run', activationCorpus],
     baseEnv(binDir, { ACTIVATION_ALLOW_SPEND: '1', LIVE_CASE_TIMEOUT_MS: '5000' }),
     (chunk, child) => {
-      if (!activationSent && chunk.includes('[1/1] signal-case start')) {
+      if (!activationSent && chunk.includes('[1/2] signal-case start')) {
         activationSent = true;
         setTimeout(() => child.kill('SIGTERM'), 120);
       }
@@ -930,6 +991,17 @@ async function testParentSignal(binDir) {
   assert(
     activationRun.code === 143,
     `POSIX activation signal exited ${activationRun.code}, expected 143`
+  );
+  assert(
+    !activationRun.stderr.includes('[2/2] must-not-start start'),
+    'activation runner launched a later case after interruption'
+  );
+  const activationReport = parseReport(activationRun, 'POSIX activation signal');
+  assert(
+    activationReport.total === 2 &&
+      activationReport.passed === 0 &&
+      activationReport.cases[1].reason === 'interrupted before start',
+    'activation interrupted run omitted or passed an unstarted case'
   );
   const activationResults = retainedActivationDir(activationRun.stderr);
   const activationMeta = JSON.parse(
@@ -1023,6 +1095,7 @@ async function main() {
   fakeScripts = writeFakeExecutables(binDir);
   await testPrecheckLengths(binDir);
   await testAgentSchema(binDir);
+  await testTimeoutMaximum(binDir);
   await testMalformedInstalledToml(binDir);
   await testActivation(binDir);
   await testBehavioral(binDir);
