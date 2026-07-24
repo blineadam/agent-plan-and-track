@@ -40,7 +40,10 @@
   PARITY: this script and install.sh must stay in lockstep. Any change to the
   managed surface (skills, agents (the Claude .md copies, the Codex TOML
   rendering, and the Copilot .agent.md rendering), the core-rules digest, the
-  instructions managed block, hook wiring + __SCRIPTS__ substitution,
+  instructions managed block, hook wiring + __SCRIPTS__ substitution
+  (including plan-gate's two additive Claude PreToolUse entries, each with its
+  own per-entry matcher+command idempotency check, same pair-repair shape as
+  the Codex plan-gate pilot's PreToolUse + PostToolUse entries),
   model/effort defaults, the TOML upsert, the global gitignore entries, the
   manifest-based stale prune keyed by .plan-and-track-manifest) must be
   mirrored in both. See install.sh for the same note.
@@ -673,11 +676,25 @@ function Install-Claude {
     Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-gateguard.json') $scriptsFwd
     Write-Host "  gateguard hook  -> merged into settings.json (PreToolUse on edits; GATEGUARD_DISABLED=1 to turn off)"
   }
-  if ($raw.Contains('plan-gate')) {
+  # plan-gate ships as TWO separate PreToolUse entries (Skill+todo.md edits,
+  # and Bash git/gh mutations) pointing at the same command, added additively
+  # rather than as one combined entry so a user who deletes just one gets it
+  # re-added without disturbing the other. Per-entry checks (matcher +
+  # command, not the old coarse $raw.Contains('plan-gate')) mirror the Codex
+  # plan-gate pilot's PreToolUse/PostToolUse pair-repair below: append
+  # whichever of the two entries is absent. Re-read fresh (not the stale
+  # $raw captured before this block) since earlier merges in this same run
+  # may have changed the file.
+  $planCommand = "node `"$scriptsFwd/plan-gate.js`""
+  $planSettingsJson = [System.IO.File]::ReadAllText($settings) | ConvertFrom-Json
+  $hasPlanStamp = @($planSettingsJson.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Skill|Edit|Write|MultiEdit' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planCommand }).Count -gt 0
+  $hasPlanBash = @($planSettingsJson.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planCommand }).Count -gt 0
+  if ($hasPlanStamp -and $hasPlanBash) {
     Write-Host "  plan-gate hook  -- already present in settings.json"
   } else {
-    Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-plan-gate.json') $scriptsFwd
-    Write-Host "  plan-gate hook  -> merged into settings.json (PreToolUse on Skill+todo.md edits; PLANGATE_DISABLED=1 to turn off)"
+    if (-not $hasPlanStamp) { Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-plan-gate.json') $scriptsFwd }
+    if (-not $hasPlanBash) { Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-plan-gate-bash.json') $scriptsFwd }
+    Write-Host "  plan-gate hook  -> merged into settings.json (PreToolUse on Skill+todo.md edits and Bash git/gh mutations; PLANGATE_DISABLED=1 to turn off, PLANGATE_MUTATION_THRESHOLD to tune the mutation count)"
   }
   Write-Host "  done. New Claude Code sessions pick this up automatically."
 }

@@ -35,8 +35,11 @@
 # stay in lockstep. Any change to the managed surface here (skills, agents (the
 # Claude .md copies, the Codex TOML rendering, and the Copilot .agent.md
 # rendering), the core-rules digest, the instructions managed block, hook
-# wiring + __SCRIPTS__ substitution, model/effort defaults, the TOML upsert,
-# the global gitignore entries, the manifest-based stale prune keyed by
+# wiring + __SCRIPTS__ substitution (including plan-gate's two additive Claude
+# PreToolUse entries, each with its own per-entry matcher+command idempotency
+# check, same pair-repair shape as the Codex plan-gate pilot's PreToolUse +
+# PostToolUse entries), model/effort defaults, the TOML upsert, the global
+# gitignore entries, the manifest-based stale prune keyed by
 # .plan-and-track-manifest) must be mirrored there.
 set -euo pipefail
 
@@ -573,14 +576,31 @@ install_claude() {
       "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  gateguard hook  -> merged into $settings (PreToolUse on edits; GATEGUARD_DISABLED=1 to turn off)"
   fi
-  if grep -q 'plan-gate' "$settings"; then
+  # plan-gate ships as TWO separate PreToolUse entries (Skill+todo.md edits,
+  # and Bash git/gh mutations) pointing at the same command, added additively
+  # rather than as one combined entry so a user who deletes just one gets it
+  # re-added without disturbing the other. Per-entry jq checks (matcher +
+  # command, not the old coarse `grep -q 'plan-gate'`) mirror the Codex
+  # plan-gate pilot's PreToolUse/PostToolUse pair-repair above: append
+  # whichever of the two entries is absent.
+  local plan_cmd="node \"$cscripts/plan-gate.js\""
+  local plan_stamp_present plan_bash_present
+  plan_stamp_present="$(jq --arg m 'Skill|Edit|Write|MultiEdit' --arg c "$plan_cmd" \
+    '[.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]? | select(.command == $c)] | length > 0' "$settings")"
+  plan_bash_present="$(jq --arg m 'Bash' --arg c "$plan_cmd" \
+    '[.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]? | select(.command == $c)] | length > 0' "$settings")"
+  if [ "$plan_stamp_present" = true ] && [ "$plan_bash_present" = true ]; then
     echo "  plan-gate hook  -- already present in settings.json"
   else
     tmp="$(mktemp)"
-    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/claude/pretooluse-plan-gate.json" "$cscripts") \
-      '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
+    jq --slurpfile stamp <(render_hook "$REPO_DIR/hooks/claude/pretooluse-plan-gate.json" "$cscripts") \
+      --slurpfile bash <(render_hook "$REPO_DIR/hooks/claude/pretooluse-plan-gate-bash.json" "$cscripts") \
+      --argjson add_stamp "$([ "$plan_stamp_present" = true ] && echo false || echo true)" \
+      --argjson add_bash "$([ "$plan_bash_present" = true ] && echo false || echo true)" \
+      'if $add_stamp then .hooks.PreToolUse = ((.hooks.PreToolUse // []) + $stamp[0].hooks.PreToolUse) else . end
+       | if $add_bash then .hooks.PreToolUse = ((.hooks.PreToolUse // []) + $bash[0].hooks.PreToolUse) else . end' \
       "$settings" > "$tmp" && write_back "$tmp" "$settings"
-    echo "  plan-gate hook  -> merged into $settings (PreToolUse on Skill+todo.md edits; PLANGATE_DISABLED=1 to turn off)"
+    echo "  plan-gate hook  -> merged into $settings (PreToolUse on Skill+todo.md edits and Bash git/gh mutations; PLANGATE_DISABLED=1 to turn off, PLANGATE_MUTATION_THRESHOLD to tune the mutation count)"
   fi
   echo "  done. New Claude Code sessions pick this up automatically."
 }

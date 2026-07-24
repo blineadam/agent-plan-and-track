@@ -1,0 +1,21 @@
+{
+  "cases": [
+    { "id": "npm-test-silent", "expect": "silent" },
+    { "id": "git-push-help-silent", "expect": "silent" },
+    { "id": "git-push-dry-run-silent", "expect": "silent" },
+    { "id": "gh-pr-view-silent", "expect": "silent" },
+    { "id": "quote-aware-commit-no-mutation", "expect": "silent" },
+    { "id": "heredoc-body-strips-git-push", "expect": "silent" },
+    { "id": "git-c-global-opt-counts", "expect": "silent" },
+    { "id": "gh-r-global-opt-counts", "expect": "silent" },
+    { "id": "threshold-escalation-denies-second", "expect": "deny-on-second-call" },
+    { "id": "single-call-union-denies", "expect": "deny-on-first-call" },
+    { "id": "stamped-session-bypasses-threshold", "expect": "silent-after-stamp" },
+    { "id": "warn-mode-demotes", "expect": "warn-context" },
+    { "id": "disabled-mode-silent", "expect": "silent" },
+    { "id": "mutation-threshold-one-denies-first", "expect": "deny-on-first-call" },
+    { "id": "heredoc-hyphen-delim-body-not-classified", "expect": "silent" },
+    { "id": "quoted-heredoc-op-not-hiding-command", "expect": "silent" },
+    { "id": "comment-strips-following-command", "expect": "silent" }
+  ]
+}
