@@ -69,9 +69,10 @@ name: nightly style refresh
 # GITHUB_TOKEN doesn't trigger other workflow runs, so an event-driven split
 # would silently never fire. It requires proof that the captured PR head has
 # both a Copilot review and a completed, successful Actions-backed full
-# agentic review. If the poll step fails (no such proof within 15 minutes),
-# the run goes red and the PR is left open for a human -- that is the intended
-# degrade path, not a bug.
+# agentic review, then confirms the PR head did not advance after that proof.
+# If the poll step fails (no such proof within 15 minutes), the run goes red
+# and the PR is left open for a human -- that is the intended degrade path,
+# not a bug.
 #
 # install.sh wires this repo's own PreToolUse hooks into the runner's
 # ~/.claude/settings.json; PLANGATE_DISABLED and GATEGUARD_DISABLED are set
@@ -225,6 +226,11 @@ jobs:
             successful_full_run="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$head_sha&event=dynamic&per_page=100" \
               --jq "[.workflow_runs[] | select(.head_sha == \"$head_sha\" and .path == \"dynamic/agents/copilot-pull-request-reviewer\" and .status == \"completed\" and .conclusion == \"success\")] | length")"
             if [ "$matching_review" -gt 0 ] && [ "$successful_full_run" -gt 0 ]; then
+              current_head="$(gh api "repos/${{ github.repository }}/pulls/$pr" --jq .head.sha)"
+              if [ "$current_head" != "$head_sha" ]; then
+                echo "PR head advanced after full Copilot review proof; leaving PR #$pr open" >&2
+                exit 1
+              fi
               exit 0
             fi
             sleep 30
@@ -241,9 +247,11 @@ jobs:
           pr="${{ steps.pr.outputs.number }}"
           {
             echo "## Reviews"
-            gh api "repos/${{ github.repository }}/pulls/$pr/reviews"
+            gh api "repos/${{ github.repository }}/pulls/$pr/reviews" \
+              --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")]'
             echo "## Review comments"
-            gh api "repos/${{ github.repository }}/pulls/$pr/comments"
+            gh api "repos/${{ github.repository }}/pulls/$pr/comments" \
+              --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")]'
           } > "$RUNNER_TEMP/copilot-review.json"
 
       - name: Address the review (Claude session 2)
@@ -370,7 +378,10 @@ jobs:
           # merge"). Both are transient races, not permanent failures, so on
           # either one this loop logs it and keeps polling/retrying rather
           # than failing the run; any other merge error is treated as real
-          # and stops immediately.
+          # and stops immediately. Each merge call is also pinned to the
+          # runner's checked-out SHA, including any reviewed session-2
+          # commit, so a remote head advance fails closed instead of merging
+          # an unreviewed commit.
           for i in $(seq 1 80); do
             info="$(gh pr view "$pr" --json mergeStateStatus,statusCheckRollup)"
             merge_status="$(echo "$info" | jq -r '.mergeStateStatus')"
@@ -381,7 +392,8 @@ jobs:
             fi
             case "$merge_status" in
               CLEAN|HAS_HOOKS)
-                if merge_err="$(gh pr merge "$pr" --squash --delete-branch 2>&1)"; then
+                expected_head="$(git rev-parse HEAD)"
+                if merge_err="$(gh pr merge "$pr" --squash --delete-branch --match-head-commit "$expected_head" 2>&1)"; then
                   echo "$merge_err"
                   exit 0
                 fi
@@ -395,15 +407,9 @@ jobs:
               DIRTY)
                 echo "PR has merge conflicts (mergeStateStatus=$merge_status)" >&2; exit 1 ;;
               BEHIND)
-                # BEHIND doesn't self-clear like the other transient statuses: it
-                # means the head ref is genuinely out of date against base, and
-                # nothing else in this workflow pushes new commits to the PR
-                # branch to resolve that. Update it the same way the "Update
-                # branch" button does; the resulting synchronize event re-runs
-                # checks on the new head, which this same loop already waits on.
-                echo "PR branch is behind base; updating it" >&2
-                gh api --method PUT "repos/${{ github.repository }}/pulls/$pr/update-branch" >/dev/null 2>&1 || true
-                ;;
+                # Updating remotely would create a PR head the runner has not
+                # checked out or reviewed, so leave it open for a human instead.
+                echo "PR branch is behind base; leaving PR #$pr open" >&2; exit 1 ;;
               *) ;; # BLOCKED, UNSTABLE, UNKNOWN -- still settling, keep polling
             esac
             sleep 15
