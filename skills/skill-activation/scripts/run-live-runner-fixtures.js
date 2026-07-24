@@ -16,7 +16,7 @@ const path = require('path');
 const SCRIPT_DIR = __dirname;
 const ACTIVATION_RUNNER = path.join(SCRIPT_DIR, 'run-activation-cases.js');
 const BEHAVIORAL_RUNNER = path.join(SCRIPT_DIR, 'run-behavioral-smokes.js');
-const TEST_PROCESS_TIMEOUT_MS = 8000;
+const TEST_PROCESS_TIMEOUT_MS = 20000;
 
 let scratchRoot = null;
 let fakeScripts = null;
@@ -50,6 +50,12 @@ function writeJsonl(file, values) {
   fs.writeFileSync(file, values.map((value) => JSON.stringify(value)).join('\n') + '\n');
 }
 
+function writeReorderedJson(file, value) {
+  const reordered = {};
+  for (const key of Object.keys(value).reverse()) reordered[key] = value[key];
+  fs.writeFileSync(file, JSON.stringify(reordered, null, 2) + '\n');
+}
+
 function writeFakeExecutables(binDir) {
   fs.mkdirSync(binDir, { recursive: true });
   const fakeCli = path.join(binDir, 'fake-cli.js');
@@ -78,7 +84,8 @@ function writeFakeExecutables(binDir) {
       "const emit = kind === 'codex' ? emitCodex : emitClaude;",
       "if (prompt.includes('truncate-stdout')) {",
       "  emit();",
-      "  process.stdout.write(Buffer.alloc(33 * 1024 * 1024, 120), () => process.exit(0));",
+      "  const mib = prompt.includes('truncate-stdout-large') ? 65 : 33;",
+      "  process.stdout.write(Buffer.alloc(mib * 1024 * 1024, 120), () => process.exit(0));",
       "} else if (prompt.includes('timeout') || prompt.includes('signal-case')) {",
       "  emit();",
       "  if (activity) {",
@@ -347,6 +354,30 @@ async function testActivation(binDir) {
   const slowMetaPath = path.join(slowResults, 'slow-success.meta.json');
   const slowMeta = JSON.parse(fs.readFileSync(slowMetaPath, 'utf8'));
   assert(slowMeta.exit_code === 0 && !slowMeta.timed_out, 'activation success metadata was not clean');
+  writeReorderedJson(slowMetaPath, slowMeta);
+  const reorderedCheck = await runNode(
+    ACTIVATION_RUNNER,
+    ['--check', slowResults, slowCorpus],
+    baseEnv(binDir, {})
+  );
+  assert(
+    reorderedCheck.code === 0 &&
+      parseReport(reorderedCheck, 'activation reordered metadata check').passed === 1,
+    'activation check treated metadata key order as semantic'
+  );
+  const invalidMeta = { ...slowMeta, unexpected: true };
+  delete invalidMeta.duration_ms;
+  fs.writeFileSync(slowMetaPath, JSON.stringify(invalidMeta, null, 2) + '\n');
+  const invalidCheck = await runNode(
+    ACTIVATION_RUNNER,
+    ['--check', slowResults, slowCorpus],
+    baseEnv(binDir, {})
+  );
+  assert(
+    invalidCheck.code === 1 &&
+      parseReport(invalidCheck, 'activation invalid metadata check').passed === 0,
+    'activation check accepted a missing key replaced by an unknown key'
+  );
   fs.rmSync(slowMetaPath);
   const legacyCheck = await runNode(
     ACTIVATION_RUNNER,
@@ -414,6 +445,33 @@ async function testActivation(binDir) {
   assert(timeout.code === 1 && timeoutReport.passed === 0, 'activation timeout did not fail');
   retainedActivationDir(timeout.stderr);
   await assertActivityStopped(activity, 'activation timeout');
+
+  const truncatedRoot = path.join(root, 'truncated');
+  fs.mkdirSync(truncatedRoot, { recursive: true });
+  const truncatedCorpus = path.join(truncatedRoot, 'truncated.jsonl');
+  writeJsonl(truncatedCorpus, [
+    {
+      id: 'truncated-case',
+      prompt: 'truncate-stdout-large',
+      expect_skill: 'fixture-skill',
+    },
+  ]);
+  const truncated = await runNode(
+    ACTIVATION_RUNNER,
+    ['--run', truncatedCorpus],
+    baseEnv(binDir, { ACTIVATION_ALLOW_SPEND: '1', LIVE_CASE_TIMEOUT_MS: '10000' })
+  );
+  const truncatedReport = parseReport(truncated, 'activation truncated stdout');
+  const truncatedResults = retainedActivationDir(truncated.stderr);
+  const truncatedMeta = JSON.parse(
+    fs.readFileSync(path.join(truncatedResults, 'truncated-case.meta.json'), 'utf8')
+  );
+  assert(
+    truncated.code === 1 &&
+      truncatedReport.passed === 0 &&
+      truncatedMeta.stdout_truncated === true,
+    'activation truncated stdout did not fail with metadata'
+  );
 }
 
 async function testBehavioral(binDir) {
@@ -445,7 +503,33 @@ async function testBehavioral(binDir) {
     slow.stderr.indexOf('[1/1] slow-success start') < slow.stderr.indexOf('[1/1] slow-success complete'),
     'behavioral start progress was not exposed before completion'
   );
-  fs.rmSync(path.join(results, 'slow-success.meta.json'));
+  const slowMetaPath = path.join(results, 'slow-success.meta.json');
+  const slowMeta = JSON.parse(fs.readFileSync(slowMetaPath, 'utf8'));
+  writeReorderedJson(slowMetaPath, slowMeta);
+  const reorderedCheck = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--check', results, corpus],
+    baseEnv(binDir, {})
+  );
+  assert(
+    reorderedCheck.code === 0 &&
+      parseReport(reorderedCheck, 'behavioral reordered metadata check').passed === 1,
+    'behavioral check treated metadata key order as semantic'
+  );
+  const invalidMeta = { ...slowMeta, unexpected: true };
+  delete invalidMeta.duration_ms;
+  fs.writeFileSync(slowMetaPath, JSON.stringify(invalidMeta, null, 2) + '\n');
+  const invalidCheck = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--check', results, corpus],
+    baseEnv(binDir, {})
+  );
+  assert(
+    invalidCheck.code === 1 &&
+      parseReport(invalidCheck, 'behavioral invalid metadata check').invalid === 1,
+    'behavioral check accepted a missing key replaced by an unknown key'
+  );
+  fs.rmSync(slowMetaPath);
   const legacyCheck = await runNode(
     BEHAVIORAL_RUNNER,
     ['--check', results, corpus],
@@ -486,6 +570,39 @@ async function testBehavioral(binDir) {
   );
   assert(timeoutMeta.timed_out === true, 'behavioral timeout metadata did not record timed_out');
   await assertActivityStopped(activity, 'behavioral timeout');
+
+  const truncatedRoot = path.join(root, 'truncated');
+  fs.mkdirSync(truncatedRoot, { recursive: true });
+  const truncatedCorpus = makeBehavioralCorpus(truncatedRoot, [
+    {
+      id: 'truncated-case',
+      skill: 'fixture-skill',
+      prompt: 'truncate-stdout-large',
+      max_turns: 2,
+      fixture: 'truncated-case',
+      assertions: [{ kind: 'file_regex', path: 'artifact.txt', regex: 'fixture output', flags: '' }],
+    },
+  ]);
+  const truncatedResults = path.join(truncatedRoot, 'results');
+  const truncated = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', truncatedResults, truncatedCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '10000',
+      FAKE_WRITE_ARTIFACT: '1',
+    })
+  );
+  const truncatedReport = parseReport(truncated, 'behavioral truncated stdout');
+  const truncatedMeta = JSON.parse(
+    fs.readFileSync(path.join(truncatedResults, 'truncated-case.meta.json'), 'utf8')
+  );
+  assert(
+    truncated.code === 1 &&
+      truncatedReport.invalid === 1 &&
+      truncatedMeta.stdout_truncated === true,
+    'behavioral truncated stdout did not fail as invalid with metadata'
+  );
 }
 
 async function testCodex(binDir, codexRunner) {
@@ -515,7 +632,32 @@ async function testCodex(binDir, codexRunner) {
     fs.readFileSync(path.join(results, 'valid-looking-nonzero', 'meta.json'), 'utf8')
   );
   assert(meta.exit_code === 7, 'Codex metadata did not preserve the nonzero exit code');
-  fs.rmSync(path.join(results, 'after-failure', 'meta.json'));
+  const cleanMetaPath = path.join(results, 'after-failure', 'meta.json');
+  const cleanMeta = JSON.parse(fs.readFileSync(cleanMetaPath, 'utf8'));
+  writeReorderedJson(cleanMetaPath, cleanMeta);
+  const reorderedCheck = await runNode(
+    codexRunner,
+    ['--check', results, corpus],
+    baseEnv(binDir, {})
+  );
+  const reorderedReport = parseReport(reorderedCheck, 'Codex reordered metadata check');
+  assert(
+    reorderedCheck.code === 1 && reorderedReport.cases[1].live === true,
+    'Codex check treated metadata key order as semantic'
+  );
+  const invalidMeta = { ...cleanMeta, unexpected: true };
+  delete invalidMeta.duration_ms;
+  fs.writeFileSync(cleanMetaPath, JSON.stringify(invalidMeta, null, 2) + '\n');
+  const invalidCheck = await runNode(
+    codexRunner,
+    ['--check', results, corpus],
+    baseEnv(binDir, {})
+  );
+  assert(
+    invalidCheck.code === 1 && invalidCheck.stderr.includes('after-failure: invalid meta.json'),
+    'Codex check accepted a missing key replaced by an unknown key'
+  );
+  fs.rmSync(cleanMetaPath);
   const legacyCheck = await runNode(
     codexRunner,
     ['--check', results, corpus],
