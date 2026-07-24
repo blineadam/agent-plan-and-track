@@ -1,6 +1,6 @@
 ---
 name: efficient-frontier
-description: "Use before choosing or spawning a tiered subagent, or reviewing a subagent handback. Covers planning, execution, research, debugging, mechanical work, and high-stakes security/architecture review. Use plan-and-track to create the task's plan."
+description: "Use before subagent selection/handback review: high-stakes security/architecture; plan drafting (task plans: plan-and-track), existing-spec execution, repo research, bug repro, mechanical edits."
 ---
 
 # Efficient Frontier
