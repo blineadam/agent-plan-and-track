@@ -20,9 +20,12 @@ themselves. See `.ai-style-rules.md` for the full convention set.
 
 ## Skill files
 
-- A skill's frontmatter `description` must lead with (or clearly contain)
-  the trigger clause: "Use when X," "Use BEFORE Y." A summary of what the
-  skill does, with no trigger clause, is not sufficient.
+- Review skill frontmatter `description` text for routing first: it should
+  front-load user intent, trigger terms, and the nearest negative boundary,
+  while preserving clauses that prevent known misroutes. Treat about 500
+  decoded characters as an informational target only, not a CI/schema cap;
+  shorter or evidence-backed longer descriptions are valid, within the
+  separate 1,024-character format maximum.
 - Any frontmatter value containing a colon-space (`: `) must be quoted:
   double quotes by default, single quotes when the text already contains a
   double quote, and when it contains both quote types, escape the chosen
