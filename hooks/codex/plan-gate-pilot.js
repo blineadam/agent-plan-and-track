@@ -1,16 +1,27 @@
 #!/usr/bin/env node
 /**
- * Warn-only Codex plan gate.
+ * Codex plan gate.
  *
  * The PreToolUse half snapshots every explicit apply_patch path before the
  * patch. The PostToolUse half atomically claims that immutable snapshot and
- * bases every verdict on the disk delta, never on tool_response. This is a
- * hook response. The installer copies this source to plan-gate.js.
+ * bases every verdict on the disk delta, never on tool_response. A separate
+ * Bash PreToolUse path blocks the second distinct unplanned outward mutation
+ * among git push, gh pr create, and gh pr merge. A valid new plan item written
+ * through apply_patch stamps the shared session state and unlocks that gate.
+ * The installer copies this source to plan-gate.js.
  *
  * State is keyed by sha256([session_id, canonical cwd, tool_use_id]). A
- * sibling per-session+cwd scope record counts changed source paths. Missing
- * correlation, malformed input/state, snapshots, or filesystem failures fail
- * open. Warnings are the sole output, one JSON object with systemMessage.
+ * sibling per-session+cwd scope record counts changed source paths and allowed
+ * outward mutation kinds. Missing correlation, malformed input/state,
+ * snapshots, or filesystem failures fail open. Scope and migration warnings
+ * remain nonblocking systemMessage output; mutation denials use Codex's
+ * canonical PreToolUse permissionDecision response.
+ *
+ * Config (env):
+ *   PLANGATE_MUTATION_THRESHOLD distinct-outward-mutation-kind count that
+ *                             trips the mutation gate (default 2). Only 3
+ *                             kinds exist, so a value above 3 effectively
+ *                             disables this gate.
  */
 'use strict';
 
@@ -28,6 +39,7 @@ const MAIN_OK_RE = /\(main:\s*[^)\s][^)]*\)\s*$/i;
 const MAIN_ANY_RE = /\(main(?::[^)]*)?\)\s*$/i;
 const MIGRATION_HEADING_RE = /^\s{0,3}##\s+Migration State\s*$/im;
 const SCOPE_WARNING = 'This session has changed 3 distinct source paths without a new valid `## Plan` item. The edits still proceed.';
+const MUTATION_KINDS = new Set(['git-push', 'gh-pr-create', 'gh-pr-merge']);
 
 function readStdin() {
   try {
@@ -206,10 +218,11 @@ function withScopeLock(c, fn) {
 
 function loadScope(c) {
   const file = scopePath(c);
-  if (!fs.existsSync(file)) return { paths: [], stamped: false, warned: false };
+  if (!fs.existsSync(file)) return { mutations: [], paths: [], stamped: false, warned: false };
   const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (!parsed || !Array.isArray(parsed.paths) || typeof parsed.stamped !== 'boolean' || typeof parsed.warned !== 'boolean' || !parsed.paths.every((p) => typeof p === 'string')) throw new Error('invalid scope');
-  return { paths: [...new Set(parsed.paths)], stamped: parsed.stamped, warned: parsed.warned };
+  const mutations = parsed && parsed.mutations === undefined ? [] : parsed && parsed.mutations;
+  if (!parsed || !Array.isArray(parsed.paths) || !Array.isArray(mutations) || typeof parsed.stamped !== 'boolean' || typeof parsed.warned !== 'boolean' || !parsed.paths.every((p) => typeof p === 'string') || !mutations.every((kind) => MUTATION_KINDS.has(kind))) throw new Error('invalid scope');
+  return { mutations: [...new Set(mutations)], paths: [...new Set(parsed.paths)], stamped: parsed.stamped, warned: parsed.warned };
 }
 
 function saveScope(c, state) {
@@ -255,6 +268,202 @@ function validPlanItem(item) {
   return TIER_TAG_RE.test(item);
 }
 
+// Quote-aware split of a Bash command into command-position segments, with
+// shell comments and heredoc bodies removed in the same pass so neither a
+// `# ...` comment nor a `<<EOF ... EOF` body (e.g. a PR description piped to
+// `gh pr create`) is ever classified. Comment, heredoc, and separator
+// recognition all happen ONLY in unquoted context: a `#`, a `<<`, or a `;`
+// inside quotes is literal text, not shell syntax. That is what keeps
+// `git commit -m "then git push"` from splitting and `echo "text <<EOF"`
+// from swallowing a real following command.
+//
+// Command substitutions (`$(...)`, backticks) and subshells (`(...)`) are
+// deliberately NOT descended into: a mutation buried in one (`echo $(git
+// push)`) is an accepted false negative, the same class as `env git push`,
+// `/usr/bin/git push`, or an aliased `git`. The backstop targets the plain
+// `git push` / `gh pr ...` forms a session actually uses to ship, not exotic
+// nesting.
+function splitShellSegments(command) {
+  const text = String(command || '');
+  const n = text.length;
+  const segments = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  const pendingHeredocs = [];
+  let i = 0;
+
+  while (i < n) {
+    const ch = text[i];
+
+    if (inSingle) {
+      current += ch;
+      if (ch === "'") inSingle = false;
+      i += 1;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '\\' && i + 1 < n) {
+        current += ch + text[i + 1];
+        i += 2;
+        continue;
+      }
+      current += ch;
+      if (ch === '"') inDouble = false;
+      i += 1;
+      continue;
+    }
+
+    if (ch === '\\' && i + 1 < n) {
+      current += ch + text[i + 1];
+      i += 2;
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      current += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      current += ch;
+      i += 1;
+      continue;
+    }
+
+    if (ch === '#' && (current === '' || /\s/.test(current[current.length - 1]))) {
+      while (i < n && text[i] !== '\n') i += 1;
+      continue;
+    }
+
+    if (ch === '<' && text[i + 1] === '<' && text[i + 2] !== '<') {
+      let j = i + 2;
+      let stripTabs = false;
+      if (text[j] === '-') {
+        stripTabs = true;
+        j += 1;
+      }
+      while (j < n && (text[j] === ' ' || text[j] === '\t')) j += 1;
+      let word = '';
+      if (text[j] === "'" || text[j] === '"') {
+        const quote = text[j];
+        j += 1;
+        while (j < n && text[j] !== quote) {
+          word += text[j];
+          j += 1;
+        }
+        if (j < n) j += 1;
+      } else {
+        while (j < n && !/[\s;&|<>()]/.test(text[j])) {
+          word += text[j];
+          j += 1;
+        }
+      }
+      if (word) {
+        pendingHeredocs.push({ word, stripTabs });
+        i = j;
+        continue;
+      }
+      current += ch;
+      i += 1;
+      continue;
+    }
+
+    if (ch === '\n') {
+      segments.push(current);
+      current = '';
+      i += 1;
+      while (pendingHeredocs.length && i < n) {
+        const { word, stripTabs } = pendingHeredocs.shift();
+        for (;;) {
+          let lineEnd = text.indexOf('\n', i);
+          const atEnd = lineEnd === -1;
+          if (atEnd) lineEnd = n;
+          const line = text.slice(i, lineEnd);
+          const compare = stripTabs ? line.replace(/^\t+/, '') : line;
+          i = atEnd ? n : lineEnd + 1;
+          if (compare === word || atEnd) break;
+        }
+      }
+      continue;
+    }
+
+    if (ch === ';' || ch === '&' || ch === '|') {
+      segments.push(current);
+      current = '';
+      i += 1;
+      continue;
+    }
+
+    current += ch;
+    i += 1;
+  }
+  segments.push(current);
+  return segments;
+}
+
+// Classifies one Bash command into the (closed) set of outward, hard-to-
+// reverse git/gh mutations it contains: a subset of {git-push,
+// gh-pr-create, gh-pr-merge}. Conservative by design: a full-path
+// invocation (`/usr/bin/git`), `env git`, or a shell alias is an accepted
+// false negative, not chased.
+function detectOutwardMutations(command) {
+  const kinds = new Set();
+  for (const rawSegment of splitShellSegments(command)) {
+    const trimmed = rawSegment.trim();
+    if (!trimmed) continue;
+    const tokens = trimmed.split(/\s+/);
+    while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) tokens.shift();
+    if (tokens[0] === 'command') tokens.shift();
+    if (!tokens.length) continue;
+
+    if (tokens[0] === 'git') {
+      let i = 1;
+      while (i < tokens.length) {
+        const t = tokens[i];
+        if (t === '-C' || t === '-c') {
+          i += 2;
+          continue;
+        }
+        if (/^(--git-dir=|-C=)/.test(t)) {
+          i += 1;
+          continue;
+        }
+        break;
+      }
+      if (tokens[i] === 'push') {
+        const excluded = tokens.some((t) => t === '--help' || t === '-h' || t === '--dry-run' || t === '-n');
+        if (!excluded) kinds.add('git-push');
+      }
+    } else if (tokens[0] === 'gh') {
+      let i = 1;
+      while (i < tokens.length) {
+        const t = tokens[i];
+        if (t === '-R' || t === '--repo') {
+          i += 2;
+          continue;
+        }
+        break;
+      }
+      const excluded = tokens.some((t) => t === '--help' || t === '--dry-run');
+      if (!excluded) {
+        const remaining = tokens.slice(i).filter((t) => !/^-/.test(t));
+        if (remaining[0] === 'pr' && remaining[1] === 'create') kinds.add('gh-pr-create');
+        if (remaining[0] === 'pr' && remaining[1] === 'merge') kinds.add('gh-pr-merge');
+      }
+    }
+  }
+  return kinds;
+}
+
+function mutationThreshold() {
+  const raw = process.env.PLANGATE_MUTATION_THRESHOLD;
+  if (raw === undefined || raw === '') return 2;
+  const n = Number.parseInt(raw, 10);
+  return Number.isInteger(n) && n >= 1 ? n : 2;
+}
+
 function isTodo(file) {
   return /(^|\/)tasks\/todo\.md$/i.test(file.relative);
 }
@@ -268,7 +477,8 @@ function recordEvent(phase, input, c, message) {
   if (!eventFile) return;
   try {
     fs.mkdirSync(path.dirname(eventFile), { recursive: true, mode: 0o700 });
-    fs.appendFileSync(eventFile, JSON.stringify({ cwd: c.cwd, message, phase, session_id: input.session_id, tool_name: input.tool_name, tool_use_id: input.tool_use_id }) + '\n', { mode: 0o600 });
+    const command = input.tool_name === 'Bash' && input.tool_input && typeof input.tool_input.command === 'string' ? input.tool_input.command : undefined;
+    fs.appendFileSync(eventFile, JSON.stringify({ command, cwd: c.cwd, message, phase, session_id: input.session_id, tool_name: input.tool_name, tool_use_id: input.tool_use_id }) + '\n', { mode: 0o600 });
   } catch {
     /* instrumentation must never affect a hook verdict */
   }
@@ -280,7 +490,46 @@ function warning(message, input, c) {
   process.stdout.write(JSON.stringify({ systemMessage }));
 }
 
+function mutationMessage(threshold) {
+  return `[PlanGate] This command would bring this session to ${threshold} distinct outward git/gh mutations (push, PR create, PR merge) without a plan. Add a valid new unchecked item under an exact \`## Plan\` heading in tasks/todo.md through apply_patch, including a verify clause and owner tag, then retry this command. (PLANGATE_MUTATION_THRESHOLD sets the mutation-count trigger, default 2.)`;
+}
+
+function denyMutation(threshold, input, c) {
+  const message = mutationMessage(threshold);
+  recordEvent('Denied', input, c, message);
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: message,
+    },
+  }));
+}
+
+function mutationPre(input, c) {
+  if (!input.tool_input || typeof input.tool_input.command !== 'string') return;
+  const kinds = detectOutwardMutations(input.tool_input.command);
+  if (!kinds.size) return;
+  pruneState();
+  const outcome = withScopeLock(c, () => {
+    const scope = loadScope(c);
+    if (scope.stamped) return null;
+    const newKinds = [...kinds].filter((kind) => !scope.mutations.includes(kind));
+    const threshold = mutationThreshold();
+    if (scope.mutations.length + newKinds.length >= threshold) return { threshold };
+    scope.mutations.push(...newKinds);
+    saveScope(c, scope);
+    return null;
+  });
+  if (outcome && outcome.threshold) denyMutation(outcome.threshold, input, c);
+  else if (outcome === null) recordEvent('Allowed', input, c);
+}
+
 function pre(input, c) {
+  if (input.tool_name === 'Bash') {
+    mutationPre(input, c);
+    return;
+  }
   if (input.tool_name !== 'apply_patch' || !input.tool_input || typeof input.tool_input.command !== 'string') return;
   pruneState();
   const declared = parsePaths(input.tool_input.command);
@@ -356,7 +605,7 @@ function post(input, c) {
       if (planValid) {
         scope.stamped = true;
         saveScope(c, scope);
-        return null;
+        return { stamped: true };
       }
       if (scope.stamped) return null;
       if (!scope.warned) {
@@ -371,6 +620,7 @@ function post(input, c) {
       return null;
     });
     if (outcome && outcome.message) warning(outcome.message, input, c);
+    else if (outcome && outcome.stamped) recordEvent('Stamped', input, c);
   } catch {
     return;
   } finally {

@@ -123,7 +123,7 @@ hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copi
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
 hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate + plan-gate
 hooks/copilot/                Copilot wiring: throttled digest + gateguard
-hooks/codex/                  Codex wiring: digest + gateguard + delivery-gate + warn-only plan gate
+hooks/codex/                  Codex wiring: digest + gateguard + delivery-gate + scope/mutation plan gate
 install.sh                    per-tool installer
 docs/skills.md                full skill catalog
 docs/models.md                model defaults, tiered subagents, per-tool notes

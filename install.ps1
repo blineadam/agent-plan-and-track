@@ -41,9 +41,9 @@
   managed surface (skills, agents (the Claude .md copies, the Codex TOML
   rendering, and the Copilot .agent.md rendering), the core-rules digest, the
   instructions managed block, hook wiring + __SCRIPTS__ substitution
-  (including plan-gate's two additive Claude PreToolUse entries, each with its
-  own per-entry matcher+command idempotency check, same pair-repair shape as
-  the Codex plan-gate pilot's PreToolUse + PostToolUse entries),
+  (including plan-gate's two additive Claude PreToolUse entries and the Codex
+  plan gate's apply_patch PreToolUse, Bash PreToolUse, and apply_patch
+  PostToolUse entries, each with its own matcher + command idempotency check),
   model/effort defaults, the TOML upsert, the global gitignore entries, the
   manifest-based stale prune keyed by .plan-and-track-manifest) must be
   mirrored in both. See install.sh for the same note.
@@ -768,7 +768,7 @@ function Install-Codex {
   New-Item -ItemType Directory -Force -Path $scripts | Out-Null
   if (-not (Test-Path -LiteralPath $hooks)) { [System.IO.File]::WriteAllText($hooks, '{"hooks":{}}', $Utf8NoBom) }
   # Shared scripts: the core-rules digest (replaces the old inline `cat`) plus
-  # gateguard + delivery-gate, plus the Codex-specific warn-only plan gate.
+  # gateguard + delivery-gate, plus the Codex-specific plan gate.
   # Codex's Stop payload and apply_patch PreToolUse are Claude-shaped, so the
   # universal scripts run here unchanged (dialect sniffed at runtime).
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/core-rules-digest.js') -Destination (Join-Path $scripts 'core-rules-digest.js') -Force
@@ -800,14 +800,35 @@ function Install-Codex {
   $hookSettings = [System.IO.File]::ReadAllText($hooks) | ConvertFrom-Json
   $planPreCommand = "node `"$scriptsFwd/plan-gate.js`" --pre"
   $planPostCommand = "node `"$scriptsFwd/plan-gate.js`" --post"
-  $hasPlanPre = @($hookSettings.hooks.PreToolUse | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPreCommand }).Count -gt 0
-  $hasPlanPost = @($hookSettings.hooks.PostToolUse | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPostCommand }).Count -gt 0
-  if ($hasPlanPre -and $hasPlanPost) {
+  $hasPlanApplyPre = @($hookSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'apply_patch' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPreCommand }).Count -gt 0
+  $hasPlanBashPre = @($hookSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPreCommand }).Count -gt 0
+  $hasPlanApplyPost = @($hookSettings.hooks.PostToolUse | Where-Object { $_.matcher -eq 'apply_patch' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPostCommand }).Count -gt 0
+  if ($hasPlanApplyPre -and $hasPlanBashPre -and $hasPlanApplyPost) {
     Write-Host "  plan-gate hook  -- already present in hooks.json"
   } else {
-    if (-not $hasPlanPre) { Merge-HookInto $hooks 'PreToolUse' (Join-Path $RepoDir 'hooks/codex/plan-gate-pilot-hooks.json') $scriptsFwd }
-    if (-not $hasPlanPost) { Merge-HookInto $hooks 'PostToolUse' (Join-Path $RepoDir 'hooks/codex/plan-gate-pilot-hooks.json') $scriptsFwd }
-    Write-Host "  plan-gate hook  -> repaired in hooks.json (PreToolUse + PostToolUse on apply_patch; warn-only)"
+    $template = Get-RenderedHook (Join-Path $RepoDir 'hooks/codex/plan-gate-pilot-hooks.json') $scriptsFwd | ConvertFrom-Json
+    if (-not $hasPlanApplyPre) {
+      $entry = @($template.hooks.PreToolUse | Where-Object { $_.matcher -eq 'apply_patch' })
+      if (-not ($hookSettings.hooks.PSObject.Properties.Name -contains 'PreToolUse')) {
+        $hookSettings.hooks | Add-Member -NotePropertyName 'PreToolUse' -NotePropertyValue @() -Force
+      }
+      $hookSettings.hooks.PreToolUse = @(@($hookSettings.hooks.PreToolUse) + $entry)
+    }
+    if (-not $hasPlanBashPre) {
+      $entry = @($template.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' })
+      if (-not ($hookSettings.hooks.PSObject.Properties.Name -contains 'PreToolUse')) {
+        $hookSettings.hooks | Add-Member -NotePropertyName 'PreToolUse' -NotePropertyValue @() -Force
+      }
+      $hookSettings.hooks.PreToolUse = @(@($hookSettings.hooks.PreToolUse) + $entry)
+    }
+    if (-not $hasPlanApplyPost) {
+      if (-not ($hookSettings.hooks.PSObject.Properties.Name -contains 'PostToolUse')) {
+        $hookSettings.hooks | Add-Member -NotePropertyName 'PostToolUse' -NotePropertyValue @() -Force
+      }
+      $hookSettings.hooks.PostToolUse = @(@($hookSettings.hooks.PostToolUse) + @($template.hooks.PostToolUse))
+    }
+    [System.IO.File]::WriteAllText($hooks, ($hookSettings | ConvertTo-Json -Depth 16), $Utf8NoBom)
+    Write-Host "  plan-gate hook  -> repaired in hooks.json (apply_patch PreToolUse/PostToolUse + Bash PreToolUse; mutation gate blocks at PLANGATE_MUTATION_THRESHOLD)"
   }
   Write-Host "  done. Hooks need node at runtime. Start a new codex session to load."
 }
