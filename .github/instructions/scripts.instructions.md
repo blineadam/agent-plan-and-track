@@ -21,9 +21,12 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   one-line comment or stderr diagnostic only when the fallback's safety
   isn't obvious from the code alone (e.g. it changes control flow).
 - Do not propose factoring the duplicated `readStdin()` / `intEnv()` helpers
-  into a shared module. Each script installs standalone into a different
-  harness's scripts directory with no shared `node_modules` or relative
-  import root: the duplication is intentional.
+  (or the plan-gate mutation gate's `splitShellSegments()` /
+  `detectOutwardMutations()` pair, duplicated the same way between
+  `hooks/claude/plan-gate.js` and `hooks/codex/plan-gate-pilot.js`) into a
+  shared module. Each script installs standalone into a different harness's
+  scripts directory with no shared `node_modules` or relative import root:
+  the duplication is intentional.
 - `camelCase` for variables and functions, except wire-format fields
   mirrored verbatim from a JSON payload (`tool_name`, `tool_input`,
   `session_id`), which stay snake_case to match the payload.
@@ -119,6 +122,14 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   surface. Flag a PR that changes one installer's managed surface (a skill,
   a hook wiring, a default, the digest) without the mirrored change to the
   other.
+- A hook wired as more than one entry (e.g. `plan-gate.js`'s Skill/Edit/Write
+  entry plus its Bash mutation-gate entry, or the Codex pilot's `apply_patch`
+  Pre/PostToolUse plus Bash entries) must check and repair each exact entry
+  (matcher + command) independently, not a single coarse presence check
+  (like a bare `grep -q 'plan-gate'`) for the hook as a whole. Flag an
+  add-if-absent check that would treat the hook as fully installed once any
+  one of its entries exists, since that skips re-adding a newly introduced
+  entry for someone who already has an older version installed.
 - `.gitattributes` forces LF on `*.sh` / `*.js` / `*.json` / `*.md` (a CRLF
   shebang breaks bash; hook scripts and JSON are read on every platform) and
   CRLF on `*.ps1` (the Windows-native installer). Flag a change that
