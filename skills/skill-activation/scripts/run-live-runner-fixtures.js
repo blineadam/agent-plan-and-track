@@ -111,9 +111,16 @@ function terminateTree(child, force) {
   if (!child || !child.pid) return;
   if (process.platform === 'win32') {
     try {
-      spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+      const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT;
+      const taskkill = systemRoot ? path.join(systemRoot, 'System32', 'taskkill.exe') : 'taskkill.exe';
+      const killer = spawn(taskkill, ['/PID', String(child.pid), '/T', '/F'], {
         stdio: 'ignore',
         windowsHide: true,
+      });
+      killer.on('error', () => {
+        try {
+          child.kill();
+        } catch {}
       });
     } catch {
       try {
@@ -216,6 +223,53 @@ async function testPrecheckLengths(binDir) {
   );
 }
 
+async function testMalformedInstalledToml(binDir) {
+  const root = path.join(scratchRoot, 'precheck-agent-toml');
+  const agentsDir = path.join(root, 'agents');
+  const installedHome = path.join(root, 'installed');
+  const description = 'Use when testing malformed installed output.';
+  const source = [
+    '---',
+    'name: malformed-render',
+    `description: ${description}`,
+    'model: fable',
+    'effort: xhigh',
+    'tools: Read',
+    '---',
+    '',
+    'Inspect malformed installed output.',
+    '',
+  ].join('\n');
+  fs.mkdirSync(agentsDir, { recursive: true });
+  fs.writeFileSync(path.join(agentsDir, 'malformed-render.md'), source);
+  for (const relative of [
+    path.join('.claude', 'agents', 'malformed-render.md'),
+    path.join('.copilot', 'agents', 'malformed-render.agent.md'),
+  ]) {
+    const installed = path.join(installedHome, relative);
+    fs.mkdirSync(path.dirname(installed), { recursive: true });
+    fs.writeFileSync(installed, source);
+  }
+  const codexAgent = path.join(installedHome, '.codex', 'agents', 'malformed-render.toml');
+  fs.mkdirSync(path.dirname(codexAgent), { recursive: true });
+  fs.writeFileSync(codexAgent, `description = "${'\\!'.repeat(40)}\n`);
+
+  const run = await runNode(
+    ACTIVATION_RUNNER,
+    ['--precheck-agents', agentsDir, installedHome],
+    baseEnv(binDir)
+  );
+  const report = parseReport(run, 'precheck malformed installed TOML');
+  assert(run.code === 1, `malformed installed TOML exited ${run.code}, expected 1`);
+  assert(report.schema_issue_count === 1, 'malformed installed TOML was not a schema mismatch');
+  assert(
+    report.agents[0].claude_description_matches === true &&
+      report.agents[0].copilot_description_matches === true &&
+      report.agents[0].codex_description_matches === false,
+    'malformed installed TOML did not isolate the Codex renderer mismatch'
+  );
+}
+
 function retainedActivationDir(stderr) {
   const match = /# traces retained at (.+): inspect failing cases, then rm/.exec(stderr);
   assert(match, `activation runner did not disclose its retained trace dir:\n${stderr}`);
@@ -229,7 +283,7 @@ function baseEnv(binDir, additions) {
     ...additions,
     LIVE_CLAUDE_TEST_SCRIPT: fakeScripts.claude,
     LIVE_CODEX_TEST_SCRIPT: fakeScripts.codex,
-    PATH: binDir,
+    PATH: [binDir, process.env.PATH].filter(Boolean).join(path.delimiter),
   };
 }
 
@@ -686,6 +740,7 @@ async function main() {
   const binDir = path.join(scratchRoot, 'bin');
   fakeScripts = writeFakeExecutables(binDir);
   await testPrecheckLengths(binDir);
+  await testMalformedInstalledToml(binDir);
   await testActivation(binDir);
   await testBehavioral(binDir);
   await testCodex(binDir, codexRunner);
