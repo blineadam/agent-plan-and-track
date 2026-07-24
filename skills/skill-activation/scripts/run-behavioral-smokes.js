@@ -307,7 +307,7 @@ function readRunMetadata(metaPath) {
     typeof metadata === 'object' &&
     !Array.isArray(metadata) &&
     Object.keys(metadata).length === expectedKeys.length &&
-    expectedKeys.every((key, index) => Object.keys(metadata)[index] === key) &&
+    expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(metadata, key)) &&
     (metadata.exit_code === null || Number.isInteger(metadata.exit_code)) &&
     (metadata.signal === null || typeof metadata.signal === 'string') &&
     typeof metadata.timed_out === 'boolean' &&
@@ -455,11 +455,19 @@ function modeCheck(args) {
 // ---- --run: billable, invokes claude -p per case -------------------------------
 function hasClaude(invocation) {
   if (invocation.prefixArgs.length > 0) return true;
-  const isWin = process.platform === 'win32';
-  const probe = isWin
-    ? spawnSync('where.exe', ['claude'], { encoding: 'utf8' })
-    : spawnSync('which', ['claude'], { encoding: 'utf8' });
-  return probe.status === 0;
+  if (process.platform === 'win32') {
+    return spawnSync('where.exe', ['claude'], { encoding: 'utf8' }).status === 0;
+  }
+  for (const entry of (process.env.PATH || '').split(path.delimiter)) {
+    const candidate = path.join(entry || process.cwd(), 'claude');
+    try {
+      if (isFile(candidate)) {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return true;
+      }
+    } catch {}
+  }
+  return false;
 }
 
 function terminateChildTree(child, force) {
