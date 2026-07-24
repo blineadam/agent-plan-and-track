@@ -136,10 +136,11 @@ with restricted mounts and no network egress, and never pass
 `ACTIVATION_ALLOW_SPEND=1`. A case passes iff `expect_skill` activated and
 `forbid_skill` did not; the check itself is deterministic (a name is in the
 trace or not), so `--check` is free and repeatable. Live runs default to a
-900000 ms per-case timeout; set `LIVE_CASE_TIMEOUT_MS` to a positive integer to
-override it. Each run writes `<id>.meta.json` beside the trace, and a nonzero
-exit, signal, timeout, parent interruption, spawn error, or truncated capture
-always fails. Checks also accept legacy trace directories without metadata.
+900000 ms per-case timeout; set `LIVE_CASE_TIMEOUT_MS` to an integer from 1 to
+2,147,483,647 to override it. Each run writes `<id>.meta.json` beside the trace,
+and a nonzero exit, signal, timeout, parent interruption, spawn error, or
+truncated capture always fails. Checks also accept legacy trace directories
+without metadata.
 
 ## Phase 3: Report & act
 
