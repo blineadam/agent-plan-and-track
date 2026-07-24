@@ -32,6 +32,20 @@ caught real gaps in past runs. Supporting three harnesses is most of the
 installer's bulk and none of the runtime cost: once a session starts, it
 doesn't add anything.
 
+## What you get
+
+The skills you'll actually hit every session: `plan-and-track` plans and
+tracks non-trivial work, `gateguard` makes you show your work before the
+first edit to a file, `capture-lesson` turns your corrections into durable
+rules, and `humanizer` cleans up the writing voice before anything
+user-facing ships. A few more round out autonomous work, docs-first
+research, and delegation to subagents.
+
+See [docs/skills.md](docs/skills.md) for the full catalog, including the
+maintenance and design skills. 
+See [docs/models.md](docs/models.md) for the model defaults each harness 
+gets, the tiered subagents Claude, Codex, and Copilot install, and per-tool notes.
+
 ## Install
 
 ```sh
@@ -100,20 +114,6 @@ with `$skill-name` (or pick them from `/skills`):
 $inherit-legacy-style          # capture its implicit conventions in .ai-style-rules.md
 $copilot-review-instructions   # if on GitHub: teach Copilot's PR review those conventions
 ```
-
-## What you get
-
-The skills you'll actually hit every session: `plan-and-track` plans and
-tracks non-trivial work, `gateguard` makes you show your work before the
-first edit to a file, `capture-lesson` turns your corrections into durable
-rules, and `humanizer` cleans up the writing voice before anything
-user-facing ships. A few more round out autonomous work, docs-first
-research, and delegation to subagents.
-
-See [docs/skills.md](docs/skills.md) for the full catalog, including the
-maintenance and design skills. 
-See [docs/models.md](docs/models.md) for the model defaults each harness 
-gets, the tiered subagents Claude, Codex, and Copilot install, and per-tool notes.
 
 ## Layout
 
