@@ -92,7 +92,8 @@ function writeFakeExecutables(binDir) {
       "    const code = \"const fs=require('fs');const p=process.argv[1];process.on('SIGTERM',()=>{});setInterval(()=>fs.appendFileSync(p,'x'),20);\";",
       "    spawn(process.execPath, ['-e', code, activity], { stdio: 'ignore' });",
       "  }",
-      "  if (!prompt.includes('parent-default-sigterm')) process.on('SIGTERM', () => {});",
+      "  if (prompt.includes('parent-clean-sigterm')) process.on('SIGTERM', () => process.exit(0));",
+      "  else if (!prompt.includes('parent-default-sigterm')) process.on('SIGTERM', () => {});",
       "  setInterval(() => {}, 1000);",
       "} else {",
       "  const delay = prompt.includes('slow-success') ? 180 : 10;",
@@ -657,6 +658,16 @@ async function testCodex(binDir, codexRunner) {
     invalidCheck.code === 1 && invalidCheck.stderr.includes('after-failure: invalid meta.json'),
     'Codex check accepted a missing key replaced by an unknown key'
   );
+  fs.writeFileSync(cleanMetaPath, 'null\n');
+  const nullCheck = await runNode(
+    codexRunner,
+    ['--check', results, corpus],
+    baseEnv(binDir, {})
+  );
+  assert(
+    nullCheck.code === 1 && nullCheck.stderr.includes('after-failure: invalid meta.json'),
+    'Codex check treated present null metadata as a missing legacy file'
+  );
   fs.rmSync(cleanMetaPath);
   const legacyCheck = await runNode(
     codexRunner,
@@ -759,7 +770,7 @@ async function testParentSignal(binDir) {
     {
       id: 'signal-case',
       skill: 'fixture-skill',
-      prompt: `signal-case activity64=${activity64}`,
+      prompt: `signal-case parent-clean-sigterm activity64=${activity64}`,
       max_turns: 2,
       fixture: 'signal-case',
       assertions: [{ kind: 'file_regex', path: 'artifact.txt', regex: 'fixture output', flags: '' }],
@@ -796,8 +807,28 @@ async function testParentSignal(binDir) {
   assert(!run.stderr.includes('[2/2] must-not-start start'), 'runner launched a later case after interruption');
   const report = parseReport(run, 'POSIX behavioral signal');
   assert(
+    report.cases[0].status === 'invalid' &&
+      report.cases[0].reason === 'live run interrupted' &&
     report.cases[1].status === 'invalid',
-    'behavioral interrupted run scored a stale later case as current'
+    'behavioral interrupted run scored an attempted or stale case as current'
+  );
+  const behavioralMeta = JSON.parse(
+    fs.readFileSync(path.join(resultsDir, 'signal-case.meta.json'), 'utf8')
+  );
+  assert(
+    behavioralMeta.exit_code === 0 && behavioralMeta.interrupted === true,
+    'behavioral runner did not persist a clean-exit parent interruption'
+  );
+  const behavioralCheck = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--check', resultsDir, corpus],
+    baseEnv(binDir, {})
+  );
+  assert(
+    behavioralCheck.code === 1 &&
+      parseReport(behavioralCheck, 'POSIX behavioral interrupted check').cases[0].status ===
+        'invalid',
+    'behavioral check accepted persisted interrupted metadata'
   );
   await assertActivityStopped(activity, 'POSIX parent signal');
 
@@ -809,7 +840,7 @@ async function testParentSignal(binDir) {
   writeJsonl(activationCorpus, [
     {
       id: 'signal-case',
-      prompt: `signal-case parent-default-sigterm activity64=${activationActivity64}`,
+      prompt: `signal-case parent-clean-sigterm activity64=${activationActivity64}`,
       expect_skill: 'fixture-skill',
     },
   ]);
@@ -830,7 +861,24 @@ async function testParentSignal(binDir) {
     activationRun.code === 143,
     `POSIX activation signal exited ${activationRun.code}, expected 143`
   );
-  retainedActivationDir(activationRun.stderr);
+  const activationResults = retainedActivationDir(activationRun.stderr);
+  const activationMeta = JSON.parse(
+    fs.readFileSync(path.join(activationResults, 'signal-case.meta.json'), 'utf8')
+  );
+  assert(
+    activationMeta.exit_code === 0 && activationMeta.interrupted === true,
+    'activation runner did not persist a clean-exit parent interruption'
+  );
+  const activationCheck = await runNode(
+    ACTIVATION_RUNNER,
+    ['--check', activationResults, activationCorpus],
+    baseEnv(binDir, {})
+  );
+  assert(
+    activationCheck.code === 1 &&
+      parseReport(activationCheck, 'POSIX activation interrupted check').passed === 0,
+    'activation check accepted persisted interrupted metadata'
+  );
   await assertActivityStopped(activationActivity, 'POSIX activation parent signal');
 
   const codexRoot = path.join(scratchRoot, 'codex-signal');
@@ -841,7 +889,7 @@ async function testParentSignal(binDir) {
     {
       id: 'signal-case',
       strictness: 'supportive',
-      prompt: `signal-case parent-default-sigterm activity64=${codexActivity64}`,
+      prompt: `signal-case parent-clean-sigterm activity64=${codexActivity64}`,
     },
     { id: 'must-not-start', strictness: 'neutral', prompt: 'success' },
   ]);
@@ -866,7 +914,29 @@ async function testParentSignal(binDir) {
     'Codex runner launched a later case after interruption'
   );
   const codexReport = parseReport(codexRun, 'POSIX Codex signal');
-  assert(codexReport.cases[1].live === false, 'Codex interrupted run scored a stale later case as live');
+  assert(
+    codexReport.cases[0].live === false &&
+      codexReport.cases[0].interrupted === true &&
+      codexReport.cases[1].live === false,
+    'Codex interrupted run scored an attempted or stale case as live'
+  );
+  const codexMeta = JSON.parse(
+    fs.readFileSync(path.join(codexResults, 'signal-case', 'meta.json'), 'utf8')
+  );
+  assert(
+    codexMeta.exit_code === 0 && codexMeta.interrupted === true,
+    'Codex runner did not persist a clean-exit parent interruption'
+  );
+  const codexCheck = await runNode(
+    findCodexRunner(),
+    ['--check', codexResults, codexCorpus],
+    baseEnv(binDir, {})
+  );
+  assert(
+    codexCheck.code === 1 &&
+      parseReport(codexCheck, 'POSIX Codex interrupted check').cases[0].live === false,
+    'Codex check accepted persisted interrupted metadata'
+  );
   await assertActivityStopped(codexActivity, 'POSIX Codex parent signal');
 }
 
