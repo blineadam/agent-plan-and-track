@@ -211,7 +211,7 @@ function validMetadata(metadata) {
     typeof metadata === 'object' &&
     !Array.isArray(metadata) &&
     Object.keys(metadata).length === expectedKeys.length &&
-    expectedKeys.every((key, index) => Object.keys(metadata)[index] === key) &&
+    expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(metadata, key)) &&
     (metadata.exit_code === null || Number.isInteger(metadata.exit_code)) &&
     (metadata.signal === null || typeof metadata.signal === 'string') &&
     typeof metadata.timed_out === 'boolean' &&
