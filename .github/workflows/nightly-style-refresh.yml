@@ -4,18 +4,20 @@ name: nightly style refresh
 # re-runs /inherit-legacy-style then /copilot-review-instructions (see
 # skills/inherit-legacy-style and skills/copilot-review-instructions), a
 # mechanical step opens a PR if either produced drift, requests a GitHub
-# Copilot review, a second headless session triages findings and edits
-# files, a mechanical step commits that fix and comments on the PR, a
-# mechanical step resolves every review thread and waits for the PR's
+# Copilot review, a second headless session triages findings, edits
+# files, and drafts a per-thread reply for each finding, a mechanical
+# step commits that fix and comments on the PR, a mechanical step posts
+# those replies and resolves every review thread and waits for the PR's
 # required checks, then a mechanical step squash-merges behind a
 # diff-allowlist guard.
 #
 # Two tokens are in play. The GH_TOKEN secret, a repo-scoped personal
 # access token, is declared by name on every step that writes to GitHub:
 # opening the PR, pushing the refresh commit and the review-fix commit,
-# requesting the Copilot review, resolving review threads, and the
-# squash-merge. That split exists because the org's workflow settings
-# block the default GITHUB_TOKEN from creating pull requests, and because
+# requesting the Copilot review, replying to and resolving review
+# threads, and the squash-merge. That split exists because the org's
+# workflow settings block the default GITHUB_TOKEN from creating pull
+# requests, and because
 # events performed with the default GITHUB_TOKEN don't trigger other
 # workflow runs (workflow_dispatch and repository_dispatch are the only
 # exceptions: https://docs.github.com/en/actions/using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-workflow),
@@ -40,9 +42,14 @@ name: nightly style refresh
 # .github/instructions/*.instructions.md -- is a second, independent
 # backstop on top of that token scoping.
 #
-# Resolve Copilot review threads runs before the merge attempt because the
-# main-branch ruleset requires every review thread formally resolved (the
-# GraphQL resolveReviewThread mutation), not just replied to. Wait for
+# Reply to and resolve Copilot review threads runs before the merge
+# attempt because the main-branch ruleset requires every review thread
+# formally resolved (the GraphQL resolveReviewThread mutation), not just
+# replied to. Within that step, replies are posted first, from session
+# 2's thread-replies.json, so each thread carries the triage verdict a
+# human can read before it collapses as resolved (interactive sessions
+# leave the same trail by hand); a missing or malformed replies file
+# degrades to resolve-only rather than blocking the merge path. Wait for
 # required checks runs after the guard and before the merge because the
 # review-fix push emits its own pull_request: synchronize event, which
 # re-triggers CI on the new head SHA, and the merge step must not race
@@ -246,7 +253,9 @@ jobs:
 
           Fix the valid findings by editing files directly. Hard boundary: only .ai-style-rules.md and .github/instructions/*.instructions.md may change.
 
-          Write a file at \"$RUNNER_TEMP/deferred-findings.md\" listing each finding you did not act on, with a one-line reason (leave the file empty, or don't create it, if you acted on everything). Then stop -- a later step in this workflow handles committing, pushing, and commenting on the PR."
+          Write a file at \"$RUNNER_TEMP/thread-replies.json\": a JSON array with one entry per top-level Copilot review comment (the review-comments entries with no in_reply_to_id), each shaped {\"comment_id\": <that comment's numeric id field>, \"reply\": \"<one or two sentences stating your triage verdict: what you confirmed and changed, or why you deferred it>\"}. Where a reply refers to the commit containing your fixes, write the literal placeholder {FIX_COMMIT}; a later step substitutes the real short SHA after committing. Each reply is posted verbatim onto its review thread before the thread is resolved, so a human reading the PR sees the reasoning.
+
+          Also write a file at \"$RUNNER_TEMP/deferred-findings.md\" listing each finding you did not act on, with a one-line reason (leave the file empty, or don't create it, if you acted on everything). Then stop -- a later step in this workflow handles committing, pushing, and commenting on the PR."
 
       - name: Commit the review fix and comment on the PR
         if: steps.pr.outputs.has_pr == '1'
@@ -265,13 +274,35 @@ jobs:
             gh pr comment "$PR_NUMBER" --body-file "$deferred"
           fi
 
-      - name: Resolve Copilot review threads
+      - name: Reply to and resolve Copilot review threads
         if: steps.pr.outputs.has_pr == '1'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
           pr="${{ steps.pr.outputs.number }}"
+          # Post session 2's per-thread replies first, so each thread carries
+          # the triage verdict before it collapses as resolved. Fail open to
+          # resolve-only on a missing or malformed file: the replies exist
+          # for the human reading the PR, and their absence must not kill
+          # the merge path.
+          replies="$RUNNER_TEMP/thread-replies.json"
+          if jq -e 'type == "array"' "$replies" >/dev/null 2>&1; then
+            sha="$(git rev-parse --short HEAD)"
+            jq -c '.[]' "$replies" | while IFS= read -r entry; do
+              id="$(jq -r '.comment_id // empty' <<<"$entry" 2>/dev/null || true)"
+              body="$(jq -r '.reply // empty' <<<"$entry" 2>/dev/null | sed "s/{FIX_COMMIT}/$sha/g" || true)"
+              if [ -z "$id" ] || [ -z "$body" ]; then
+                echo "skipping malformed reply entry" >&2
+                continue
+              fi
+              gh api "repos/${{ github.repository }}/pulls/$pr/comments/$id/replies" \
+                -f body="$body" >/dev/null \
+                || echo "reply to comment $id failed; continuing" >&2
+            done
+          else
+            echo "no valid thread-replies.json; resolving without replies" >&2
+          fi
           # Scoped to threads Copilot itself opened: resolving a thread a human
           # reviewer left while this unattended run was in flight would satisfy
           # the ruleset's required_review_thread_resolution rule without the
