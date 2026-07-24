@@ -16,6 +16,13 @@
     { "id": "corrupt-duplicate-missing", "expect": "silent" },
     { "id": "concurrent-unrelated-todo", "expect": "two-stamps" },
     { "id": "scope-warning-once", "expect": "one-warning-after-three-source-patches" },
-    { "id": "expired-scope-prune", "expect": "stale-scope-pruned" }
+    { "id": "expired-scope-prune", "expect": "stale-scope-pruned" },
+    { "id": "mutation-classifier", "expect": "claude-parity" },
+    { "id": "mutation-distinct-denial-retry", "expect": "deny-on-second-and-retry" },
+    { "id": "mutation-single-call-union", "expect": "deny-without-recording" },
+    { "id": "mutation-old-scope-compatibility", "expect": "missing-mutations-defaults-empty" },
+    { "id": "mutation-concurrent", "expect": "one-allow-one-deny" },
+    { "id": "mutation-plan-unlock", "expect": "valid-apply-patch-stamp-allows-retry" },
+    { "id": "mutation-threshold-validation", "expect": "invalid-defaults-two-above-three-disables" }
   ]
 }

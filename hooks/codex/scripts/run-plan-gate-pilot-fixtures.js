@@ -42,7 +42,11 @@ function hash(parts) {
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-gate-pilot-'));
   fs.mkdirSync(path.join(root, 'tasks'), { recursive: true });
-  return { env: { ...process.env, TEMP: root, TMP: root, TMPDIR: root }, root };
+  const env = { ...process.env, TEMP: root, TMP: root, TMPDIR: root };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('PLANGATE_')) delete env[key];
+  }
+  return { env, root };
 }
 
 function event(root, id, session, extra) {
@@ -53,6 +57,16 @@ function event(root, id, session, extra) {
     tool_input: { command: `*** Update File: ${id}` },
     tool_use_id: extra && extra.tool_use_id ? extra.tool_use_id : `tool-${id.replace(/[^a-z0-9]/gi, '-')}`,
     ...(extra || {}),
+  };
+}
+
+function bashEvent(root, command, session, toolUseId) {
+  return {
+    cwd: root,
+    session_id: session || 'fixture-session',
+    tool_name: 'Bash',
+    tool_input: { command },
+    tool_use_id: toolUseId || `bash-${String(command).replace(/[^a-z0-9]/gi, '-').slice(0, 40)}`,
   };
 }
 
@@ -68,6 +82,16 @@ function warning(stdout) {
   assert.deepStrictEqual(Object.keys(parsed), ['systemMessage']);
   assert.match(parsed.systemMessage, /^\[PlanGate\] /);
   return parsed.systemMessage;
+}
+
+function denial(stdout) {
+  assert.notStrictEqual(stdout, '');
+  const parsed = JSON.parse(stdout);
+  assert.deepStrictEqual(Object.keys(parsed), ['hookSpecificOutput']);
+  assert.deepStrictEqual(parsed.hookSpecificOutput.hookEventName, 'PreToolUse');
+  assert.deepStrictEqual(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(parsed.hookSpecificOutput.permissionDecisionReason, /^\[PlanGate\] /);
+  return parsed.hookSpecificOutput.permissionDecisionReason;
 }
 
 function scopeFile(root, input) {
@@ -158,7 +182,7 @@ async function planPlusSource() {
   source(f.root, 'tasks/todo.md', validPlan('Together'));
   source(f.root, 'one.js', 'two\n');
   assert.strictEqual(run('--post', input, f.env), '');
-  assert.deepStrictEqual(scope(f.root, input), { paths: [], stamped: true, warned: false });
+  assert.deepStrictEqual(scope(f.root, input), { mutations: [], paths: [], stamped: true, warned: false });
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
@@ -286,7 +310,7 @@ async function scopeWarningOnce() {
   assert.deepStrictEqual(outputs.slice(0, 2), ['', '']);
   assert.match(warning(outputs[2]), /3 distinct source paths/);
   assert.strictEqual(outputs[3], '');
-  assert.deepStrictEqual(scope(f.root, event(f.root, 'one.js', 'shared-session')), { paths: ['one.js', 'two.js', 'three.js'], stamped: false, warned: true });
+  assert.deepStrictEqual(scope(f.root, event(f.root, 'one.js', 'shared-session')), { mutations: [], paths: ['one.js', 'two.js', 'three.js'], stamped: false, warned: true });
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
@@ -307,11 +331,118 @@ async function expiredScopePrune() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
-const HANDLERS = { fresh, 'new-todo-plan': newTodoPlan, stale, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-scope-prune': expiredScopePrune };
+async function mutationClassifier() {
+  const f = fixture();
+  const silent = [
+    'npm test',
+    'git push --help',
+    'git push --dry-run',
+    'gh pr view 123',
+    'git commit -m "then git push"',
+    'echo done # then git push origin main',
+  ];
+  for (let i = 0; i < silent.length; i += 1) {
+    const input = bashEvent(f.root, silent[i], `silent-${i}`);
+    assert.strictEqual(run('--pre', input, f.env), '');
+    assert.strictEqual(fs.existsSync(scopeFile(f.root, input)), false);
+  }
+
+  const heredoc = bashEvent(f.root, 'gh pr create --body-file - <<\'END-PR\'\nremember to git push\nEND-PR', 'heredoc');
+  assert.strictEqual(run('--pre', heredoc, f.env), '');
+  assert.deepStrictEqual(scope(f.root, heredoc).mutations, ['gh-pr-create']);
+
+  const gitGlobal = bashEvent(f.root, 'git -C /tmp/x push', 'git-global');
+  assert.strictEqual(run('--pre', gitGlobal, f.env), '');
+  assert.deepStrictEqual(scope(f.root, gitGlobal).mutations, ['git-push']);
+
+  const ghGlobal = bashEvent(f.root, 'gh -R o/r pr merge', 'gh-global');
+  assert.strictEqual(run('--pre', ghGlobal, f.env), '');
+  assert.deepStrictEqual(scope(f.root, ghGlobal).mutations, ['gh-pr-merge']);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function mutationDistinctDenialRetry() {
+  const f = fixture();
+  const session = 'mutation-denial';
+  const first = bashEvent(f.root, 'git push origin main', session, 'push-first');
+  assert.strictEqual(run('--pre', first, f.env), '');
+  assert.deepStrictEqual(scope(f.root, first).mutations, ['git-push']);
+  const second = bashEvent(f.root, 'gh pr create --fill', session, 'create-second');
+  assert.match(denial(run('--pre', second, f.env)), /2 distinct outward git\/gh mutations/);
+  assert.deepStrictEqual(scope(f.root, first).mutations, ['git-push']);
+  assert.match(denial(run('--pre', second, f.env)), /2 distinct outward git\/gh mutations/);
+  assert.deepStrictEqual(scope(f.root, first).mutations, ['git-push']);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function mutationSingleCallUnion() {
+  const f = fixture();
+  const input = bashEvent(f.root, 'git push && gh pr create && gh pr merge', 'mutation-union');
+  assert.match(denial(run('--pre', input, f.env)), /3 distinct outward git\/gh mutations.*configured limit of 2/);
+  assert.strictEqual(fs.existsSync(scopeFile(f.root, input)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function mutationOldScopeCompatibility() {
+  const f = fixture();
+  const input = bashEvent(f.root, 'git push origin main', 'old-scope');
+  fs.mkdirSync(path.dirname(scopeFile(f.root, input)), { recursive: true });
+  fs.writeFileSync(scopeFile(f.root, input), JSON.stringify({ paths: ['one.js'], stamped: false, warned: false }), 'utf8');
+  assert.strictEqual(run('--pre', input, f.env), '');
+  assert.deepStrictEqual(scope(f.root, input), { mutations: ['git-push'], paths: ['one.js'], stamped: false, warned: false });
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function mutationConcurrent() {
+  const f = fixture();
+  const session = 'mutation-concurrent';
+  const outputs = await Promise.all([
+    runAsync('--pre', bashEvent(f.root, 'git push origin main', session, 'concurrent-push'), f.env),
+    runAsync('--pre', bashEvent(f.root, 'gh pr create --fill', session, 'concurrent-create'), f.env),
+  ]);
+  assert.strictEqual(outputs.filter(Boolean).length, 1);
+  denial(outputs.find(Boolean));
+  const saved = scope(f.root, bashEvent(f.root, 'git status', session));
+  assert.strictEqual(saved.mutations.length, 1);
+  assert.strictEqual(['git-push', 'gh-pr-create'].includes(saved.mutations[0]), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function mutationPlanUnlock() {
+  const f = fixture();
+  const session = 'mutation-plan-unlock';
+  source(f.root, 'tasks/todo.md', '# Start\n');
+  const first = bashEvent(f.root, 'git push origin main', session, 'unlock-push');
+  assert.strictEqual(run('--pre', first, f.env), '');
+  const plan = event(f.root, 'tasks/todo.md', session, { tool_use_id: 'unlock-plan' });
+  run('--pre', plan, f.env);
+  source(f.root, 'tasks/todo.md', validPlan('Unlock'));
+  assert.strictEqual(run('--post', plan, f.env), '');
+  assert.strictEqual(scope(f.root, first).stamped, true);
+  assert.strictEqual(run('--pre', bashEvent(f.root, 'gh pr create --fill', session, 'unlock-create'), f.env), '');
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function mutationThresholdValidation() {
+  const f = fixture();
+  const invalidEnv = { ...f.env, PLANGATE_MUTATION_THRESHOLD: 'invalid' };
+  const first = bashEvent(f.root, 'git push origin main', 'invalid-threshold', 'invalid-first');
+  assert.strictEqual(run('--pre', first, invalidEnv), '');
+  assert.match(denial(run('--pre', bashEvent(f.root, 'gh pr merge 1', 'invalid-threshold', 'invalid-second'), invalidEnv)), /2 distinct outward git\/gh mutations/);
+
+  const disabledEnv = { ...f.env, PLANGATE_MUTATION_THRESHOLD: '4' };
+  for (const [id, command] of [['push', 'git push'], ['create', 'gh pr create'], ['merge', 'gh pr merge']]) {
+    assert.strictEqual(run('--pre', bashEvent(f.root, command, 'threshold-four', id), disabledEnv), '');
+  }
+  assert.deepStrictEqual(scope(f.root, bashEvent(f.root, 'git status', 'threshold-four')).mutations, ['git-push', 'gh-pr-create', 'gh-pr-merge']);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+const HANDLERS = { fresh, 'new-todo-plan': newTodoPlan, stale, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-scope-prune': expiredScopePrune, 'mutation-classifier': mutationClassifier, 'mutation-distinct-denial-retry': mutationDistinctDenialRetry, 'mutation-single-call-union': mutationSingleCallUnion, 'mutation-old-scope-compatibility': mutationOldScopeCompatibility, 'mutation-concurrent': mutationConcurrent, 'mutation-plan-unlock': mutationPlanUnlock, 'mutation-threshold-validation': mutationThresholdValidation };
 
 async function main() {
   const fixtureCases = JSON.parse(fs.readFileSync(CASES, 'utf8')).cases;
-  assert.strictEqual(fixtureCases.length, 17, 'expected the complete seventeen-case matrix');
+  assert.strictEqual(fixtureCases.length, 24, 'expected the complete twenty-four-case matrix');
   for (const fixtureCase of fixtureCases) {
     assert.strictEqual(typeof HANDLERS[fixtureCase.id], 'function', `no handler for ${fixtureCase.id}`);
     await HANDLERS[fixtureCase.id]();
