@@ -155,6 +155,7 @@ function runMutationCase(root, codexHome) {
       CODEX_HOME: codexHome,
       PATH: `${stubBin}${path.delimiter}${process.env.PATH || ''}`,
       PLANGATE_GH_STUB_LOG: stubLog,
+      PLANGATE_MUTATION_THRESHOLD: '2',
       PLANGATE_PILOT_EVENT_LOG: eventFile,
       PLANGATE_PILOT_RAW_LOG: rawFile,
       TMPDIR: root,

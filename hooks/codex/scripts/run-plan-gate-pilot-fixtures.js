@@ -378,7 +378,7 @@ async function mutationDistinctDenialRetry() {
 async function mutationSingleCallUnion() {
   const f = fixture();
   const input = bashEvent(f.root, 'git push && gh pr create && gh pr merge', 'mutation-union');
-  assert.match(denial(run('--pre', input, f.env)), /2 distinct outward git\/gh mutations/);
+  assert.match(denial(run('--pre', input, f.env)), /3 distinct outward git\/gh mutations.*configured limit of 2/);
   assert.strictEqual(fs.existsSync(scopeFile(f.root, input)), false);
   fs.rmSync(f.root, { recursive: true, force: true });
 }

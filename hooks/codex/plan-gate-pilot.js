@@ -490,12 +490,12 @@ function warning(message, input, c) {
   process.stdout.write(JSON.stringify({ systemMessage }));
 }
 
-function mutationMessage(threshold) {
-  return `[PlanGate] This command would bring this session to ${threshold} distinct outward git/gh mutations (push, PR create, PR merge) without a plan. Add a valid new unchecked item under an exact \`## Plan\` heading in tasks/todo.md through apply_patch, including a verify clause and owner tag, then retry this command. (PLANGATE_MUTATION_THRESHOLD sets the mutation-count trigger, default 2.)`;
+function mutationMessage(prospective, threshold) {
+  return `[PlanGate] This command would bring this session to ${prospective} distinct outward git/gh mutations (push, PR create, PR merge), meeting the configured limit of ${threshold} without a plan. Add a valid new unchecked item under an exact \`## Plan\` heading in tasks/todo.md through apply_patch, including a verify clause and owner tag, then retry this command. (PLANGATE_MUTATION_THRESHOLD sets the mutation-count trigger, default 2.)`;
 }
 
-function denyMutation(threshold, input, c) {
-  const message = mutationMessage(threshold);
+function denyMutation(prospective, threshold, input, c) {
+  const message = mutationMessage(prospective, threshold);
   recordEvent('Denied', input, c, message);
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
@@ -516,12 +516,13 @@ function mutationPre(input, c) {
     if (scope.stamped) return null;
     const newKinds = [...kinds].filter((kind) => !scope.mutations.includes(kind));
     const threshold = mutationThreshold();
-    if (scope.mutations.length + newKinds.length >= threshold) return { threshold };
+    const prospective = scope.mutations.length + newKinds.length;
+    if (prospective >= threshold) return { prospective, threshold };
     scope.mutations.push(...newKinds);
     saveScope(c, scope);
     return null;
   });
-  if (outcome && outcome.threshold) denyMutation(outcome.threshold, input, c);
+  if (outcome && outcome.threshold) denyMutation(outcome.prospective, outcome.threshold, input, c);
   else if (outcome === null) recordEvent('Allowed', input, c);
 }
 
