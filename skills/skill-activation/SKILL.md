@@ -80,9 +80,11 @@ shorter and evidence-backed longer descriptions are both valid. The separate
 1,024-character format maximum remains a strict schema limit. Plain legal YAML
 scalars are fine; quote only when YAML requires it, especially for colon-space
 (`: `), using double quotes by default and single quotes only when their
-contents can be represented safely. Fix weak signals first; often the runtime
-failure disappears without a single billed run. (Body length and always-on cost
-are [[context-budget]]'s job, not this skill's.)
+contents can be represented safely. The agent precheck also enforces the
+repo's fixed key order, model/effort pairs, and closed source-tool vocabulary.
+Fix weak signals first; often the runtime failure disappears without a single
+billed run. (Body length and always-on cost are [[context-budget]]'s job, not
+this skill's.)
 
 ## Phase 1: Maintain the corpus
 
