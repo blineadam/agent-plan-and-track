@@ -123,7 +123,7 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   a hook wiring, a default, the digest) without the mirrored change to the
   other.
 - A hook wired as more than one entry (e.g. `plan-gate.js`'s Skill/Edit/Write
-  entry plus its Bash mutation-gate entry, or the Codex pilot's apply_patch
+  entry plus its Bash mutation-gate entry, or the Codex pilot's `apply_patch`
   Pre/PostToolUse plus Bash entries) must check and repair each exact entry
   (matcher + command) independently, not a single coarse presence check
   (like a bare `grep -q 'plan-gate'`) for the hook as a whole. Flag an
