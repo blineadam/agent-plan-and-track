@@ -28,11 +28,13 @@
  * --check reads one trace per case at TRACE_DIR/<id>.jsonl (id = each case's
  * "id" field). --run writes those same files then checks them, but is a real,
  * billable, tool-executing operation: it refuses unless ACTIVATION_ALLOW_SPEND=1,
- * and you MUST run it inside an isolated container/VM with no network egress and
- * restricted mounts; a competing/injected prompt will execute tool calls. Never
- * pass --dangerously-skip-permissions here. --run is Claude-only and intended for
- * a unix sandbox; --dry-run / --precheck / --check are the cross-platform modes.
- * See SKILL.md for the full rationale.
+ * and you MUST run it inside an isolated container/VM with restricted mounts and
+ * egress allowed only to the model provider's API; a competing/injected prompt
+ * will execute tool calls. Sealing egress off entirely is not the safer setting:
+ * the case then cannot reach the API, exits at zero turns, and scores invalid.
+ * Never pass --dangerously-skip-permissions here. --run is Claude-only and
+ * intended for a unix sandbox; --dry-run / --precheck / --check are the
+ * cross-platform modes. See SKILL.md for the allowlist recipe and the rationale.
  *
  * Tuning (env):
  *   DESC_TOKEN_FLOOR         words below which a description is a weak router signal (default 12)

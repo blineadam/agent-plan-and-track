@@ -40,9 +40,11 @@
  * file_regex assertions against RESULTS_DIR/<id>/<assertion.path>. --run writes
  * those same files then scores them identically, but is a real, billable,
  * tool-executing operation: it refuses unless ACTIVATION_ALLOW_SPEND=1, and you
- * MUST run it inside an isolated container/VM with no network egress and
- * restricted mounts; a competing/injected prompt will execute tool calls. Never
- * pass --dangerously-skip-permissions here. --run uses --permission-mode
+ * MUST run it inside an isolated container/VM with restricted mounts and egress
+ * allowed only to the model provider's API; a competing/injected prompt will
+ * execute tool calls. Sealing egress off entirely is not the safer setting: the
+ * case then cannot reach the API, exits at zero turns, and scores invalid.
+ * Never pass --dangerously-skip-permissions here. --run uses --permission-mode
  * acceptEdits (not a read-only mode), since the whole point of a behavioral
  * smoke is that the skill under test WRITES a file; a read-only permission
  * mode would make every case a false negative. --run is Claude-only and

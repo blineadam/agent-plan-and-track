@@ -131,9 +131,20 @@ ACTIVATION_ALLOW_SPEND=1 \
 
 **Isolate `--run`.** Each case is a real, tool-executing `claude -p` process, and
 a `forbid`/competing prompt *will* run tool calls, so run inside a container/VM
-with restricted mounts and no network egress, and never pass
-`--dangerously-skip-permissions`. The script refuses `--run` unless
-`ACTIVATION_ALLOW_SPEND=1`. A case passes iff `expect_skill` activated and
+with restricted mounts, and never pass `--dangerously-skip-permissions`. The
+script refuses `--run` unless `ACTIVATION_ALLOW_SPEND=1`.
+
+Restrict egress to the model provider's API rather than sealing it off. A sealed
+sandbox is not the stricter choice here: the case cannot reach the API, so it
+exits at zero turns having activated nothing, which is an invalid run rather than
+a passing negative. An allowlisting forward proxy gives the isolation without
+that failure mode. Point the sandbox's `HTTPS_PROXY`/`HTTP_PROXY` at it and keep
+the credential mounted in the sandbox rather than baked into the proxy.
+
+See [references/live-run-egress-proxy.md](references/live-run-egress-proxy.md)
+for the working Squid recipe; don't inline it here.
+
+A case passes iff `expect_skill` activated and
 `forbid_skill` did not; the check itself is deterministic (a name is in the
 trace or not), so `--check` is free and repeatable. Live runs default to a
 900000 ms per-case timeout; set `LIVE_CASE_TIMEOUT_MS` to an integer from 1 to
