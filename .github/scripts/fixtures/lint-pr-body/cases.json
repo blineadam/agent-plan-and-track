@@ -17,6 +17,12 @@
     { "id": "known-limits-heading-hard-fails", "expect": "hard-fail" },
     { "id": "fenced-block-with-multi-token-info-string-passes", "expect": "clean" },
     { "id": "keycap-sequence-in-prose-hard-fails", "expect": "hard-fail" },
-    { "id": "regional-indicator-flag-in-prose-hard-fails", "expect": "hard-fail" }
+    { "id": "regional-indicator-flag-in-prose-hard-fails", "expect": "hard-fail" },
+    { "id": "indented-review-rounds-heading-hard-fails", "expect": "hard-fail" },
+    { "id": "known-limitation-singular-heading-hard-fails", "expect": "hard-fail" },
+    { "id": "emoji-presentation-copyright-in-prose-hard-fails", "expect": "hard-fail" },
+    { "id": "bare-copyright-symbol-in-prose-passes", "expect": "clean" },
+    { "id": "wrong-first-heading-hard-fails", "expect": "hard-fail" },
+    { "id": "no-heading-at-all-hard-fails", "expect": "hard-fail" }
   ]
 }

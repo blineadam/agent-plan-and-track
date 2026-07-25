@@ -38,6 +38,11 @@ const WARNING_EMOJI = '\u26A0';
 // their own alternatives.
 const KEYCAP = '3\u20E3';
 const FLAG = '\u{1F1FA}\u{1F1F8}';
+// The bare copyright symbol is a text-presentation character (exempt); the
+// same symbol followed by U+FE0F (variation selector 16) explicitly requests
+// emoji presentation and must not be exempt.
+const COPYRIGHT = '\u00A9';
+const COPYRIGHT_VS16 = '\u00A9\uFE0F';
 
 function run(body) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lint-pr-body-'));
@@ -329,6 +334,91 @@ async function regionalIndicatorFlagInProseHardFails() {
   assertHardFails(run(body), /HARD: emoji in prose/);
 }
 
+async function indentedReviewRoundsHeadingHardFails() {
+  const body = [
+    '## Summary',
+    'This describes the change.',
+    '',
+    '  ## Review rounds',
+    'Narration about how this PR went through review.',
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // CommonMark allows an ATX heading up to a 3-space indent, and GitHub
+  // renders it as a heading; the banned-narration check must catch it too,
+  // not just the column-1 form.
+  assertHardFails(run(body), /HARD: review-round narration heading/);
+}
+
+async function knownLimitationSingularHeadingHardFails() {
+  const body = [
+    '## Summary',
+    'This describes the change.',
+    '',
+    '## Known limitation',
+    'Some edge case is not yet handled.',
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // The known-limits pattern's alternation covered "limit(s)" and
+  // "limit(ations)" but not the singular "limitation"; it must hard-fail too.
+  assertHardFails(run(body), /HARD: known-limits narration heading/);
+}
+
+async function emojiPresentationCopyrightInProseHardFails() {
+  const body = [
+    '## Summary',
+    `This sentence has an emoji-presentation copyright ${COPYRIGHT_VS16} right in the prose.`,
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // The copyright symbol is exempt only in its bare, text-presentation form;
+  // followed by U+FE0F it explicitly requests emoji presentation and must
+  // hard-fail like any other emoji.
+  assertHardFails(run(body), /HARD: emoji in prose/);
+}
+
+async function bareCopyrightSymbolInProsePasses() {
+  const body = [
+    '## Summary',
+    `This sentence has a bare copyright symbol ${COPYRIGHT} right in the prose.`,
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // Companion to the case above: the bare text-presentation form of the
+  // symbol must still pass clean, pinning the carve-out in both directions.
+  assertClean(run(body));
+}
+
+async function wrongFirstHeadingHardFails() {
+  const body = [
+    '## Problem',
+    'This describes the change, but the first heading is not "## Summary".',
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // The real shape this lint exists to reject: a body that opens with a
+  // narrative heading instead of "## Summary".
+  assertHardFails(run(body), /HARD: first heading is not "## Summary": observed "## Problem" on line 1/);
+}
+
+async function noHeadingAtAllHardFails() {
+  const body = ['This body has no markdown heading at all, just prose.', ''].join('\n');
+  // checkFirstHeading's "no heading found" branch has no coverage otherwise:
+  // every registered case (before this one) begins with "## Summary".
+  assertHardFails(run(body), /HARD: first heading is not "## Summary": observed no markdown heading in the body/);
+}
+
 const HANDLERS = {
   'em-dash-in-fenced-block-passes': emDashInFencedBlockPasses,
   'em-dash-in-nested-list-continuation-hard-fails': emDashInNestedListContinuationHardFails,
@@ -348,6 +438,12 @@ const HANDLERS = {
   'fenced-block-with-multi-token-info-string-passes': fencedBlockWithMultiTokenInfoStringPasses,
   'keycap-sequence-in-prose-hard-fails': keycapSequenceInProseHardFails,
   'regional-indicator-flag-in-prose-hard-fails': regionalIndicatorFlagInProseHardFails,
+  'indented-review-rounds-heading-hard-fails': indentedReviewRoundsHeadingHardFails,
+  'known-limitation-singular-heading-hard-fails': knownLimitationSingularHeadingHardFails,
+  'emoji-presentation-copyright-in-prose-hard-fails': emojiPresentationCopyrightInProseHardFails,
+  'bare-copyright-symbol-in-prose-passes': bareCopyrightSymbolInProsePasses,
+  'wrong-first-heading-hard-fails': wrongFirstHeadingHardFails,
+  'no-heading-at-all-hard-fails': noHeadingAtAllHardFails,
 };
 
 async function main() {

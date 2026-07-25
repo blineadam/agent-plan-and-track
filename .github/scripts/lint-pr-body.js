@@ -55,16 +55,19 @@
 const fs = require('fs');
 
 const EM_DASH = '\u2014';
-// (c), (r), (tm) are text-presentation characters in this context, not emoji.
+// (c), (r), (tm) are text-presentation characters in this context, not emoji;
+// only the bare text-presentation form is exempt (see checkEmoji below).
 const EXCLUDED_PICTOGRAPHS = new Set(['©', '®', '™']);
 const ALLOWED_HEADINGS = new Set(['summary', 'implementation', 'test plan', 'verification']);
 const VERIFICATION_HEADINGS = new Set(['test plan', 'verification']);
 const BANNED_NARRATION_HEADINGS = [
-  { name: 'review-round narration', re: /^#{1,6}\s+.*\breview\s+rounds?\b/i },
-  { name: 'alternatives-considered narration', re: /^#{1,6}\s+.*\balternatives\s+considered\b/i },
-  { name: 'known-limits narration', re: /^#{1,6}\s+.*\bknown\s+limit(s|ations)?\b/i },
+  { name: 'review-round narration', re: /^ {0,3}#{1,6}\s+.*\breview\s+rounds?\b/i },
+  { name: 'alternatives-considered narration', re: /^ {0,3}#{1,6}\s+.*\balternatives\s+considered\b/i },
+  { name: 'known-limits narration', re: /^ {0,3}#{1,6}\s+.*\bknown\s+limit(?:ation)?s?\b/i },
 ];
-const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+// CommonMark allows an ATX heading up to a 3-space indent (GitHub renders it
+// as a heading); 4 or more leading spaces is not a heading.
+const HEADING_RE = /^ {0,3}(#{1,6})\s+(.+?)\s*$/;
 const HUMANIZER_POINTER = 'see the humanizer skill for PR-body prose';
 
 function parseHeading(line) {
@@ -211,9 +214,13 @@ function checkEmDash(prose, findings) {
 // indicators) and a keycap sequence (a digit, # or *, an optional U+FE0F,
 // then the combining U+20E3). Both multi-character alternatives are listed
 // before the single-character \p{Extended_Pictographic} one so the engine
-// prefers the longer match.
+// prefers the longer match. The pictographic alternative also consumes an
+// optional trailing U+FE0F (variation selector 16, which explicitly requests
+// emoji presentation): that keeps a bare text-presentation exclusion (c/r/tm)
+// exempt while a base-plus-VS16 sequence produces a two-character match that
+// is not in EXCLUDED_PICTOGRAPHS, so it is not exempt.
 function checkEmoji(prose, findings) {
-  const re = /\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3|\p{Extended_Pictographic}/gu;
+  const re = /\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3|\p{Extended_Pictographic}\uFE0F?/gu;
   for (const { lineNumber, text } of prose) {
     re.lastIndex = 0;
     let m = re.exec(text);
