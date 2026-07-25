@@ -381,6 +381,54 @@ async function testQuotedScalarEscapes(binDir) {
   );
 }
 
+async function testPlainScalarIndicators(binDir) {
+  const invalidCases = [
+    ['leading-bracket', '[oops] use this when testing plain scalar indicators'],
+    ['leading-asterisk', '*oops use this when testing plain scalar indicators'],
+    ['bare-dash', '-'],
+    ['leading-dash-space', '- oops use this when testing plain scalar indicators'],
+    ['trailing-colon', 'Use this when testing plain scalar indicators oops:'],
+    ['mid-value-hash', 'Use this when testing plain scalar indicators oops #comment'],
+  ];
+  const validCases = [
+    ['leading-dash-word', '-foo use this when testing plain scalar indicators'],
+    ['mid-value-url', 'Use this when testing http://example.com plain scalar indicators'],
+    ['mid-value-hash-no-space', 'Use this when testing foo#bar plain scalar indicators'],
+    ['mid-value-comma-bracket', 'Use this when testing foo, bar] plain scalar indicators'],
+  ];
+
+  const root = path.join(scratchRoot, 'precheck-plain-scalar-indicators');
+  for (const [name, description] of [...invalidCases, ...validCases]) {
+    const skillDir = path.join(root, name);
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDir, 'SKILL.md'),
+      ['---', `name: ${name}`, `description: ${description}`, '---', '', `# ${name}`, ''].join(
+        '\n'
+      )
+    );
+  }
+  const run = await runNode(ACTIVATION_RUNNER, ['--precheck', root], baseEnv(binDir));
+  const report = parseReport(run, 'precheck plain scalar indicators');
+  assert(run.code === 1, `plain scalar indicator cases exited ${run.code}, expected 1`);
+  assert(
+    report.schema_issue_count === invalidCases.length,
+    `plain scalar indicator invalid cases were not all flagged (schema_issue_count=${report.schema_issue_count})`
+  );
+  for (const [name] of invalidCases) {
+    assert(
+      report.skills.find((skill) => skill.skill === name).frontmatter_invalid_yaml === true,
+      `${name} was not flagged as invalid frontmatter`
+    );
+  }
+  for (const [name] of validCases) {
+    assert(
+      report.skills.find((skill) => skill.skill === name).frontmatter_invalid_yaml === false,
+      `${name} was incorrectly flagged as invalid frontmatter`
+    );
+  }
+}
+
 async function testTimeoutMaximum(binDir) {
   const root = path.join(scratchRoot, 'timeout-maximum');
   fs.mkdirSync(root, { recursive: true });
@@ -1176,6 +1224,7 @@ async function main() {
   await testPrecheckLengths(binDir);
   await testAgentSchema(binDir);
   await testQuotedScalarEscapes(binDir);
+  await testPlainScalarIndicators(binDir);
   await testTimeoutMaximum(binDir);
   await testMalformedInstalledToml(binDir);
   await testActivation(binDir);

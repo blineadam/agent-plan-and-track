@@ -50,9 +50,11 @@
  *   name_matches_folder        frontmatter `name` equals the containing folder name
  *   name_pattern_ok            frontmatter `name` is lowercase-kebab-case
  *   extra_frontmatter_keys     any top-level frontmatter key besides name/description
- *   frontmatter_invalid_yaml   a frontmatter key: value line YAML would reject: an unquoted value
- *                              containing a colon-space, or a quoted value containing an unescaped
- *                              delimiter or invalid escape (counts into schema_issue_count)
+ *   frontmatter_invalid_yaml   a frontmatter key: value line that does not yield the intended
+ *                              single-line string: a plain value opening with a YAML indicator or
+ *                              carrying a colon-space or space-hash sequence, or a quoted value
+ *                              with an unescaped delimiter or invalid escape (counts into
+ *                              schema_issue_count)
  */
 'use strict';
 
@@ -727,13 +729,27 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
   };
 }
 
-// Whether the frontmatter contains a `key: value` line YAML would reject. This
-// repo's convention is single-line name/description pairs only, never YAML
-// folding, so a targeted per-line check covers it; no general YAML parser.
+// Whether the frontmatter contains a `key: value` line that does not yield the
+// intended single-line string, either because YAML rejects the line outright or
+// because YAML reads something other than what was written (a space-hash
+// sequence truncates the value into a comment). This repo's convention is
+// single-line name/description pairs only, never YAML folding, so a targeted
+// per-line check covers it; no general YAML parser. Values are judged as
+// strings because every key this corpus authors is a string; a flow sequence in
+// a description is a type violation the check is meant to catch, not permit.
 // A value opening with a quote is a quoted scalar (a plain scalar may not start
 // with one), so it is judged by the quoted rules; anything else is plain.
-//   plain scalar    -> a colon-space (": ") sequence, which YAML reads as a
-//                      nested mapping key, invalidating the whole block
+//   plain scalar    -> a first character in `[ ] { } , # & * ! | > % @` or a
+//                      backtick (flagged unconditionally, since ns-plain-first
+//                      forbids all of them regardless of what follows); a
+//                      leading `?`, `:` or `-` that is either the whole value
+//                      or is followed by a space or tab (ns-plain-first
+//                      permits all three followed by a non-space, e.g. `-foo`
+//                      or a description containing `http://example.com`); a
+//                      `:` followed by a space, tab, or end of value anywhere
+//                      in the value; or a `#` preceded by a space or tab
+//                      anywhere in the value. Each of these stops a YAML 1.2
+//                      plain scalar from parsing as the intended string.
 //   quoted scalar   -> no matching closing delimiter, an unescaped instance of
 //                      its own delimiter inside the quotes, or an unknown or
 //                      malformed double-quoted escape sequence.
@@ -755,7 +771,25 @@ function hasInvalidFrontmatterValue(file) {
     const value = m[1];
     const q = value[0] === '"' || value[0] === "'" ? value[0] : '';
     if (!q) {
-      if (value.includes(': ')) return true;
+      const first = value[0];
+      if (first !== undefined && '[]{},#&*!|>%@`'.includes(first)) return true;
+      if (
+        (first === '?' || first === ':' || first === '-') &&
+        (value.length === 1 || value[1] === ' ' || value[1] === '\t')
+      ) {
+        return true;
+      }
+      for (let i = 0; i < value.length; i++) {
+        if (
+          value[i] === ':' &&
+          (i === value.length - 1 || value[i + 1] === ' ' || value[i + 1] === '\t')
+        ) {
+          return true;
+        }
+        if (value[i] === '#' && i > 0 && (value[i - 1] === ' ' || value[i - 1] === '\t')) {
+          return true;
+        }
+      }
       continue;
     }
     if (value.length < 2 || value[value.length - 1] !== q) return true;
