@@ -580,25 +580,14 @@ function simulateResult(toolName, toolInput) {
   return null;
 }
 
-// New unchecked steps inside a `## Plan` section: a logical step is a
-// checkbox line plus its continuation lines, so a wrapped step's tag can sit
-// on the last continuation line rather than the checkbox line itself. Only
-// `- [ ]` lines start a step (checked-off `[x]`/`[X]` steps are never new
-// steps to tag); newness is decided on the checkbox line alone, right-trimmed
-// and compared against the same right-trimmed set from the on-disk baseline,
-// so touching only a legacy step's continuation line never counts as new.
-function collectNewUncheckedPlanSteps(baseline, result) {
-  // A multiset, not a Set: todo.md accumulates historical batches, so two
-  // unrelated steps (old and new) can share identical checkbox text. Each
-  // baseline occurrence exempts at most one matching result occurrence from
-  // being "new"; a genuinely new copy beyond what the baseline had still
-  // counts, even if its text collides with an old, already-tagged step.
-  const baselineCounts = new Map();
-  for (const l of baseline.split('\n').map((l) => l.replace(/\s+$/, ''))) {
-    baselineCounts.set(l, (baselineCounts.get(l) || 0) + 1);
-  }
-  const resultLines = result.split('\n');
-
+// Shared traversal for both collectors below: every unchecked (`- [ ]`) step
+// inside a `## Plan` section, each paired with its continuation lines (a
+// wrapped step's tag can sit on the last continuation line rather than the
+// checkbox line itself). Checked-off `[x]`/`[X]` steps never start a step.
+// Extraction alone, no newness filtering: each caller decides "new" its own
+// way against its own baseline multiset.
+function extractUncheckedPlanSteps(text) {
+  const lines = text.split('\n');
   const steps = [];
   let inPlan = false;
   // The heading level `## Plan` itself was opened at, so a deeper heading
@@ -606,8 +595,8 @@ function collectNewUncheckedPlanSteps(baseline, result) {
   // only a heading at the same or shallower level does.
   let planLevel = null;
   let i = 0;
-  while (i < resultLines.length) {
-    const line = resultLines[i];
+  while (i < lines.length) {
+    const line = lines[i];
     const headerMatch = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
     if (headerMatch) {
       const level = headerMatch[1].length;
@@ -627,24 +616,76 @@ function collectNewUncheckedPlanSteps(baseline, result) {
       const stepLines = [line];
       let j = i + 1;
       while (
-        j < resultLines.length &&
-        /^\s+\S/.test(resultLines[j]) &&
-        !/^\s*[-*]\s+\[[ xX]\]\s/.test(resultLines[j]) &&
-        !/^\s{0,3}#{1,6}\s+/.test(resultLines[j])
+        j < lines.length &&
+        /^\s+\S/.test(lines[j]) &&
+        !/^\s*[-*]\s+\[[ xX]\]\s/.test(lines[j]) &&
+        !/^\s{0,3}#{1,6}\s+/.test(lines[j])
       ) {
-        stepLines.push(resultLines[j]);
+        stepLines.push(lines[j]);
         j += 1;
       }
-      const remaining = baselineCounts.get(firstLine) || 0;
-      if (remaining > 0) {
-        baselineCounts.set(firstLine, remaining - 1);
-      } else {
-        steps.push({ firstLine, joined: stepLines.join(' ').replace(/\s+$/, '') });
-      }
+      steps.push({ firstLine, joined: stepLines.join(' ').replace(/\s+$/, '') });
       i = j;
       continue;
     }
     i += 1;
+  }
+  return steps;
+}
+
+// New unchecked steps inside a `## Plan` section, for the tag lint. Newness
+// is decided on the checkbox line alone, right-trimmed and compared against
+// the same right-trimmed set of ALL lines from the on-disk baseline (not
+// just its Plan-section steps), so touching only a legacy step's
+// continuation line never counts as new here.
+function collectNewUncheckedPlanSteps(baseline, result) {
+  // A multiset, not a Set: todo.md accumulates historical batches, so two
+  // unrelated steps (old and new) can share identical checkbox text. Each
+  // baseline occurrence exempts at most one matching result occurrence from
+  // being "new"; a genuinely new copy beyond what the baseline had still
+  // counts, even if its text collides with an old, already-tagged step.
+  const baselineCounts = new Map();
+  for (const l of baseline.split('\n').map((l) => l.replace(/\s+$/, ''))) {
+    baselineCounts.set(l, (baselineCounts.get(l) || 0) + 1);
+  }
+  const steps = [];
+  for (const step of extractUncheckedPlanSteps(result)) {
+    const remaining = baselineCounts.get(step.firstLine) || 0;
+    if (remaining > 0) {
+      baselineCounts.set(step.firstLine, remaining - 1);
+    } else {
+      steps.push(step);
+    }
+  }
+  return steps;
+}
+
+// Sibling to collectNewUncheckedPlanSteps for the main-attribution guard
+// only: a step counts when its JOINED text (checkbox line + continuation
+// lines) doesn't appear among the baseline's own joined step texts, not just
+// when its checkbox line is new. That closes a gap the checkbox-line-only
+// test leaves open: editing only an existing wrapped step's continuation
+// line to add a `(main: ...)` tag leaves the checkbox line untouched, so
+// collectNewUncheckedPlanSteps never sees it as new and the tag inside it is
+// never inspected. Same multiset semantics as collectNewUncheckedPlanSteps
+// (a genuinely new copy of an old step's exact text still counts), but the
+// baseline multiset here is built from the baseline's own unchecked Plan
+// steps (via the same extractUncheckedPlanSteps traversal), since "joined"
+// text only exists once continuation lines are gathered the same way for the
+// baseline that they are for the result.
+function collectChangedUncheckedPlanSteps(baseline, result) {
+  const baselineCounts = new Map();
+  for (const step of extractUncheckedPlanSteps(baseline)) {
+    baselineCounts.set(step.joined, (baselineCounts.get(step.joined) || 0) + 1);
+  }
+  const steps = [];
+  for (const step of extractUncheckedPlanSteps(result)) {
+    const remaining = baselineCounts.get(step.joined) || 0;
+    if (remaining > 0) {
+      baselineCounts.set(step.joined, remaining - 1);
+    } else {
+      steps.push(step);
+    }
   }
   return steps;
 }
@@ -828,7 +869,16 @@ function maybeGuardMainAttribution(toolName, toolInput, stamp) {
   try {
     const sim = simulateResult(toolName, toolInput);
     if (!sim) return false;
-    const steps = collectNewUncheckedPlanSteps(sim.baseline, sim.result);
+    // Broader than the tag lint's collectNewUncheckedPlanSteps: an
+    // attribution can be smuggled in by editing only a wrapped step's
+    // continuation line while leaving its checkbox line untouched, so this
+    // guard keys off the step's whole joined text instead (see
+    // collectChangedUncheckedPlanSteps). The tag lint deliberately stays on
+    // the narrower, checkbox-line-only test: switching it too would re-flag
+    // a legacy step's already-valid tag as untagged/bare-main whenever
+    // unrelated prose on its continuation line changes, which isn't this
+    // lint's job.
+    const steps = collectChangedUncheckedPlanSteps(sim.baseline, sim.result);
     const offender = steps.find((s) => {
       const m = MAIN_REASON_RE.exec(s.joined);
       return m && MAIN_USER_ATTRIBUTION_RE.test(m[1]);

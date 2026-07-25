@@ -54,6 +54,28 @@ function skillEvent(session) {
   return { session_id: session, tool_name: 'Skill', tool_input: { skill: 'plan-and-track' } };
 }
 
+function writeEvent(session, filePath, content) {
+  return { session_id: session, tool_name: 'Write', tool_input: { file_path: filePath, content } };
+}
+
+// Real on-disk tasks/todo.md under the case's own scratch root: the
+// main-attribution guard's simulateResult() reads the baseline off disk, so
+// there is no shortcut around writing one.
+function todoPath(root) {
+  return path.join(root, 'tasks', 'todo.md');
+}
+
+function writeTodo(root, content) {
+  const p = todoPath(root);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, content);
+  return p;
+}
+
+function mainAttrMarker(root, session) {
+  return stampFile(root, session) + '.mainattr';
+}
+
 // Session ids below are all plain alphanumeric-plus-hyphen, so plan-gate.js's
 // stampPath() uses the session id verbatim as the state-dir key (no sha256
 // fallback), which lets these helpers locate marker files without
@@ -271,6 +293,103 @@ async function commentStripsFollowingCommand() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+// --- Main-attribution guard cases ---
+//
+// Each case stamps the session (Skill event) before touching tasks/todo.md,
+// since maybeGuardMainAttribution only runs once the session is already
+// stamped, then issues a Write event carrying the full post-edit content
+// (simulateResult() reads the pre-edit baseline straight off disk, so the
+// baseline file must actually exist there first).
+
+async function newStepUserAttributionDenied() {
+  const f = fixture();
+  const session = 'sess-mainattr-new';
+  const todo = writeTodo(f.root, '## Plan\n- [ ] existing step (executor)\n');
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  const content = '## Plan\n- [ ] existing step (executor)\n- [ ] new step (main: user disabled subagent delegation this session)\n';
+  const reason = denyReason(run(writeEvent(session, todo, content), f.env));
+  assert.match(reason, /reads as a claim about what the user did/);
+  assert.strictEqual(fs.existsSync(mainAttrMarker(f.root, session)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionDenyOnceRetryAllowed() {
+  const f = fixture();
+  const session = 'sess-mainattr-retry';
+  const todo = writeTodo(f.root, '## Plan\n- [ ] existing step (executor)\n');
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  const content = '## Plan\n- [ ] existing step (executor)\n- [ ] new step (main: user disabled subagent delegation this session)\n';
+  const reason = denyReason(run(writeEvent(session, todo, content), f.env));
+  assert.match(reason, /reads as a claim about what the user did/);
+  const marker = mainAttrMarker(f.root, session);
+  assert.strictEqual(fs.existsSync(marker), true);
+  // Back-date the marker instead of sleeping in the test suite:
+  // maybeGuardMainAttribution's deny-vs-concurrent-retry race check only
+  // treats a marker younger than 2000ms as a racing loser, so pushing its
+  // mtime into the past makes this immediate retry look like a real
+  // model-turn-later retry rather than a race, the same fs.utimesSync
+  // back-dating hooks/codex/scripts/run-plan-gate-pilot-fixtures.js already
+  // uses for its own staleness checks (see scopeFile there), rather than
+  // adding a real sleep.
+  const aged = new Date(Date.now() - 5000);
+  fs.utimesSync(marker, aged, aged);
+  assert.strictEqual(run(writeEvent(session, todo, content), f.env), '');
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function nonAttributionMainReasonAllowed() {
+  const f = fixture();
+  const session = 'sess-mainattr-factual';
+  const todo = writeTodo(f.root, '## Plan\n- [ ] existing step (executor)\n');
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  // Mentions "user" but states a fact about the work, not a claim about what
+  // the user did: MAIN_USER_ATTRIBUTION_RE must not match this.
+  const content = '## Plan\n- [ ] existing step (executor)\n- [ ] new step (main: needs user sign-off mid-step)\n';
+  assert.strictEqual(run(writeEvent(session, todo, content), f.env), '');
+  assert.strictEqual(fs.existsSync(mainAttrMarker(f.root, session)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function executorTagUnaffectedByAttributionGuard() {
+  const f = fixture();
+  const session = 'sess-mainattr-executor';
+  const todo = writeTodo(f.root, '## Plan\n- [ ] existing step (executor)\n');
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  const content = '## Plan\n- [ ] existing step (executor)\n- [ ] new step (executor)\n';
+  assert.strictEqual(run(writeEvent(session, todo, content), f.env), '');
+  assert.strictEqual(fs.existsSync(mainAttrMarker(f.root, session)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function lintDisabledAllowsAttributionCase() {
+  const f = fixture();
+  const session = 'sess-mainattr-lintoff';
+  const todo = writeTodo(f.root, '## Plan\n- [ ] existing step (executor)\n');
+  const env = { ...f.env, PLANGATE_LINT_DISABLED: '1' };
+  assert.strictEqual(run(skillEvent(session), env), '');
+  const content = '## Plan\n- [ ] existing step (executor)\n- [ ] new step (main: user disabled subagent delegation this session)\n';
+  assert.strictEqual(run(writeEvent(session, todo, content), env), '');
+  assert.strictEqual(fs.existsSync(mainAttrMarker(f.root, session)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function continuationLineAttributionDenied() {
+  const f = fixture();
+  const session = 'sess-mainattr-continuation';
+  // The checkbox (first) line is IDENTICAL between baseline and result; only
+  // the wrapped step's continuation line gains the attribution tag. This is
+  // the case collectNewUncheckedPlanSteps's checkbox-line-only newness test
+  // misses (it never sees this step as new), and collectChangedUncheckedPlanSteps
+  // must catch via the step's whole joined text instead.
+  const todo = writeTodo(f.root, '## Plan\n- [ ] wrapped step needs detail\n  more context\n');
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  const content = '## Plan\n- [ ] wrapped step needs detail\n  more context (main: user requested this)\n';
+  const reason = denyReason(run(writeEvent(session, todo, content), f.env));
+  assert.match(reason, /reads as a claim about what the user did/);
+  assert.strictEqual(fs.existsSync(mainAttrMarker(f.root, session)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 const HANDLERS = {
   'npm-test-silent': npmTestSilent,
   'git-push-help-silent': gitPushHelpSilent,
@@ -289,6 +408,12 @@ const HANDLERS = {
   'heredoc-hyphen-delim-body-not-classified': heredocHyphenDelimBodyNotClassified,
   'quoted-heredoc-op-not-hiding-command': quotedHeredocOpNotHiding,
   'comment-strips-following-command': commentStripsFollowingCommand,
+  'new-step-user-attribution-denied': newStepUserAttributionDenied,
+  'attribution-deny-once-retry-allowed': attributionDenyOnceRetryAllowed,
+  'non-attribution-main-reason-allowed': nonAttributionMainReasonAllowed,
+  'executor-tag-unaffected-by-attribution-guard': executorTagUnaffectedByAttributionGuard,
+  'lint-disabled-allows-attribution-case': lintDisabledAllowsAttributionCase,
+  'continuation-line-attribution-denied': continuationLineAttributionDenied,
 };
 
 async function main() {
