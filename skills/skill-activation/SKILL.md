@@ -138,23 +138,48 @@ Restrict egress to the model provider's API rather than sealing it off. A sealed
 sandbox is not the stricter choice here: the case cannot reach the API, so it
 exits at zero turns having activated nothing, which is an invalid run rather than
 a passing negative. An allowlisting forward proxy gives the isolation without
-that failure mode. Point the sandbox's `HTTPS_PROXY`/`HTTP_PROXY` at it, deny all
-other egress at the network layer, and keep the credential mounted in the sandbox
-rather than baked into the proxy:
+that failure mode. Point the sandbox's `HTTPS_PROXY`/`HTTP_PROXY` at it and keep
+the credential mounted in the sandbox rather than baked into the proxy:
 
 ```squid
-# squid.conf: allow the provider API, nothing else
-http_port 3128
+# squid.conf: containment proxy for billable live runs.
+# Host list: https://code.claude.com/docs/en/network-config is the source of
+# truth. Re-check it; hosts change. Also set
+# CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 in the sandbox so optional
+# telemetry never hits the deny wall.
 
-acl provider dstdomain .anthropic.com
-http_access allow provider
+# Bind only the interface the sandbox reaches, never 0.0.0.0: the proxy has
+# exactly one legitimate client. Adjust both values to your sandbox network.
+http_port 172.17.0.1:3128
+acl sandbox src 172.17.0.0/16
+
+# api.anthropic.com carries inference. platform.claude.com carries OAuth token
+# refresh for claude.ai accounts, so a long corpus dies mid-run without it;
+# drop that line only if the sandbox authenticates with an API key.
+acl provider dstdomain api.anthropic.com
+acl provider dstdomain platform.claude.com
+
+# TLS only: no CONNECT tunnel to an arbitrary port on an allowed host.
+acl tls_port port 443
+
+http_access allow sandbox provider tls_port
 http_access deny all
 
+# Keep prompt and completion content out of proxy state.
 cache deny all
+# Every denied line here is a failed egress attempt: the audit channel.
 access_log stdio:/var/log/squid/access.log
 ```
 
-Swap the `dstdomain` value when a case targets a different provider.
+Swap the hostnames per that provider's own allowlist doc when a case targets a
+different provider.
+
+The proxy is the permitted door, not the wall. Deny all other egress at the
+network layer, including port 53: an adversarial case can open raw sockets, and
+a CONNECT proxy means the sandbox needs no direct DNS of its own. One residual
+stays open by construction: the mounted credential lets an injected case ship
+data out inside API request bodies. The allowlist contains destinations, not
+payloads.
 
 A case passes iff `expect_skill` activated and
 `forbid_skill` did not; the check itself is deterministic (a name is in the
