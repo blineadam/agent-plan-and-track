@@ -367,18 +367,90 @@ async function testQuotedScalarEscapes(binDir) {
   );
   const agentReport = parseReport(agentRun, 'precheck agent scalar escapes');
   assert(agentRun.code === 1, `invalid agent escape exited ${agentRun.code}, expected 1`);
-  assert(agentReport.schema_issue_count === 1, 'invalid agent escape was not isolated');
+  // Both agents now carry an issue: \q is invalid YAML AND uninstallable;
+  // \e is valid YAML (decodes to the right length) but is still uninstallable,
+  // since the installers only know how to render \" and \\. Pinning each flag
+  // separately below is what actually proves that distinction, not the count.
+  assert(agentReport.schema_issue_count === 2, 'agent scalar-escape issue count drifted from the expected 2');
+  const invalidAgent = agentReport.agents.find((agent) => agent.agent === 'invalid-escape');
   assert(
-    agentReport.agents.find((agent) => agent.agent === 'invalid-escape')
-      .frontmatter_invalid_yaml === true,
-    'invalid agent escape passed'
+    invalidAgent.frontmatter_invalid_yaml === true,
+    'invalid agent escape: frontmatter_invalid_yaml should be true'
+  );
+  assert(
+    invalidAgent.frontmatter_uninstallable_escape === true,
+    'invalid agent escape: frontmatter_uninstallable_escape should be true'
   );
   const validAgent = agentReport.agents.find((agent) => agent.agent === 'valid-escape');
   assert(
-    validAgent.frontmatter_invalid_yaml === false &&
-      validAgent.description_chars === validDecoded.length,
-    'valid YAML agent escape was rejected or decoded incorrectly'
+    validAgent.frontmatter_invalid_yaml === false,
+    'valid YAML agent escape: frontmatter_invalid_yaml should be false'
   );
+  assert(
+    validAgent.frontmatter_uninstallable_escape === true,
+    'valid YAML agent escape: frontmatter_uninstallable_escape should be true (installers cannot render \\e)'
+  );
+  assert(
+    validAgent.description_chars === validDecoded.length,
+    'valid YAML agent escape decoded to the wrong length'
+  );
+}
+
+// agents/*.md only: a double-quoted description whose backslash escapes
+// something the installers cannot decode (frontmatter_field/decode_dq only
+// know \" and \\) is valid YAML that would still abort ./install.sh, so
+// --precheck-agents must flag it even when frontmatter_invalid_yaml does not.
+async function testAgentUninstallableEscape(binDir) {
+  const root = path.join(scratchRoot, 'precheck-agent-uninstallable-escape');
+  fs.mkdirSync(root, { recursive: true });
+  const mustFlag = {
+    'tab-escape': 'description: "Use \\t when testing a tab escape"',
+    'newline-escape': 'description: "Use \\n when testing a newline escape"',
+    'unicode-escape': 'description: "Use \\u00e9 when testing a unicode escape"',
+    'trailing-backslash': 'description: "Use this when testing a trailing backslash\\"',
+  };
+  const mustNotFlag = {
+    'escaped-quote': 'description: "Use \\"quoted\\" wording when testing an escaped quote"',
+    'escaped-backslash': 'description: "Use a backslash \\\\ when testing an escaped backslash"',
+    'escaped-backslash-then-t':
+      'description: "Use a\\\\tb when testing an escaped backslash before a literal t"',
+    'plain-value': 'description: Use a plain unquoted value when testing',
+    'single-quoted': "description: 'Use it''s escaped quote when testing single quotes'",
+  };
+  for (const [name, descriptionLine] of Object.entries({ ...mustFlag, ...mustNotFlag })) {
+    fs.writeFileSync(
+      path.join(root, `${name}.md`),
+      [
+        '---',
+        `name: ${name}`,
+        descriptionLine,
+        'model: fable',
+        'effort: xhigh',
+        'tools: Read',
+        '---',
+        '',
+        'Test agent.',
+        '',
+      ].join('\n')
+    );
+  }
+  const run = await runNode(ACTIVATION_RUNNER, ['--precheck-agents', root], baseEnv(binDir));
+  const report = parseReport(run, 'precheck agent uninstallable escape');
+  for (const name of Object.keys(mustFlag)) {
+    const agent = report.agents.find((a) => a.agent === name);
+    assert(
+      agent && agent.frontmatter_uninstallable_escape === true,
+      `uninstallable escape case '${name}' was not flagged`
+    );
+  }
+  for (const name of Object.keys(mustNotFlag)) {
+    const agent = report.agents.find((a) => a.agent === name);
+    assert(
+      agent && agent.frontmatter_uninstallable_escape === false,
+      `installable escape case '${name}' was incorrectly flagged`
+    );
+  }
+  assert(run.code === 1, `agent uninstallable escapes exited ${run.code}, expected 1`);
 }
 
 async function testPlainScalarIndicators(binDir) {
@@ -1224,6 +1296,7 @@ async function main() {
   await testPrecheckLengths(binDir);
   await testAgentSchema(binDir);
   await testQuotedScalarEscapes(binDir);
+  await testAgentUninstallableEscape(binDir);
   await testPlainScalarIndicators(binDir);
   await testTimeoutMaximum(binDir);
   await testMalformedInstalledToml(binDir);
