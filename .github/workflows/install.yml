@@ -172,7 +172,7 @@ jobs:
           cat > agents/zz-probe-escape.md <<'PROBE'
           ---
           name: zz-probe-escape
-          description: "Use when: the value contains a literal quote, e.g. say \"hello\" first."
+          description: "Use when: the value says \"hello\" and has a backslash before an escaped quote \\\" like that."
           model: sonnet
           effort: high
           tools: Read, Grep, Glob
@@ -191,6 +191,21 @@ jobs:
           grep -qF 'tools: ["read", "search"]' "$HOME/.copilot/agents/zz-probe-single.agent.md" \
             || { echo "FAIL: zz-probe-single.agent.md missing expected YAML flow array tools"; exit 1; }
           rm -f agents/zz-probe-single.md agents/zz-probe-escape.md
+          # Third defect: a value whose two ends are different quotes must come
+          # back byte-verbatim rather than have each end stripped on its own.
+          # Asserted against the render directly, not through
+          # --precheck-agents, which flags such a value as invalid frontmatter
+          # by design, and after the probes above are removed so it cannot
+          # contaminate their round-trip check.
+          q="'"
+          printf -- '---\nname: zz-probe-mismatch\ndescription: "Use when foo%s\nmodel: sonnet\neffort: high\ntools: Read, Grep, Glob\n---\n\nProbe agent for CI only.\n' \
+            "$q" > agents/zz-probe-mismatch.md
+          ./install.sh codex >/dev/null
+          expected="$(printf 'description = "\\"Use when foo%s"' "$q")"
+          grep -qF "$expected" "$HOME/.codex/agents/zz-probe-mismatch.toml" || {
+            echo "FAIL: mismatched-delimiter value did not survive verbatim into the Codex render"
+            cat "$HOME/.codex/agents/zz-probe-mismatch.toml"; exit 1; }
+          rm -f agents/zz-probe-mismatch.md
           # Negative control. The loud abort is the load-bearing half of the
           # decode design, since a user running the installer locally has no CI
           # in the loop to catch a silently corrupted render. Checked per field
@@ -538,7 +553,7 @@ jobs:
           $probeEscape = @'
           ---
           name: zz-probe-escape
-          description: "Use when: the value contains a literal quote, e.g. say \"hello\" first."
+          description: "Use when: the value says \"hello\" and has a backslash before an escaped quote \\\" like that."
           model: sonnet
           effort: high
           tools: Read, Grep, Glob
@@ -561,6 +576,22 @@ jobs:
           if ($probeContent -notmatch [regex]::Escape('tools: ["read", "search"]')) { throw "zz-probe-single.agent.md missing expected YAML flow array tools" }
           Remove-Item -LiteralPath 'agents\zz-probe-single.md' -Force
           Remove-Item -LiteralPath 'agents\zz-probe-escape.md' -Force
+          # Third defect: a value whose two ends are different quotes must come
+          # back byte-verbatim rather than have each end stripped on its own.
+          # Asserted against the render directly, not through
+          # --precheck-agents, which flags such a value as invalid frontmatter
+          # by design, and after the probes above are removed so it cannot
+          # contaminate their round-trip check.
+          $q = "'"
+          $mismatchLines = @('---', 'name: zz-probe-mismatch', "description: `"Use when foo$q", 'model: sonnet', 'effort: high', 'tools: Read, Grep, Glob', '---', '', 'Probe agent for CI only.')
+          Write-Probe 'agents\zz-probe-mismatch.md' (($mismatchLines -join "`n") + "`n")
+          .\install.ps1 codex | Out-Null
+          $mismatchToml = Get-Content -Raw "$H\.codex\agents\zz-probe-mismatch.toml"
+          $expectedMismatch = 'description = "\"Use when foo' + $q + '"'
+          if ($mismatchToml -notmatch [regex]::Escape($expectedMismatch)) {
+            throw "mismatched-delimiter value did not survive verbatim into the Codex render"
+          }
+          Remove-Item -LiteralPath 'agents\zz-probe-mismatch.md' -Force
           # Negative control, mirroring the unix job. The loud abort is the
           # load-bearing half of the decode design, since a user running the
           # installer locally has no CI in the loop to catch a silently
