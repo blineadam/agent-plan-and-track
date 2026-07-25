@@ -378,8 +378,9 @@ jobs:
           uncovered="$(jq -r --argjson replied "$replied" \
             '[.[] | select(.root as $root | $replied | index($root) | not) | .root] | join(" ")' <<<"$threads")"
           if [ -n "$uncovered" ]; then
-            echo "no triage reply for review comment(s): $uncovered" >&2
-            echo "session 2 never saw these findings; leaving PR #$pr open for a human" >&2
+            echo "no usable triage reply for review comment(s): $uncovered" >&2
+            echo "candidate causes: the fetch delivered no comments, session 2 failed before writing its replies file, it wrote a partial or malformed one, or a later review opened threads it never saw" >&2
+            echo "leaving PR #$pr open for a human" >&2
             exit 1
           fi
           for id in $(jq -r '.[].id' <<<"$threads"); do
