@@ -177,17 +177,19 @@ acl sandbox src 172.20.0.2/32
 # ask for. Keep both: on SNI alone, a crafted CONNECT hostname reaches the
 # attacker's own DNS server carrying whatever it encodes, long before the
 # handshake that would have been terminated.
-acl provider_host dstdomain api.anthropic.com platform.claude.com
+#
+# -n is load-bearing, not tidiness. Without it, a bare-IP CONNECT that fails
+# the name comparison sends Squid off to a reverse PTR lookup, and that record
+# belongs to whoever owns the address: an attacker pointing their own PTR at
+# an allowed name would pass this ACL and then splice with a matching SNI.
+# -n makes that type mismatch an immediate miss and looks nothing up. It does
+# not affect resolving an allowed name in order to dial it, which happens
+# outside ACL matching.
+acl provider_host dstdomain -n api.anthropic.com platform.claude.com
 acl provider_sni ssl::server_name api.anthropic.com platform.claude.com
 
 # TLS only: no CONNECT tunnel to an arbitrary port on an allowed host.
 acl tls_port port 443
-
-# Reject IP-literal CONNECT targets outright, v4 and bracketed v6: dstdomain
-# and dstdom_regex both fall back to a reverse PTR lookup for a non-matching
-# literal, and that PTR record is the destination's own to set, not ours to
-# trust. This deny has to precede the allow below, which is why it sits here.
-acl ip_literal dstdom_regex ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$|^\[
 
 # A CONNECT tunnel only tells Squid the hostname the client typed, so peek at
 # the real ClientHello SNI instead of trusting that line, terminate anything
@@ -198,7 +200,6 @@ ssl_bump peek step1
 ssl_bump terminate !provider_sni
 ssl_bump splice all
 
-http_access deny ip_literal
 http_access allow sandbox provider_host tls_port
 http_access deny all
 
