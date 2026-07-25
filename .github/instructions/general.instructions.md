@@ -45,6 +45,13 @@ just a suggestion.
   `--body-file`/`-F` backed by a real file or a process-substitution stream
   of actual newlines. Flag a body edit that deletes an image already present
   in the existing PR description.
+- Flag a PR description that narrates the review history instead of
+  describing the change as it stands: a walkthrough of what each review
+  round raised and how it was answered, an alternatives-considered essay, or
+  a known-limits appendix. `.github/workflows/pr-body-lint.yml` already
+  blocks the heading-shaped version mechanically, so what needs review
+  judgment here is the same narration written as ordinary prose underneath
+  an allowed heading.
 
 ## Scope discipline
 

@@ -1,0 +1,15 @@
+{
+  "cases": [
+    { "id": "em-dash-in-fenced-block-passes", "expect": "clean" },
+    { "id": "em-dash-in-nested-list-continuation-hard-fails", "expect": "hard-fail" },
+    { "id": "em-dash-in-inline-span-passes", "expect": "clean" },
+    { "id": "em-dash-in-prose-hard-fails", "expect": "hard-fail" },
+    { "id": "emoji-in-fenced-block-passes", "expect": "clean" },
+    { "id": "emoji-in-nested-list-continuation-hard-fails", "expect": "hard-fail" },
+    { "id": "emoji-in-inline-span-passes", "expect": "clean" },
+    { "id": "emoji-in-prose-hard-fails", "expect": "hard-fail" },
+    { "id": "unclosed-fence-scans-remainder-as-prose", "expect": "hard-fail" },
+    { "id": "banned-heading-inside-fenced-block-passes", "expect": "clean" },
+    { "id": "quoted-problem-heading-in-fence-with-real-summary-passes", "expect": "clean" }
+  ]
+}
