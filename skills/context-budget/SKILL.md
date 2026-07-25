@@ -46,7 +46,8 @@ node skills/context-budget/scripts/scan-context.js ./skills
 
 It scans `~/.claude/skills`, `~/.copilot/skills`, `~/.agents/skills` (whichever
 exist) plus any dirs you pass, each harness's instruction file, and the
-`core-rules.md` digest. Token estimate is deliberately crude: **words × 1.3**, a relative bloat signal, not a tokenizer. Output JSON fields:
+core-rules digest (`core-rules.md`, plus `core-rules.local.md` where present,
+matching what the digest hook injects). Token estimate is deliberately crude: **words × 1.3**, a relative bloat signal, not a tokenizer. Output JSON fields:
 
 - `harnesses.{claude,copilot,codex}.always_on_tokens`: **the configured-source
   number to drive down, per harness** (that harness's skill frontmatter + its
