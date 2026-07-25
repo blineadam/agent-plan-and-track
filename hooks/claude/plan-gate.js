@@ -80,6 +80,17 @@
  * off (it is a data-loss guard, not a formatting lint); PLANGATE_DISABLED
  * does, and PLANGATE_WARN demotes it like every other deny here.
  *
+ * MAIN-ATTRIBUTION GUARD: also once stamped, a new `(main: <reason>)` tag
+ * whose reason attributes an action to the user (e.g. "user disabled
+ * subagent delegation this session") rather than stating a fact about the
+ * work is denied once per session, same mark-at-deny-time pattern as the
+ * migration-state guard above: an intentional retry (the user genuinely did
+ * ask/confirm/decide it) passes. This is a phrasing tripwire on one common
+ * fingerprint, not proof the reason is false, so unlike the migration-state
+ * guard, PLANGATE_LINT_DISABLED does turn it off, alongside the tag lint
+ * below. Runs after the migration-state guard and before the tag lint (a
+ * hook run emits at most one decision JSON).
+ *
  * Config (env):
  *   PLANGATE_DISABLED        "1" turns the gate off entirely.
  *   PLANGATE_WARN            "1" demotes deny to a non-blocking warning.
@@ -91,8 +102,9 @@
  *                             gh-pr-merge), so a value above 3 effectively
  *                             disables this gate.
  *   PLANGATE_LINT_DISABLED   "1" turns off the tasks/todo.md content lint
- *                             only (stamp gate, scope gate, and mutation gate
- *                             still apply).
+ *                             and the main-attribution guard only (stamp
+ *                             gate, scope gate, mutation gate, and the
+ *                             migration-state guard still apply).
  */
 'use strict';
 
@@ -504,6 +516,21 @@ const TIER_TAG_RE = new RegExp('\\((?:' + ROSTER.join('|') + ')(?::[^)]*)?\\)\\s
 const MAIN_OK_RE = /\(main:\s*[^)\s][^)]*\)\s*$/i; // (main: <non-empty reason>)
 const MAIN_ANY_RE = /\(main(?::[^)]*)?\)\s*$/i; // any main tag, incl. bare/empty-reason
 
+// Same anchored shape as MAIN_OK_RE, but capturing the reason text so the
+// attribution check below inspects only what's inside the tag, never the
+// step's surrounding prose.
+const MAIN_REASON_RE = /\(main:\s*([^)\s][^)]*)\)\s*$/i;
+
+// Tripwire for one common fingerprint: a (main: ...) reason that asserts the
+// user did or expressed something ("user disabled subagent delegation this
+// session") rather than stating a fact about the work. Subject (user/you),
+// up to two intervening words (e.g. "the user explicitly asked"), then one
+// of these verbs. Deliberately NOT exhaustive: this catches one common
+// phrasing shape, not every way a reason could misattribute agency to the
+// user, so a miss here isn't evidence the reason is fine.
+const MAIN_USER_ATTRIBUTION_RE =
+  /\b(?:user|you)\b(?:\s+\S+){0,2}\s+(?:disabled|enabled|turned on|turned off|asked|said|told|chose|requested|wanted|wants|approved|confirmed|authorized|declined|rejected|prefers|preferred|specified)\b/i;
+
 // Simulates the post-edit tasks/todo.md content for Edit/Write/MultiEdit
 // without writing anything to disk. Returns null (skip the lint entirely) on
 // anything that would make the simulation a guess rather than exact: an
@@ -671,6 +698,16 @@ function lintMsg(offenders) {
   ].join('\n');
 }
 
+function attributionMsg(offender) {
+  const text = offender.firstLine.length > 100 ? offender.firstLine.slice(0, 100) + '...' : offender.firstLine;
+  return [
+    "[PlanGate] This step's (main: ...) reason reads as a claim about what the user did or asked, not a fact about the work itself:",
+    `  ${text}`,
+    'A (main: <why>) reason should state a fact about the work (context needed, timing, low mechanical cost), not attribute an action or preference to the user. If the user genuinely did ask/confirm/decide this, retry the same write: this check denies only once per session.',
+    '(PLANGATE_LINT_DISABLED=1 turns off this check along with the tag lint; PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
+  ].join('\n');
+}
+
 function migrationMsg() {
   return [
     '[PlanGate] This write would delete the `## Migration State` block from tasks/todo.md. That block is durable cross-session migration state (frozen oracle, ladder rung, ownership) that must survive tidying, batch compression, and compaction.',
@@ -774,6 +811,58 @@ function maybeGuardMigrationState(toolName, toolInput, stamp) {
   }
 }
 
+// --- Main-attribution guard ---
+
+// Deny ONCE per session a new step's `(main: ...)` reason that trips
+// MAIN_USER_ATTRIBUTION_RE. Same mark-at-deny-time pattern as
+// maybeGuardMigrationState: the `.mainattr` marker is claimed exclusively
+// when the deny is emitted, so an intentional retry passes. Deny-once (not
+// deny-until-fixed) is deliberate: the attribution may be true, the check
+// just can't tell, so the point is one conscious re-assertion, not a block.
+// Runs only after the stamp check and the migration-state guard, and
+// respects PLANGATE_LINT_DISABLED (unlike the migration-state guard, this is
+// a phrasing lint, not a data-loss guard). Returns true when a decision was
+// emitted, so the caller skips the tag lint (one decision JSON per run).
+function maybeGuardMainAttribution(toolName, toolInput, stamp) {
+  if (process.env.PLANGATE_LINT_DISABLED === '1') return false;
+  try {
+    const sim = simulateResult(toolName, toolInput);
+    if (!sim) return false;
+    const steps = collectNewUncheckedPlanSteps(sim.baseline, sim.result);
+    const offender = steps.find((s) => {
+      const m = MAIN_REASON_RE.exec(s.joined);
+      return m && MAIN_USER_ATTRIBUTION_RE.test(m[1]);
+    });
+    if (!offender) return false;
+    try {
+      // STATE_DIR exists here: the session stamp this branch requires lives in it.
+      fs.writeFileSync(stamp + '.mainattr', '', { flag: 'wx' });
+    } catch (err) {
+      if (err && err.code === 'EEXIST') {
+        // Same race-vs-retry distinction as maybeGuardMigrationState: a
+        // marker written within the same tool batch, sub-second old, is a
+        // racing loser, not the intentional retry a model turn later, so a
+        // fresh marker means contention: deny this invocation too.
+        try {
+          if (Date.now() - fs.statSync(stamp + '.mainattr').mtimeMs < 2000) {
+            emitGateDecision(attributionMsg(offender));
+            return true;
+          }
+        } catch {
+          /* marker vanished or unreadable: treat as the retry and allow */
+        }
+        return false; // aged marker: intentional retry passes
+      }
+      process.stderr.write('[PlanGate] main-attribution marker could not be persisted; allowing the edit.\n');
+      return false; // never deny what we can't record, or the deny would repeat forever
+    }
+    emitGateDecision(attributionMsg(offender));
+    return true;
+  } catch {
+    return false; // fail open: any simulation/guard error allows the edit
+  }
+}
+
 function main() {
   let input = {};
   try {
@@ -849,9 +938,11 @@ function main() {
   // tasks/todo.md gate: unchanged behavior, own message.
   if (/(^|\/)tasks\/todo\.md$/i.test(norm)) {
     if (fs.existsSync(stamp)) {
-      // Guard before lint, exclusively: at most one decision JSON per run,
-      // and keeping the Migration State block outranks tag formatting.
+      // Guards before lint, exclusively: at most one decision JSON per run,
+      // and keeping the Migration State block and catching a misattributed
+      // (main: ...) reason both outrank tag formatting.
       if (maybeGuardMigrationState(toolName, toolInput, stamp)) process.exit(0);
+      if (maybeGuardMainAttribution(toolName, toolInput, stamp)) process.exit(0);
       maybeLintTodoContent(toolName, toolInput); // may emitGateDecision(lintMsg(...))
       process.exit(0);
     }
