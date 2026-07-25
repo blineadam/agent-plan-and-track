@@ -23,6 +23,19 @@
     { "id": "mutation-old-scope-compatibility", "expect": "missing-mutations-defaults-empty" },
     { "id": "mutation-concurrent", "expect": "one-allow-one-deny" },
     { "id": "mutation-plan-unlock", "expect": "valid-apply-patch-stamp-allows-retry" },
-    { "id": "mutation-threshold-validation", "expect": "invalid-defaults-two-above-three-disables" }
+    { "id": "mutation-threshold-validation", "expect": "invalid-defaults-two-above-three-disables" },
+    { "id": "attribution-denial-before-mutation", "expect": "deny-before-target-or-transaction-mutation" },
+    { "id": "attribution-environment-id", "expect": "valid-remote-envelope-denies" },
+    { "id": "attribution-aged-retry", "expect": "aged-marker-allows-intentional-retry" },
+    { "id": "attribution-concurrent-first-calls", "expect": "both-racing-first-calls-denied" },
+    { "id": "attribution-legitimate-main-reason", "expect": "allow-work-fact" },
+    { "id": "attribution-non-main-tag", "expect": "allow-non-main-tag" },
+    { "id": "attribution-lint-disabled", "expect": "allow-when-lint-disabled" },
+    { "id": "attribution-continuation-line", "expect": "deny-changed-wrapped-step" },
+    { "id": "attribution-ambiguous-context-fail-open", "expect": "ambiguous-exact-match-allows" },
+    { "id": "attribution-fuzzy-context-fail-open", "expect": "fuzzy-only-match-allows" },
+    { "id": "attribution-unsupported-syntax-fail-open", "expect": "unsupported-add-allows" },
+    { "id": "attribution-multi-file-fail-open", "expect": "redacted-second-file-allows" },
+    { "id": "attribution-unreadable-state-fail-open", "expect": "malformed-scope-allows" }
   ]
 }

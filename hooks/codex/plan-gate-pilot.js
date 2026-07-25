@@ -7,7 +7,10 @@
  * bases every verdict on the disk delta, never on tool_response. A separate
  * Bash PreToolUse path blocks the second distinct unplanned outward mutation
  * among git push, gh pr create, and gh pr merge. A valid new plan item written
- * through apply_patch stamps the shared session state and unlocks that gate.
+ * through apply_patch stamps the shared session state and unlocks that gate. An
+ * apply_patch PreToolUse guard also denies once when an exact in-memory
+ * simulation finds a new or changed unchecked Plan step whose `(main: ...)`
+ * reason attributes an action or preference to the user.
  * The installer copies this source to plan-gate.js.
  *
  * State is keyed by sha256([session_id, canonical cwd, tool_use_id]). A
@@ -18,6 +21,7 @@
  * canonical PreToolUse permissionDecision response.
  *
  * Config (env):
+ *   PLANGATE_LINT_DISABLED  set to 1 to disable the main-attribution guard.
  *   PLANGATE_MUTATION_THRESHOLD distinct-outward-mutation-kind count that
  *                             trips the mutation gate (default 2). Only 3
  *                             kinds exist, so a value above 3 effectively
@@ -37,6 +41,9 @@ const ROSTER = ['planner', 'executor', 'researcher', 'mechanic', 'debugger', 'se
 const TIER_TAG_RE = new RegExp('\\((?:' + ROSTER.join('|') + ')(?::[^)]*)?\\)\\s*$', 'i');
 const MAIN_OK_RE = /\(main:\s*[^)\s][^)]*\)\s*$/i;
 const MAIN_ANY_RE = /\(main(?::[^)]*)?\)\s*$/i;
+const MAIN_REASON_RE = /\(main:\s*([^)\s][^)]*)\)\s*$/i;
+const MAIN_USER_ATTRIBUTION_RE =
+  /\b(?:user|you)\b(?:\s+\S+){0,2}\s+(?:disabled|enabled|turned on|turned off|asked|said|told|chose|requested|wanted|wants|approved|confirmed|authorized|declined|rejected|prefers|preferred|specified)\b/i;
 const MIGRATION_HEADING_RE = /^\s{0,3}##\s+Migration State\s*$/im;
 const SCOPE_WARNING = 'This session has changed 3 distinct source paths without a new valid `## Plan` item. The edits still proceed.';
 const MUTATION_KINDS = new Set(['git-push', 'gh-pr-create', 'gh-pr-merge']);
@@ -221,8 +228,11 @@ function loadScope(c) {
   if (!fs.existsSync(file)) return { mutations: [], paths: [], stamped: false, warned: false };
   const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   const mutations = parsed && parsed.mutations === undefined ? [] : parsed && parsed.mutations;
-  if (!parsed || !Array.isArray(parsed.paths) || !Array.isArray(mutations) || typeof parsed.stamped !== 'boolean' || typeof parsed.warned !== 'boolean' || !parsed.paths.every((p) => typeof p === 'string') || !mutations.every((kind) => MUTATION_KINDS.has(kind))) throw new Error('invalid scope');
-  return { mutations: [...new Set(mutations)], paths: [...new Set(parsed.paths)], stamped: parsed.stamped, warned: parsed.warned };
+  const mainAttributionAt = parsed && parsed.mainAttributionAt;
+  if (!parsed || !Array.isArray(parsed.paths) || !Array.isArray(mutations) || typeof parsed.stamped !== 'boolean' || typeof parsed.warned !== 'boolean' || !parsed.paths.every((p) => typeof p === 'string') || !mutations.every((kind) => MUTATION_KINDS.has(kind)) || (mainAttributionAt !== undefined && (!Number.isFinite(mainAttributionAt) || mainAttributionAt < 0))) throw new Error('invalid scope');
+  const state = { mutations: [...new Set(mutations)], paths: [...new Set(parsed.paths)], stamped: parsed.stamped, warned: parsed.warned };
+  if (mainAttributionAt !== undefined) state.mainAttributionAt = mainAttributionAt;
+  return state;
 }
 
 function saveScope(c, state) {
@@ -233,10 +243,78 @@ function decode(snapshot) {
   return typeof snapshot.text === 'string' ? Buffer.from(snapshot.text, 'base64').toString('utf8') : '';
 }
 
-function collectNewUncheckedPlanItems(baseline, result) {
-  const counts = new Map();
-  for (const line of baseline.split('\n').map((line) => line.replace(/\s+$/, ''))) counts.set(line, (counts.get(line) || 0) + 1);
-  const lines = result.split('\n');
+// Parses only the deliberately supported structured apply_patch subset:
+// Begin/End Patch containing an optional remote Environment ID and Update File
+// operations whose hunks use a bare `@@` header and ordinary context/add/remove
+// lines. Any Add/Delete/Move, contextual hunk header, malformed envelope, or
+// other syntax returns null so the attribution guard fails open instead of
+// approximating upstream.
+function parseStructuredPatch(command) {
+  const lines = String(command || '').split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  if (lines.length < 4 || lines[0] !== '*** Begin Patch' || lines[lines.length - 1] !== '*** End Patch') return null;
+  const operations = [];
+  const end = lines.length - 1;
+  let i = 1;
+  if (/^\*\*\* Environment ID: .+$/.test(lines[i])) i += 1;
+  while (i < end) {
+    const header = /^\*\*\* Update File:\s*(.+?)\s*$/.exec(lines[i]);
+    if (!header) return null;
+    const operation = { filePath: header[1], hunks: [] };
+    i += 1;
+    while (i < end && !/^\*\*\* (?:Add|Update|Delete) File:|^\*\*\* Move to:/.test(lines[i])) {
+      if (lines[i] !== '@@') return null;
+      i += 1;
+      const hunk = [];
+      while (i < end && lines[i] !== '@@' && !/^\*\*\* (?:Add|Update|Delete) File:|^\*\*\* Move to:/.test(lines[i])) {
+        if (!/^[ +\-]/.test(lines[i])) return null;
+        hunk.push(lines[i]);
+        i += 1;
+      }
+      if (!hunk.length || !hunk.some((line) => line[0] === '+' || line[0] === '-')) return null;
+      operation.hunks.push(hunk);
+    }
+    if (!operation.hunks.length) return null;
+    operations.push(operation);
+  }
+  return operations.length ? operations : null;
+}
+
+function exactMatch(lines, needle, start) {
+  const matches = [];
+  for (let i = start; i + needle.length <= lines.length; i += 1) {
+    if (needle.every((line, offset) => lines[i + offset] === line)) matches.push(i);
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+// Simulates only a single-file patch whose one Update File operation targets
+// the already snapshotted tasks/todo.md. Non-todo snapshots deliberately
+// retain no plaintext, so a multi-file patch cannot be proved exact here and
+// fails open. Hunks apply in order and each old sequence must have exactly one
+// byte-for-byte line match after the prior hunk.
+function simulateTodoPatch(command, c, file) {
+  if (!file.snapshot.exists || typeof file.snapshot.text !== 'string') return null;
+  const operations = parseStructuredPatch(command);
+  if (!operations || operations.length !== 1) return null;
+  const target = absolutePath(c.cwd, operations[0].filePath);
+  if (!target || target.absolute !== file.absolute) return null;
+  const lines = decode(file.snapshot).split('\n');
+  let cursor = 0;
+  for (const hunk of operations[0].hunks) {
+    const before = hunk.filter((line) => line[0] !== '+').map((line) => line.slice(1));
+    const after = hunk.filter((line) => line[0] !== '-').map((line) => line.slice(1));
+    if (!before.length) return null;
+    const at = exactMatch(lines, before, cursor);
+    if (at === null) return null;
+    lines.splice(at, before.length, ...after);
+    cursor = at + after.length;
+  }
+  return lines.join('\n');
+}
+
+function extractUncheckedPlanItems(text) {
+  const lines = text.split('\n');
   const items = [];
   let planLevel = null;
   for (let i = 0; i < lines.length; i += 1) {
@@ -248,15 +326,44 @@ function collectNewUncheckedPlanItems(baseline, result) {
       continue;
     }
     if (planLevel === null || !/^\s*[-*]\s+\[ \]\s/.test(lines[i])) continue;
-    const first = lines[i].replace(/\s+$/, '');
-    const prior = counts.get(first) || 0;
-    if (prior) {
-      counts.set(first, prior - 1);
-      continue;
-    }
     const item = [lines[i]];
     while (i + 1 < lines.length && /^\s+\S/.test(lines[i + 1]) && !/^\s*[-*]\s+\[[ xX]\]\s/.test(lines[i + 1]) && !/^\s{0,3}#{1,6}\s+/.test(lines[i + 1])) item.push(lines[++i]);
-    items.push(item.join(' ').replace(/\s+$/, ''));
+    items.push({ firstLine: item[0].replace(/\s+$/, ''), joined: item.join(' ').replace(/\s+$/, '') });
+  }
+  return items;
+}
+
+function collectChangedUncheckedPlanItems(baseline, result) {
+  const counts = new Map();
+  for (const item of extractUncheckedPlanItems(baseline)) counts.set(item.joined, (counts.get(item.joined) || 0) + 1);
+  const items = [];
+  for (const item of extractUncheckedPlanItems(result)) {
+    const prior = counts.get(item.joined) || 0;
+    if (prior) counts.set(item.joined, prior - 1);
+    else items.push(item);
+  }
+  return items;
+}
+
+function attributionFinding(baseline, result) {
+  for (const item of collectChangedUncheckedPlanItems(baseline, result)) {
+    const match = MAIN_REASON_RE.exec(item.joined);
+    if (match && MAIN_USER_ATTRIBUTION_RE.test(match[1])) return { item, reason: match[1] };
+  }
+  return null;
+}
+
+function collectNewUncheckedPlanItems(baseline, result) {
+  const counts = new Map();
+  for (const line of baseline.split('\n').map((line) => line.replace(/\s+$/, ''))) counts.set(line, (counts.get(line) || 0) + 1);
+  const items = [];
+  for (const item of extractUncheckedPlanItems(result)) {
+    const prior = counts.get(item.firstLine) || 0;
+    if (prior) {
+      counts.set(item.firstLine, prior - 1);
+      continue;
+    }
+    items.push(item.joined);
   }
   return items;
 }
@@ -494,8 +601,19 @@ function mutationMessage(prospective, threshold) {
   return `[PlanGate] This command would bring this session to ${prospective} distinct outward git/gh mutations (push, PR create, PR merge), meeting the configured limit of ${threshold} without a plan. Add a valid new unchecked item under an exact \`## Plan\` heading in tasks/todo.md through apply_patch, including a verify clause and owner tag, then retry this command. (PLANGATE_MUTATION_THRESHOLD sets the mutation-count trigger, default 2.)`;
 }
 
-function denyMutation(prospective, threshold, input, c) {
-  const message = mutationMessage(prospective, threshold);
+function attributionMessage(finding) {
+  const text = finding.item.firstLine.length > 100 ? finding.item.firstLine.slice(0, 100) + '...' : finding.item.firstLine;
+  const reason = finding.reason.length > 100 ? finding.reason.slice(0, 100) + '...' : finding.reason;
+  return [
+    "[PlanGate] This step's (main: ...) reason reads as a claim about what the user did or asked, not a fact about the work itself:",
+    `  ${text}`,
+    `  offending reason: (main: ${reason})`,
+    'A (main: <why>) reason should state a fact about the work (context needed, timing, low mechanical cost), not attribute an action or preference to the user. If the user genuinely did ask/confirm/decide this, retry the same write: this check denies only once per session.',
+    '(PLANGATE_LINT_DISABLED=1 turns off this check.)',
+  ].join('\n');
+}
+
+function deny(message, input, c) {
   recordEvent('Denied', input, c, message);
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
@@ -504,6 +622,10 @@ function denyMutation(prospective, threshold, input, c) {
       permissionDecisionReason: message,
     },
   }));
+}
+
+function denyMutation(prospective, threshold, input, c) {
+  deny(mutationMessage(prospective, threshold), input, c);
 }
 
 function mutationPre(input, c) {
@@ -542,6 +664,26 @@ function pre(input, c) {
     const snapshot = snapshotFile(file);
     if (!snapshot) return;
     files.push({ ...file, snapshot });
+  }
+  if (process.env.PLANGATE_LINT_DISABLED !== '1') {
+    const todoFiles = files.filter(isTodo);
+    if (todoFiles.length === 1) {
+      const result = simulateTodoPatch(input.tool_input.command, c, todoFiles[0]);
+      const finding = result === null ? null : attributionFinding(decode(todoFiles[0].snapshot), result);
+      if (finding) {
+        const outcome = withScopeLock(c, () => {
+          const scope = loadScope(c);
+          if (scope.mainAttributionAt !== undefined) return { deny: Date.now() - scope.mainAttributionAt < 2000 };
+          scope.mainAttributionAt = Date.now();
+          saveScope(c, scope);
+          return { deny: true };
+        });
+        if (outcome && outcome.deny) {
+          deny(attributionMessage(finding), input, c);
+          return;
+        }
+      }
+    }
   }
   const key = sha256([c.sessionId, c.cwd, c.toolUseId]);
   try {

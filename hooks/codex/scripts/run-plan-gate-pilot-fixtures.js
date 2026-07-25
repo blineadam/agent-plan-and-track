@@ -112,6 +112,12 @@ function validPlan(label) {
   return `# ${label}\n\n## Plan\n- [ ] ${label}; verify: node check.js (executor)\n`;
 }
 
+function replacementPatch(file, baseline, result) {
+  const removed = baseline.replace(/\n$/, '').split('\n').map((line) => `-${line}`).join('\n');
+  const added = result.replace(/\n$/, '').split('\n').map((line) => `+${line}`).join('\n');
+  return `*** Begin Patch\n*** Update File: ${file}\n@@\n${removed}\n${added}\n*** End Patch`;
+}
+
 async function fresh() {
   const f = fixture();
   source(f.root, 'tasks/todo.md', '# Start\n');
@@ -244,8 +250,11 @@ async function symlinkEscape() {
   const outside = path.join(f.root, '..', `plan-gate-outside-${process.pid}.txt`);
   fs.writeFileSync(outside, 'outside-secret-marker\n', 'utf8');
   fs.symlinkSync(outside, path.join(f.root, 'tasks', 'todo.md'));
-  const input = event(f.root, 'tasks/todo.md');
-  run('--pre', input, f.env);
+  const result = 'outside-secret-marker\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
+  const input = event(f.root, 'tasks/todo.md', 'symlink-escape', {
+    tool_input: { command: replacementPatch('tasks/todo.md', 'outside-secret-marker\n', result) },
+  });
+  assert.strictEqual(run('--pre', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
   fs.unlinkSync(outside);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -438,11 +447,200 @@ async function mutationThresholdValidation() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
-const HANDLERS = { fresh, 'new-todo-plan': newTodoPlan, stale, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-scope-prune': expiredScopePrune, 'mutation-classifier': mutationClassifier, 'mutation-distinct-denial-retry': mutationDistinctDenialRetry, 'mutation-single-call-union': mutationSingleCallUnion, 'mutation-old-scope-compatibility': mutationOldScopeCompatibility, 'mutation-concurrent': mutationConcurrent, 'mutation-plan-unlock': mutationPlanUnlock, 'mutation-threshold-validation': mutationThresholdValidation };
+async function attributionDenialBeforeMutation() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const input = event(f.root, 'tasks/todo.md', 'attribution-denial', {
+    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  });
+  const message = denial(run('--pre', input, f.env));
+  assert.match(message, /claim about what the user did or asked/);
+  assert.match(message, /offending reason: \(main: user asked for direct implementation\)/);
+  assert.strictEqual(fs.readFileSync(path.join(f.root, 'tasks', 'todo.md'), 'utf8'), baseline);
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
+  assert.strictEqual(typeof scope(f.root, input).mainAttributionAt, 'number');
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionEnvironmentId() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const command = replacementPatch('tasks/todo.md', baseline, result).replace(
+    '*** Begin Patch\n',
+    '*** Begin Patch\n*** Environment ID: remote-123\n',
+  );
+  const input = event(f.root, 'tasks/todo.md', 'attribution-environment-id', {
+    tool_input: { command },
+  });
+  assert.match(denial(run('--pre', input, f.env)), /claim about what the user did or asked/);
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionAgedRetry() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user confirmed the approach)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const first = event(f.root, 'tasks/todo.md', 'attribution-retry', {
+    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+    tool_use_id: 'attribution-retry-first',
+  });
+  denial(run('--pre', first, f.env));
+  const state = scope(f.root, first);
+  state.mainAttributionAt = Date.now() - 3000;
+  fs.writeFileSync(scopeFile(f.root, first), JSON.stringify(state), 'utf8');
+  const retry = event(f.root, 'tasks/todo.md', 'attribution-retry', {
+    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+    tool_use_id: 'attribution-retry-aged',
+  });
+  assert.strictEqual(run('--pre', retry, f.env), '');
+  assert.strictEqual(fs.existsSync(transaction(f.root, retry)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionConcurrentFirstCalls() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user confirmed the approach)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const command = replacementPatch('tasks/todo.md', baseline, result);
+  const one = event(f.root, 'tasks/todo.md', 'attribution-concurrent', {
+    tool_input: { command },
+    tool_use_id: 'attribution-concurrent-one',
+  });
+  const two = event(f.root, 'tasks/todo.md', 'attribution-concurrent', {
+    tool_input: { command },
+    tool_use_id: 'attribution-concurrent-two',
+  });
+  const outputs = await Promise.all([runAsync('--pre', one, f.env), runAsync('--pre', two, f.env)]);
+  assert.strictEqual(outputs.filter(Boolean).length, 2);
+  for (const output of outputs) assert.match(denial(output), /claim about what the user did or asked/);
+  assert.strictEqual(fs.existsSync(transaction(f.root, one)), false);
+  assert.strictEqual(fs.existsSync(transaction(f.root, two)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionLegitimateMainReason() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  const result = '# Start\n\n## Plan\n- [ ] Review the diff; verify: node check.js (main: cross-file synthesis needs current context)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const input = event(f.root, 'tasks/todo.md', 'attribution-legitimate', {
+    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  });
+  assert.strictEqual(run('--pre', input, f.env), '');
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionNonMainTag() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (executor: user asked for direct implementation)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const input = event(f.root, 'tasks/todo.md', 'attribution-non-main', {
+    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  });
+  assert.strictEqual(run('--pre', input, f.env), '');
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionLintDisabled() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user disabled delegation)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const input = event(f.root, 'tasks/todo.md', 'attribution-disabled', {
+    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  });
+  assert.strictEqual(run('--pre', input, { ...f.env, PLANGATE_LINT_DISABLED: '1' }), '');
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionContinuationLine() {
+  const f = fixture();
+  const baseline = '## Plan\n- [ ] Implement guard; verify: node check.js\n  (main: current context spans the hook and fixtures)\n';
+  const result = '## Plan\n- [ ] Implement guard; verify: node check.js\n  (main: the user explicitly asked for direct implementation)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const input = event(f.root, 'tasks/todo.md', 'attribution-continuation', {
+    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  });
+  assert.match(denial(run('--pre', input, f.env)), /the user explicitly asked/);
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionAmbiguousContextFailOpen() {
+  const f = fixture();
+  const baseline = 'repeat\nrepeat\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const command = '*** Begin Patch\n*** Update File: tasks/todo.md\n@@\n-repeat\n+repeat\n+\n+## Plan\n+- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n*** End Patch';
+  const input = event(f.root, 'tasks/todo.md', 'attribution-ambiguous', { tool_input: { command } });
+  assert.strictEqual(run('--pre', input, f.env), '');
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionFuzzyContextFailOpen() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const command = '*** Begin Patch\n*** Update File: tasks/todo.md\n@@\n-#  Start\n+# Start\n+\n+## Plan\n+- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n*** End Patch';
+  const input = event(f.root, 'tasks/todo.md', 'attribution-fuzzy', { tool_input: { command } });
+  assert.strictEqual(run('--pre', input, f.env), '');
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionUnsupportedSyntaxFailOpen() {
+  const f = fixture();
+  const result = '## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
+  const command = `*** Begin Patch\n*** Add File: tasks/todo.md\n${result.replace(/\n$/, '').split('\n').map((line) => `+${line}`).join('\n')}\n*** End Patch`;
+  const input = event(f.root, 'tasks/todo.md', 'attribution-unsupported', { tool_input: { command } });
+  assert.strictEqual(run('--pre', input, f.env), '');
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionMultiFileFailOpen() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  source(f.root, 'one.js', 'old\n');
+  const command = '*** Begin Patch\n*** Update File: tasks/todo.md\n@@\n-# Start\n+# Start\n+\n+## Plan\n+- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n*** Update File: one.js\n@@\n-old\n+new\n*** End Patch';
+  const input = event(f.root, 'tasks/todo.md', 'attribution-multi-file', { tool_input: { command } });
+  assert.strictEqual(run('--pre', input, f.env), '');
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function attributionUnreadableStateFailOpen() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const input = event(f.root, 'tasks/todo.md', 'attribution-unreadable-state', {
+    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  });
+  fs.mkdirSync(path.dirname(scopeFile(f.root, input)), { recursive: true });
+  fs.writeFileSync(scopeFile(f.root, input), '{bad', 'utf8');
+  assert.strictEqual(run('--pre', input, f.env), '');
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+const HANDLERS = { fresh, 'new-todo-plan': newTodoPlan, stale, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-scope-prune': expiredScopePrune, 'mutation-classifier': mutationClassifier, 'mutation-distinct-denial-retry': mutationDistinctDenialRetry, 'mutation-single-call-union': mutationSingleCallUnion, 'mutation-old-scope-compatibility': mutationOldScopeCompatibility, 'mutation-concurrent': mutationConcurrent, 'mutation-plan-unlock': mutationPlanUnlock, 'mutation-threshold-validation': mutationThresholdValidation, 'attribution-denial-before-mutation': attributionDenialBeforeMutation, 'attribution-environment-id': attributionEnvironmentId, 'attribution-aged-retry': attributionAgedRetry, 'attribution-concurrent-first-calls': attributionConcurrentFirstCalls, 'attribution-legitimate-main-reason': attributionLegitimateMainReason, 'attribution-non-main-tag': attributionNonMainTag, 'attribution-lint-disabled': attributionLintDisabled, 'attribution-continuation-line': attributionContinuationLine, 'attribution-ambiguous-context-fail-open': attributionAmbiguousContextFailOpen, 'attribution-fuzzy-context-fail-open': attributionFuzzyContextFailOpen, 'attribution-unsupported-syntax-fail-open': attributionUnsupportedSyntaxFailOpen, 'attribution-multi-file-fail-open': attributionMultiFileFailOpen, 'attribution-unreadable-state-fail-open': attributionUnreadableStateFailOpen };
 
 async function main() {
   const fixtureCases = JSON.parse(fs.readFileSync(CASES, 'utf8')).cases;
-  assert.strictEqual(fixtureCases.length, 24, 'expected the complete twenty-four-case matrix');
+  assert.strictEqual(fixtureCases.length, 37, 'expected the complete thirty-seven-case matrix');
   for (const fixtureCase of fixtureCases) {
     assert.strictEqual(typeof HANDLERS[fixtureCase.id], 'function', `no handler for ${fixtureCase.id}`);
     await HANDLERS[fixtureCase.id]();
