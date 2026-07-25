@@ -67,11 +67,16 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 - Do not propose factoring the bounded-live-run process-control helpers
   (`liveCaseTimeout()`, `terminateChildTree()`, `handleParentSignal()`, and
   the timeout/grace/force-kill staging in `runChildCase()`, all gated by a
-  `LIVE_CASE_TIMEOUT_MS` env var) into a shared module. They're duplicated
-  verbatim across `skills/skill-activation/scripts/run-activation-cases.js`,
+  `LIVE_CASE_TIMEOUT_MS` env var) into a shared module. They're duplicated across
+  `skills/skill-activation/scripts/run-activation-cases.js`,
   `run-behavioral-smokes.js`, and `skills/skill-comply/scripts/run-codex-cases.js`
   for the same no-shared-root reason as the hook helpers above; the
-  duplication is intentional.
+  duplication is intentional. The two `skill-activation` runners carry them
+  verbatim, while `run-codex-cases.js` implements the same design with
+  script-specific differences (`fail()` rather than `die()`,
+  `childProcess.spawn()` rather than a destructured `spawn()`, and its own
+  `MAX_CAPTURE_BYTES` cap). Do not flag those differences as inconsistencies
+  to reconcile.
 
 ## Shell scripts
 
