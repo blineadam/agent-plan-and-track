@@ -269,12 +269,45 @@ function Remove-StaleInstalled($dest, $expected) {
   }
 }
 
+# Decode a double-quoted frontmatter value's inner text ($inner) in one
+# left-to-right char loop (never sequential -replace calls, which would
+# mis-handle a backslash immediately before a quote). Only \" and \\ are
+# legitimate escapes here; anything else throws, naming $file, $key, and the
+# offending escape, so a value this decoder can't handle aborts the install
+# instead of installing a silently corrupted rendered value into two harnesses.
+function ConvertTo-DecodedDoubleQuoted($file, $key, $inner) {
+  $n = $inner.Length
+  $out = New-Object System.Text.StringBuilder
+  $i = 0
+  while ($i -lt $n) {
+    $c = $inner[$i]
+    if ($c -eq '\') {
+      $nc = if ($i + 1 -lt $n) { $inner[$i + 1] } else { $null }
+      if ($nc -eq '"' -or $nc -eq '\') {
+        [void]$out.Append($nc)
+        $i += 2
+      } else {
+        $shown = if ($null -eq $nc) { '<end>' } else { $nc }
+        throw "error: ${file}: unhandled escape \$shown in $key frontmatter value"
+      }
+    } else {
+      [void]$out.Append($c)
+      $i++
+    }
+  }
+  return $out.ToString()
+}
+
 # Read a single-line frontmatter value for $key out of $file's YAML
 # frontmatter block (between the first and second `---` line). Matches a line
-# starting with "<key>: " and returns the rest with at most one leading and
-# one trailing double quote stripped. Doesn't handle multi-line YAML blocks or
-# nested keys; every agents/*.md field this repo reads is a single physical
-# line, so that's not a real limitation here. Returns '' when not found.
+# starting with "<key>: " and, when the value's first and last characters are
+# the same quote and it's at least 2 characters long, strips that matched
+# quote pair and decodes its escapes: '' for single-quoted, \" and \\ for
+# double-quoted (via ConvertTo-DecodedDoubleQuoted's left-to-right pass). An
+# unquoted or unbalanced value is returned byte-verbatim. Doesn't handle
+# multi-line YAML blocks or nested keys; every agents/*.md field this repo
+# reads is a single physical line, so that's not a real limitation here.
+# Returns '' when not found.
 function Get-AgentFrontmatterField($file, $key) {
   $prefix = "$key`: "
   $fm = 0
@@ -283,7 +316,16 @@ function Get-AgentFrontmatterField($file, $key) {
     if ($fm -ne 1) { continue }
     if ($line.StartsWith($prefix)) {
       $val = $line.Substring($prefix.Length)
-      $val = $val -replace '^"', '' -replace '"$', ''
+      $n = $val.Length
+      if ($n -ge 2 -and $val[0] -eq $val[$n - 1] -and ($val[0] -eq '"' -or $val[0] -eq "'")) {
+        $quote = $val[0]
+        $inner = $val.Substring(1, $n - 2)
+        if ($quote -eq "'") {
+          return $inner -replace "''", "'"
+        } else {
+          return (ConvertTo-DecodedDoubleQuoted $file $key $inner)
+        }
+      }
       return $val
     }
   }
@@ -397,6 +439,11 @@ function ConvertTo-CopilotTools($src, $tools) {
 function ConvertTo-CopilotAgentMd($src) {
   $name = Get-AgentFrontmatterField $src 'name'
   $description = Get-AgentFrontmatterField $src 'description'
+  # Nesting the extractor inside the ConvertTo-CopilotTools argument is safe
+  # here: Get-AgentFrontmatterField's throw is a terminating error that unwinds
+  # through the call, so the abort still reaches the caller. install.sh's twin
+  # must NOT be nested this way, because set -e only sees the outer command's
+  # status there; the two shapes differ on purpose, so don't reconcile them.
   $tools = ConvertTo-CopilotTools $src (Get-AgentFrontmatterField $src 'tools')
   $body = Get-AgentBody $src
   $lines = @(

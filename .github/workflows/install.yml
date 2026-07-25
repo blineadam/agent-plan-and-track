@@ -150,6 +150,86 @@ jobs:
           node skills/rules-distill/scripts/scan-rules.js >/dev/null
           node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
           node .github/scripts/run-lint-pr-body-fixtures.js >/dev/null
+      - name: Probe-agent frontmatter escape/quote round-trip
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/scratch-home"
+          # Two throwaway agents/*.md sources exercising the two frontmatter
+          # defects frontmatter_field's decode covers: a single-quoted
+          # description with a doubled '' escape, and a double-quoted one with
+          # a \" escape. Removed at the end of this step; never committed.
+          cat > agents/zz-probe-single.md <<'PROBE'
+          ---
+          name: zz-probe-single
+          description: 'Use when: the value has an apostrophe, like don''t skip this step.'
+          model: sonnet
+          effort: high
+          tools: Read, Grep, Glob
+          ---
+
+          Probe agent for CI only; removed at the end of this step.
+          PROBE
+          cat > agents/zz-probe-escape.md <<'PROBE'
+          ---
+          name: zz-probe-escape
+          description: "Use when: the value says \"hello\" and has a backslash before an escaped quote \\\" like that."
+          model: sonnet
+          effort: high
+          tools: Read, Grep, Glob
+          ---
+
+          Probe agent for CI only; removed at the end of this step.
+          PROBE
+          ./install.sh claude >/dev/null
+          ./install.sh codex >/dev/null
+          ./install.sh copilot >/dev/null
+          # The decoded description must round-trip identically into all three
+          # rendered formats (Claude copy, Codex TOML, Copilot .agent.md).
+          node skills/skill-activation/scripts/run-activation-cases.js --precheck-agents agents "$HOME" >/dev/null
+          # The Copilot render's tools value must be a YAML flow array, not a
+          # bare or leaked-quote string.
+          grep -qF 'tools: ["read", "search"]' "$HOME/.copilot/agents/zz-probe-single.agent.md" \
+            || { echo "FAIL: zz-probe-single.agent.md missing expected YAML flow array tools"; exit 1; }
+          rm -f agents/zz-probe-single.md agents/zz-probe-escape.md
+          # Third defect: a value whose two ends are different quotes must come
+          # back byte-verbatim rather than have each end stripped on its own.
+          # Asserted against the render directly, not through
+          # --precheck-agents, which flags such a value as invalid frontmatter
+          # by design, and after the probes above are removed so it cannot
+          # contaminate their round-trip check.
+          q="'"
+          printf -- '---\nname: zz-probe-mismatch\ndescription: "Use when foo%s\nmodel: sonnet\neffort: high\ntools: Read, Grep, Glob\n---\n\nProbe agent for CI only.\n' \
+            "$q" > agents/zz-probe-mismatch.md
+          ./install.sh codex >/dev/null
+          expected="$(printf 'description = "\\"Use when foo%s"' "$q")"
+          grep -qF "$expected" "$HOME/.codex/agents/zz-probe-mismatch.toml" || {
+            echo "FAIL: mismatched-delimiter value did not survive verbatim into the Codex render"
+            cat "$HOME/.codex/agents/zz-probe-mismatch.toml"; exit 1; }
+          rm -f agents/zz-probe-mismatch.md
+          # Negative control. The loud abort is the load-bearing half of the
+          # decode design, since a user running the installer locally has no CI
+          # in the loop to catch a silently corrupted render. Checked per field
+          # and per renderer, because only a call site can mask the abort: a
+          # nested command substitution hides the inner exit status from set -e.
+          # `claude` is not covered because it copies agents verbatim.
+          probe_abort() {
+            if [ "$1" = description ]; then
+              d='"Use when testing an unhandled escape \qhere"'; t='Read, Grep, Glob'
+            else
+              d='Use when testing an unhandled escape in the tools field'; t='"Read, Grep\qGlob"'
+            fi
+            printf -- '---\nname: zz-probe-abort\ndescription: %s\nmodel: sonnet\neffort: high\ntools: %s\n---\n\nProbe agent for CI only.\n' \
+              "$d" "$t" > agents/zz-probe-abort.md
+            if ./install.sh "$2" >/dev/null 2>"$RUNNER_TEMP/abort-$1-$2.err"; then
+              echo "FAIL: unhandled escape in $1 did not abort ./install.sh $2"; exit 1
+            fi
+            grep -q 'unhandled escape' "$RUNNER_TEMP/abort-$1-$2.err" \
+              || { echo "FAIL: no unhandled-escape diagnostic for $1 on $2"; exit 1; }
+            rm -f agents/zz-probe-abort.md
+          }
+          for f in description tools; do
+            for t in codex copilot; do probe_abort "$f" "$t"; done
+          done
       - name: Office skills installer (stubbed fetch, no network)
         run: |
           set -euo pipefail
@@ -439,6 +519,106 @@ jobs:
           node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
           node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'
           node .github\scripts\run-lint-pr-body-fixtures.js | Out-Null; Assert-Node 'lint-pr-body fixtures'
+      - name: Probe-agent frontmatter escape/quote round-trip
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home"
+          $H = $env:USERPROFILE
+          # Probe files are written BOM-less, the same reason install.ps1
+          # defines $Utf8NoBom: Windows PowerShell 5.1's -Encoding utf8 always
+          # emits a BOM, and while install.ps1 reads through ReadAllLines and
+          # never sees it, the Node comparator below compares its fence lines
+          # with `line === '---'` and would read `﻿---` instead.
+          $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          $repo = (Get-Location).Path
+          function Write-Probe($relPath, $text) {
+            [System.IO.File]::WriteAllText((Join-Path $repo $relPath), $text, $Utf8NoBom)
+          }
+          # Two throwaway agents/*.md sources exercising the two frontmatter
+          # defects Get-AgentFrontmatterField's decode covers: a single-quoted
+          # description with a doubled '' escape, and a double-quoted one with
+          # a \" escape. Removed at the end of this step; never committed.
+          $probeSingle = @'
+          ---
+          name: zz-probe-single
+          description: 'Use when: the value has an apostrophe, like don''t skip this step.'
+          model: sonnet
+          effort: high
+          tools: Read, Grep, Glob
+          ---
+
+          Probe agent for CI only; removed at the end of this step.
+          '@
+          $probeEscape = @'
+          ---
+          name: zz-probe-escape
+          description: "Use when: the value says \"hello\" and has a backslash before an escaped quote \\\" like that."
+          model: sonnet
+          effort: high
+          tools: Read, Grep, Glob
+          ---
+
+          Probe agent for CI only; removed at the end of this step.
+          '@
+          Write-Probe 'agents\zz-probe-single.md' $probeSingle
+          Write-Probe 'agents\zz-probe-escape.md' $probeEscape
+          .\install.ps1 claude | Out-Null
+          .\install.ps1 codex | Out-Null
+          .\install.ps1 copilot | Out-Null
+          # The decoded description must round-trip identically into all three
+          # rendered formats (Claude copy, Codex TOML, Copilot .agent.md).
+          node skills\skill-activation\scripts\run-activation-cases.js --precheck-agents agents "$H" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "probe-agent description did not round-trip through --precheck-agents" }
+          # The Copilot render's tools value must be a YAML flow array, not a
+          # bare or leaked-quote string.
+          $probeContent = Get-Content -Raw "$H\.copilot\agents\zz-probe-single.agent.md"
+          if ($probeContent -notmatch [regex]::Escape('tools: ["read", "search"]')) { throw "zz-probe-single.agent.md missing expected YAML flow array tools" }
+          Remove-Item -LiteralPath 'agents\zz-probe-single.md' -Force
+          Remove-Item -LiteralPath 'agents\zz-probe-escape.md' -Force
+          # Third defect: a value whose two ends are different quotes must come
+          # back byte-verbatim rather than have each end stripped on its own.
+          # Asserted against the render directly, not through
+          # --precheck-agents, which flags such a value as invalid frontmatter
+          # by design, and after the probes above are removed so it cannot
+          # contaminate their round-trip check.
+          $q = "'"
+          $mismatchLines = @('---', 'name: zz-probe-mismatch', "description: `"Use when foo$q", 'model: sonnet', 'effort: high', 'tools: Read, Grep, Glob', '---', '', 'Probe agent for CI only.')
+          Write-Probe 'agents\zz-probe-mismatch.md' (($mismatchLines -join "`n") + "`n")
+          .\install.ps1 codex | Out-Null
+          $mismatchToml = Get-Content -Raw "$H\.codex\agents\zz-probe-mismatch.toml"
+          $expectedMismatch = 'description = "\"Use when foo' + $q + '"'
+          if ($mismatchToml -notmatch [regex]::Escape($expectedMismatch)) {
+            throw "mismatched-delimiter value did not survive verbatim into the Codex render"
+          }
+          Remove-Item -LiteralPath 'agents\zz-probe-mismatch.md' -Force
+          # Negative control, mirroring the unix job. The loud abort is the
+          # load-bearing half of the decode design, since a user running the
+          # installer locally has no CI in the loop to catch a silently
+          # corrupted render. Checked per field and per renderer; `claude` is
+          # not covered because it copies agents verbatim.
+          function Test-AbortOnBadEscape($field, $target) {
+            if ($field -eq 'description') {
+              $d = '"Use when testing an unhandled escape \qhere"'; $t = 'Read, Grep, Glob'
+            } else {
+              $d = 'Use when testing an unhandled escape in the tools field'; $t = '"Read, Grep\qGlob"'
+            }
+            $lines = @('---', 'name: zz-probe-abort', "description: $d", 'model: sonnet', 'effort: high', "tools: $t", '---', '', 'Probe agent for CI only.')
+            Write-Probe 'agents\zz-probe-abort.md' (($lines -join "`n") + "`n")
+            $aborted = $false
+            try { & .\install.ps1 $target | Out-Null } catch {
+              # Assert the reason, matching the unix job's stderr grep. Catching
+              # any terminating error would pass on an unrelated failure and
+              # make this control vacuous.
+              if ($_.Exception.Message -notmatch 'unhandled escape') { throw "aborted for the wrong reason: $_" }
+              $aborted = $true
+            }
+            if (-not $aborted) { throw "unhandled escape in $field did not abort .\install.ps1 $target" }
+            Remove-Item -LiteralPath 'agents\zz-probe-abort.md' -Force
+          }
+          foreach ($f in @('description', 'tools')) {
+            foreach ($t in @('codex', 'copilot')) { Test-AbortOnBadEscape $f $t }
+          }
       - name: Office skills installer (stubbed fetch, no network)
         shell: powershell
         run: |

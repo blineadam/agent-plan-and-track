@@ -194,18 +194,58 @@ copy_agents() {
 
 # Read a single-line frontmatter value for $2 out of $1's YAML frontmatter
 # block (between the first and second `---` line). Matches a line starting
-# with "<key>: " and returns the rest with at most one leading and one
-# trailing double quote stripped. Doesn't handle multi-line YAML blocks or
-# nested keys; every agents/*.md field this repo reads is a single physical
-# line, so that's not a real limitation here. Returns '' when not found.
+# with "<key>: " and, when the value's first and last characters are the same
+# quote and it's at least 2 characters long, strips that matched quote pair
+# and decodes its escapes: '' for single-quoted, \" and \\ for double-quoted,
+# in one left-to-right pass (never sequential global replaces, which would
+# mis-handle a backslash immediately before a quote). An unquoted or
+# unbalanced value is returned byte-verbatim. Any other backslash escape
+# inside a double-quoted value aborts the install nonzero, printing the file,
+# key, and offending escape to stderr, rather than installing a silently
+# corrupted rendered value into two harnesses. Doesn't handle multi-line YAML
+# blocks or nested keys; every agents/*.md field this repo reads is a single
+# physical line, so that's not a real limitation here. Returns '' when not found.
 frontmatter_field() {
   local file="$1" key="$2"
-  awk -v prefix="$key: " '
+  awk -v prefix="$key: " -v file="$file" -v key="$key" -v sq="'" -v dq='"' '
+    function decode_dq(s,    i, n, c, nc, out) {
+      n = length(s)
+      out = ""
+      i = 1
+      while (i <= n) {
+        c = substr(s, i, 1)
+        if (c == "\\") {
+          nc = substr(s, i + 1, 1)
+          if (nc == dq || nc == "\\") {
+            out = out nc
+            i += 2
+          } else {
+            printf "error: %s: unhandled escape \\%s in %s frontmatter value\n", file, (nc == "" ? "<end>" : nc), key > "/dev/stderr"
+            exit 2
+          }
+        } else {
+          out = out c
+          i++
+        }
+      }
+      return out
+    }
     /^---[[:space:]]*$/ { fm++; next }
     fm != 1 { next }
     index($0, prefix) == 1 {
       val = substr($0, length(prefix) + 1)
-      sub(/^"/, "", val); sub(/"$/, "", val)
+      n = length(val)
+      first = substr(val, 1, 1)
+      last = substr(val, n, 1)
+      if (n >= 2 && first == last && (first == dq || first == sq)) {
+        inner = substr(val, 2, n - 2)
+        if (first == sq) {
+          gsub(sq sq, sq, inner)
+          val = inner
+        } else {
+          val = decode_dq(inner)
+        }
+      }
       print val
       exit
     }
@@ -318,10 +358,15 @@ copilot_tools() {
 # effort field). tools renders as a YAML flow array of double-quoted aliases
 # via copilot_tools.
 render_copilot_agent() {
-  local src="$1" dest="$2" name description tools
+  local src="$1" dest="$2" name description tools raw_tools
   name="$(frontmatter_field "$src" name)"
   description="$(frontmatter_field "$src" description)"
-  tools="$(copilot_tools "$src" "$(frontmatter_field "$src" tools)")"
+  # frontmatter_field gets its own assignment rather than nesting inside the
+  # copilot_tools substitution: set -e only sees the exit status of the outer
+  # command, so a nested frontmatter_field abort would be masked by
+  # copilot_tools succeeding and would render an empty tools array.
+  raw_tools="$(frontmatter_field "$src" tools)"
+  tools="$(copilot_tools "$src" "$raw_tools")"
   {
     printf -- '---\n'
     printf 'name: %s\n' "$name"
