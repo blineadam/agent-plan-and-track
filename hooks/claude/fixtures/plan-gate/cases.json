@@ -16,6 +16,12 @@
     { "id": "mutation-threshold-one-denies-first", "expect": "deny-on-first-call" },
     { "id": "heredoc-hyphen-delim-body-not-classified", "expect": "silent" },
     { "id": "quoted-heredoc-op-not-hiding-command", "expect": "silent" },
-    { "id": "comment-strips-following-command", "expect": "silent" }
+    { "id": "comment-strips-following-command", "expect": "silent" },
+    { "id": "new-step-user-attribution-denied", "expect": "deny" },
+    { "id": "attribution-deny-once-retry-allowed", "expect": "deny-then-allow-on-retry" },
+    { "id": "non-attribution-main-reason-allowed", "expect": "silent" },
+    { "id": "executor-tag-unaffected-by-attribution-guard", "expect": "silent" },
+    { "id": "lint-disabled-allows-attribution-case", "expect": "silent" },
+    { "id": "continuation-line-attribution-denied", "expect": "deny" }
   ]
 }

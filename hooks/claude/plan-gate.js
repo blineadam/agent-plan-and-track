@@ -80,6 +80,17 @@
  * off (it is a data-loss guard, not a formatting lint); PLANGATE_DISABLED
  * does, and PLANGATE_WARN demotes it like every other deny here.
  *
+ * MAIN-ATTRIBUTION GUARD: also once stamped, a new `(main: <reason>)` tag
+ * whose reason attributes an action to the user (e.g. "user disabled
+ * subagent delegation this session") rather than stating a fact about the
+ * work is denied once per session, same mark-at-deny-time pattern as the
+ * migration-state guard above: an intentional retry (the user genuinely did
+ * ask/confirm/decide it) passes. This is a phrasing tripwire on one common
+ * fingerprint, not proof the reason is false, so unlike the migration-state
+ * guard, PLANGATE_LINT_DISABLED does turn it off, alongside the tag lint
+ * below. Runs after the migration-state guard and before the tag lint (a
+ * hook run emits at most one decision JSON).
+ *
  * Config (env):
  *   PLANGATE_DISABLED        "1" turns the gate off entirely.
  *   PLANGATE_WARN            "1" demotes deny to a non-blocking warning.
@@ -91,8 +102,9 @@
  *                             gh-pr-merge), so a value above 3 effectively
  *                             disables this gate.
  *   PLANGATE_LINT_DISABLED   "1" turns off the tasks/todo.md content lint
- *                             only (stamp gate, scope gate, and mutation gate
- *                             still apply).
+ *                             and the main-attribution guard only (stamp
+ *                             gate, scope gate, mutation gate, and the
+ *                             migration-state guard still apply).
  */
 'use strict';
 
@@ -504,6 +516,21 @@ const TIER_TAG_RE = new RegExp('\\((?:' + ROSTER.join('|') + ')(?::[^)]*)?\\)\\s
 const MAIN_OK_RE = /\(main:\s*[^)\s][^)]*\)\s*$/i; // (main: <non-empty reason>)
 const MAIN_ANY_RE = /\(main(?::[^)]*)?\)\s*$/i; // any main tag, incl. bare/empty-reason
 
+// Same anchored shape as MAIN_OK_RE, but capturing the reason text so the
+// attribution check below inspects only what's inside the tag, never the
+// step's surrounding prose.
+const MAIN_REASON_RE = /\(main:\s*([^)\s][^)]*)\)\s*$/i;
+
+// Tripwire for one common fingerprint: a (main: ...) reason that asserts the
+// user did or expressed something ("user disabled subagent delegation this
+// session") rather than stating a fact about the work. Subject (user/you),
+// up to two intervening words (e.g. "the user explicitly asked"), then one
+// of these verbs. Deliberately NOT exhaustive: this catches one common
+// phrasing shape, not every way a reason could misattribute agency to the
+// user, so a miss here isn't evidence the reason is fine.
+const MAIN_USER_ATTRIBUTION_RE =
+  /\b(?:user|you)\b(?:\s+\S+){0,2}\s+(?:disabled|enabled|turned on|turned off|asked|said|told|chose|requested|wanted|wants|approved|confirmed|authorized|declined|rejected|prefers|preferred|specified)\b/i;
+
 // Simulates the post-edit tasks/todo.md content for Edit/Write/MultiEdit
 // without writing anything to disk. Returns null (skip the lint entirely) on
 // anything that would make the simulation a guess rather than exact: an
@@ -553,25 +580,14 @@ function simulateResult(toolName, toolInput) {
   return null;
 }
 
-// New unchecked steps inside a `## Plan` section: a logical step is a
-// checkbox line plus its continuation lines, so a wrapped step's tag can sit
-// on the last continuation line rather than the checkbox line itself. Only
-// `- [ ]` lines start a step (checked-off `[x]`/`[X]` steps are never new
-// steps to tag); newness is decided on the checkbox line alone, right-trimmed
-// and compared against the same right-trimmed set from the on-disk baseline,
-// so touching only a legacy step's continuation line never counts as new.
-function collectNewUncheckedPlanSteps(baseline, result) {
-  // A multiset, not a Set: todo.md accumulates historical batches, so two
-  // unrelated steps (old and new) can share identical checkbox text. Each
-  // baseline occurrence exempts at most one matching result occurrence from
-  // being "new"; a genuinely new copy beyond what the baseline had still
-  // counts, even if its text collides with an old, already-tagged step.
-  const baselineCounts = new Map();
-  for (const l of baseline.split('\n').map((l) => l.replace(/\s+$/, ''))) {
-    baselineCounts.set(l, (baselineCounts.get(l) || 0) + 1);
-  }
-  const resultLines = result.split('\n');
-
+// Shared traversal for both collectors below: every unchecked (`- [ ]`) step
+// inside a `## Plan` section, each paired with its continuation lines (a
+// wrapped step's tag can sit on the last continuation line rather than the
+// checkbox line itself). Checked-off `[x]`/`[X]` steps never start a step.
+// Extraction alone, no newness filtering: each caller decides "new" its own
+// way against its own baseline multiset.
+function extractUncheckedPlanSteps(text) {
+  const lines = text.split('\n');
   const steps = [];
   let inPlan = false;
   // The heading level `## Plan` itself was opened at, so a deeper heading
@@ -579,8 +595,8 @@ function collectNewUncheckedPlanSteps(baseline, result) {
   // only a heading at the same or shallower level does.
   let planLevel = null;
   let i = 0;
-  while (i < resultLines.length) {
-    const line = resultLines[i];
+  while (i < lines.length) {
+    const line = lines[i];
     const headerMatch = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
     if (headerMatch) {
       const level = headerMatch[1].length;
@@ -600,24 +616,76 @@ function collectNewUncheckedPlanSteps(baseline, result) {
       const stepLines = [line];
       let j = i + 1;
       while (
-        j < resultLines.length &&
-        /^\s+\S/.test(resultLines[j]) &&
-        !/^\s*[-*]\s+\[[ xX]\]\s/.test(resultLines[j]) &&
-        !/^\s{0,3}#{1,6}\s+/.test(resultLines[j])
+        j < lines.length &&
+        /^\s+\S/.test(lines[j]) &&
+        !/^\s*[-*]\s+\[[ xX]\]\s/.test(lines[j]) &&
+        !/^\s{0,3}#{1,6}\s+/.test(lines[j])
       ) {
-        stepLines.push(resultLines[j]);
+        stepLines.push(lines[j]);
         j += 1;
       }
-      const remaining = baselineCounts.get(firstLine) || 0;
-      if (remaining > 0) {
-        baselineCounts.set(firstLine, remaining - 1);
-      } else {
-        steps.push({ firstLine, joined: stepLines.join(' ').replace(/\s+$/, '') });
-      }
+      steps.push({ firstLine, joined: stepLines.join(' ').replace(/\s+$/, '') });
       i = j;
       continue;
     }
     i += 1;
+  }
+  return steps;
+}
+
+// New unchecked steps inside a `## Plan` section, for the tag lint. Newness
+// is decided on the checkbox line alone, right-trimmed and compared against
+// the same right-trimmed set of ALL lines from the on-disk baseline (not
+// just its Plan-section steps), so touching only a legacy step's
+// continuation line never counts as new here.
+function collectNewUncheckedPlanSteps(baseline, result) {
+  // A multiset, not a Set: todo.md accumulates historical batches, so two
+  // unrelated steps (old and new) can share identical checkbox text. Each
+  // baseline occurrence exempts at most one matching result occurrence from
+  // being "new"; a genuinely new copy beyond what the baseline had still
+  // counts, even if its text collides with an old, already-tagged step.
+  const baselineCounts = new Map();
+  for (const l of baseline.split('\n').map((l) => l.replace(/\s+$/, ''))) {
+    baselineCounts.set(l, (baselineCounts.get(l) || 0) + 1);
+  }
+  const steps = [];
+  for (const step of extractUncheckedPlanSteps(result)) {
+    const remaining = baselineCounts.get(step.firstLine) || 0;
+    if (remaining > 0) {
+      baselineCounts.set(step.firstLine, remaining - 1);
+    } else {
+      steps.push(step);
+    }
+  }
+  return steps;
+}
+
+// Sibling to collectNewUncheckedPlanSteps for the main-attribution guard
+// only: a step counts when its JOINED text (checkbox line + continuation
+// lines) doesn't appear among the baseline's own joined step texts, not just
+// when its checkbox line is new. That closes a gap the checkbox-line-only
+// test leaves open: editing only an existing wrapped step's continuation
+// line to add a `(main: ...)` tag leaves the checkbox line untouched, so
+// collectNewUncheckedPlanSteps never sees it as new and the tag inside it is
+// never inspected. Same multiset semantics as collectNewUncheckedPlanSteps
+// (a genuinely new copy of an old step's exact text still counts), but the
+// baseline multiset here is built from the baseline's own unchecked Plan
+// steps (via the same extractUncheckedPlanSteps traversal), since "joined"
+// text only exists once continuation lines are gathered the same way for the
+// baseline that they are for the result.
+function collectChangedUncheckedPlanSteps(baseline, result) {
+  const baselineCounts = new Map();
+  for (const step of extractUncheckedPlanSteps(baseline)) {
+    baselineCounts.set(step.joined, (baselineCounts.get(step.joined) || 0) + 1);
+  }
+  const steps = [];
+  for (const step of extractUncheckedPlanSteps(result)) {
+    const remaining = baselineCounts.get(step.joined) || 0;
+    if (remaining > 0) {
+      baselineCounts.set(step.joined, remaining - 1);
+    } else {
+      steps.push(step);
+    }
   }
   return steps;
 }
@@ -668,6 +736,22 @@ function lintMsg(offenders) {
     ...shown,
     'Tag each step with who carries it out: implementation defaults to (executor), research to (researcher), mechanical tails to (mechanic); also valid: (planner), (debugger), (security-auditor), (architect-reviewer), (fable-advisor), each optionally with a reason like (executor: <why>). Tagging (main) is the exception and must carry a one-clause reason in the tag itself, e.g. (main: needs user sign-off mid-step); "main already has the context" does not qualify. Retry the same write with tags added.',
     '(PLANGATE_LINT_DISABLED=1 turns off this lint; PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
+  ].join('\n');
+}
+
+// `reason` is the text captured from inside the offending `(main: ...)` tag.
+// It is shown on its own line because a wrapped step keeps its tag on a
+// continuation line, so firstLine alone would name the step without ever
+// showing what actually tripped the check.
+function attributionMsg(offender, reason) {
+  const text = offender.firstLine.length > 100 ? offender.firstLine.slice(0, 100) + '...' : offender.firstLine;
+  const shownReason = reason.length > 100 ? reason.slice(0, 100) + '...' : reason;
+  return [
+    "[PlanGate] This step's (main: ...) reason reads as a claim about what the user did or asked, not a fact about the work itself:",
+    `  ${text}`,
+    `  offending reason: (main: ${shownReason})`,
+    'A (main: <why>) reason should state a fact about the work (context needed, timing, low mechanical cost), not attribute an action or preference to the user. If the user genuinely did ask/confirm/decide this, retry the same write: this check denies only once per session.',
+    '(PLANGATE_LINT_DISABLED=1 turns off this check along with the tag lint; PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
   ].join('\n');
 }
 
@@ -774,6 +858,72 @@ function maybeGuardMigrationState(toolName, toolInput, stamp) {
   }
 }
 
+// --- Main-attribution guard ---
+
+// Deny ONCE per session a new step's `(main: ...)` reason that trips
+// MAIN_USER_ATTRIBUTION_RE. Same mark-at-deny-time pattern as
+// maybeGuardMigrationState: the `.mainattr` marker is claimed exclusively
+// when the deny is emitted, so an intentional retry passes. Deny-once (not
+// deny-until-fixed) is deliberate: the attribution may be true, the check
+// just can't tell, so the point is one conscious re-assertion, not a block.
+// Runs only after the stamp check and the migration-state guard, and
+// respects PLANGATE_LINT_DISABLED (unlike the migration-state guard, this is
+// a phrasing lint, not a data-loss guard). Returns true when a decision was
+// emitted, so the caller skips the tag lint (one decision JSON per run).
+function maybeGuardMainAttribution(toolName, toolInput, stamp) {
+  if (process.env.PLANGATE_LINT_DISABLED === '1') return false;
+  try {
+    const sim = simulateResult(toolName, toolInput);
+    if (!sim) return false;
+    // Broader than the tag lint's collectNewUncheckedPlanSteps: an
+    // attribution can be smuggled in by editing only a wrapped step's
+    // continuation line while leaving its checkbox line untouched, so this
+    // guard keys off the step's whole joined text instead (see
+    // collectChangedUncheckedPlanSteps). The tag lint deliberately stays on
+    // the narrower, checkbox-line-only test: switching it too would re-flag
+    // a legacy step's already-valid tag as untagged/bare-main whenever
+    // unrelated prose on its continuation line changes, which isn't this
+    // lint's job.
+    const steps = collectChangedUncheckedPlanSteps(sim.baseline, sim.result);
+    let offendingReason = null;
+    const offender = steps.find((s) => {
+      const m = MAIN_REASON_RE.exec(s.joined);
+      if (m && MAIN_USER_ATTRIBUTION_RE.test(m[1])) {
+        offendingReason = m[1];
+        return true;
+      }
+      return false;
+    });
+    if (!offender) return false;
+    try {
+      // STATE_DIR exists here: the session stamp this branch requires lives in it.
+      fs.writeFileSync(stamp + '.mainattr', '', { flag: 'wx' });
+    } catch (err) {
+      if (err && err.code === 'EEXIST') {
+        // Same race-vs-retry distinction as maybeGuardMigrationState: a
+        // marker written within the same tool batch, sub-second old, is a
+        // racing loser, not the intentional retry a model turn later, so a
+        // fresh marker means contention: deny this invocation too.
+        try {
+          if (Date.now() - fs.statSync(stamp + '.mainattr').mtimeMs < 2000) {
+            emitGateDecision(attributionMsg(offender, offendingReason));
+            return true;
+          }
+        } catch {
+          /* marker vanished or unreadable: treat as the retry and allow */
+        }
+        return false; // aged marker: intentional retry passes
+      }
+      process.stderr.write('[PlanGate] main-attribution marker could not be persisted; allowing the edit.\n');
+      return false; // never deny what we can't record, or the deny would repeat forever
+    }
+    emitGateDecision(attributionMsg(offender, offendingReason));
+    return true;
+  } catch {
+    return false; // fail open: any simulation/guard error allows the edit
+  }
+}
+
 function main() {
   let input = {};
   try {
@@ -849,9 +999,11 @@ function main() {
   // tasks/todo.md gate: unchanged behavior, own message.
   if (/(^|\/)tasks\/todo\.md$/i.test(norm)) {
     if (fs.existsSync(stamp)) {
-      // Guard before lint, exclusively: at most one decision JSON per run,
-      // and keeping the Migration State block outranks tag formatting.
+      // Guards before lint, exclusively: at most one decision JSON per run,
+      // and keeping the Migration State block and catching a misattributed
+      // (main: ...) reason both outrank tag formatting.
       if (maybeGuardMigrationState(toolName, toolInput, stamp)) process.exit(0);
+      if (maybeGuardMainAttribution(toolName, toolInput, stamp)) process.exit(0);
       maybeLintTodoContent(toolName, toolInput); // may emitGateDecision(lintMsg(...))
       process.exit(0);
     }
