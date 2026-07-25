@@ -1,5 +1,5 @@
 ---
-applyTo: "hooks/**/*.js,hooks/**/*.json,**/*.sh,install.sh,install.ps1,install-office-skills.ps1,.gitattributes,.github/workflows/*.yml"
+applyTo: "hooks/**/*.js,hooks/**/*.json,skills/**/scripts/*.js,**/*.sh,install.sh,install.ps1,install-office-skills.ps1,.gitattributes,.github/workflows/*.yml"
 excludeAgent: "cloud-agent"
 ---
 
@@ -57,6 +57,21 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `isSubagent()`, `suggest-compact.js`'s inline check). Flag a new hook that
   reimplements this differently, or that relies on `agent_type` alone (also
   set for a whole session launched with `--agent`, which is main-thread).
+
+## Skill maintenance scripts
+
+- Node core modules only, no external npm dependencies, same as the hook
+  scripts above; these live at `skills/<name>/scripts/`, each self-contained
+  since sibling skill directories share no `node_modules` or relative-import
+  root.
+- Do not propose factoring the bounded-live-run process-control helpers
+  (`liveCaseTimeout()`, `terminateChildTree()`, `handleParentSignal()`, and
+  the timeout/grace/force-kill staging in `runChildCase()`, all gated by a
+  `LIVE_CASE_TIMEOUT_MS` env var) into a shared module. They're duplicated
+  verbatim across `skills/skill-activation/scripts/run-activation-cases.js`,
+  `run-behavioral-smokes.js`, and `skills/skill-comply/scripts/run-codex-cases.js`
+  for the same no-shared-root reason as the hook helpers above; the
+  duplication is intentional.
 
 ## Shell scripts
 

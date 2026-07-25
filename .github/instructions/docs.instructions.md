@@ -112,6 +112,10 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   the `model` field (Copilot drops `effort` too), so prose naming a
   specific model goes stale on those two harnesses. Flag a `description`
   that names a model directly.
+- The same colon-space quoting rule from Skill files above applies here:
+  flag an `agents/*.md` `description` containing `: ` (e.g. a "Read-only:
+  ..." clause) left unquoted. Only quote when the value actually needs it;
+  don't flag a description with no colon-space for being unquoted.
 
 ## Don't hand-edit installed copies
 
