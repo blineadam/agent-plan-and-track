@@ -20,9 +20,10 @@ the *conversation* growing; this manages the *config* baseline).
 ## The key distinction: always-on vs on-demand
 
 - **Always-on** (paid every turn): instruction files (CLAUDE.md / AGENTS.md /
-  copilot-instructions.md), the `core-rules.md` digest, and each skill's YAML
-  **frontmatter** (name + description: that's the routing text the model sees
-  for every installed skill).
+  copilot-instructions.md), the core-rules digest (`core-rules.md` plus
+  `core-rules.local.md` where present), and each skill's YAML **frontmatter**
+  (name + description: that's the routing text the model sees for every
+  installed skill).
 - **On-demand** (paid only when it fires): a skill's **body**. A 900-line skill
   body costs nothing until the skill triggers: so a long body is not
   necessarily bloat. The always-on frontmatter is what silently taxes every turn.
@@ -46,7 +47,8 @@ node skills/context-budget/scripts/scan-context.js ./skills
 
 It scans `~/.claude/skills`, `~/.copilot/skills`, `~/.agents/skills` (whichever
 exist) plus any dirs you pass, each harness's instruction file, and the
-`core-rules.md` digest. Token estimate is deliberately crude: **words × 1.3**, a relative bloat signal, not a tokenizer. Output JSON fields:
+core-rules digest (`core-rules.md`, plus `core-rules.local.md` where present,
+matching what the digest hook injects). Token estimate is deliberately crude: **words × 1.3**, a relative bloat signal, not a tokenizer. Output JSON fields:
 
 - `harnesses.{claude,copilot,codex}.always_on_tokens`: **the configured-source
   number to drive down, per harness** (that harness's skill frontmatter + its

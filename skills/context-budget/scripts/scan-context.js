@@ -15,7 +15,7 @@
  * and Codex (whichever exist), plus any dirs passed as arguments (e.g. this
  * repo's own skills/ when run from the repo root); each harness's instruction
  * file (CLAUDE.md / AGENTS.md / copilot-instructions.md); and the core-rules
- * digest (core-rules.md) wherever it is installed.
+ * digest (core-rules.md, plus core-rules.local.md) wherever it is installed.
  *
  * Token estimate is deliberately crude: words x 1.3. It is a relative signal for
  * spotting bloat, not an exact tokenizer count.
@@ -33,9 +33,9 @@
  *   CONTEXT_BUDGET_SKILLS_DIRS  Dirs to scan instead of the default harness
  *                               dirs, separated by the platform list delimiter
  *                               (`:` on POSIX, `;` on Windows). For testing.
- *   CONTEXT_BUDGET_CONFIG_DIRS  Dirs to search for instruction files +
- *                               core-rules.md instead of the defaults (same
- *                               delimiter).
+ *   CONTEXT_BUDGET_CONFIG_DIRS  Dirs to search for instruction files + the
+ *                               core-rules digest instead of the defaults
+ *                               (same delimiter).
  *
  * Parity notes (differences from the .sh that are cosmetic and intentional):
  *   - Ordering. The .sh emits skills/configs in shell-glob order of temp files
@@ -304,10 +304,10 @@ function main() {
   const configEntries = [];
   for (const dir of configDirs) {
     if (!dir || !isDir(dir)) continue;
-    for (const base of ['CLAUDE.md', 'AGENTS.md', 'copilot-instructions.md', 'core-rules.md']) {
+    for (const base of ['CLAUDE.md', 'AGENTS.md', 'copilot-instructions.md', 'core-rules.md', 'core-rules.local.md']) {
       const file = joinChild(dir, base); // literal "$dir/$base", as the .sh writes it
       if (!isFile(file)) continue;
-      const kind = base === 'core-rules.md' ? 'rules' : 'instructions';
+      const kind = base.startsWith('core-rules') ? 'rules' : 'instructions';
       const limit = kind === 'rules' ? RULES_LINE_LIMIT : INSTRUCTIONS_LINE_LIMIT;
       const content = readFile(file);
       const tokens = content === null ? 0 : tokensFromText(content);
