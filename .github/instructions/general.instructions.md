@@ -101,3 +101,9 @@ just a suggestion.
   "AI-generated") based only on the absence of a marker or header. Absence
   is evidence of unknown provenance, not proof of a specific origin; the PR
   should confirm it via `git log`/`git blame` or by asking, not infer it.
+- Flag a commit message, PR description, code comment, or project artifact
+  (e.g. a plan step's owner tag) that states the user asked for, chose,
+  approved, enabled, or disabled something with no actual words from the
+  user backing it. A background event, a tool result, or the model's own
+  earlier message is never user input; when no real reason exists, the
+  text should say so instead of inventing one.
