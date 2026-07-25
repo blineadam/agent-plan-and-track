@@ -6,11 +6,13 @@
  * checks and voice checks alike must ignore a fenced quoted example) and its
  * voice-check stripping rules (em dash / emoji in prose vs. fenced code and
  * inline code spans, and a nested list continuation, which is NOT stripped;
- * see lint-pr-body.js's header for why). None of the eight real PR bodies
- * this repo has labelled exercises these paths (zero of them contain an em
- * dash, an emoji, or even a single fenced block), so this fixture set is the
- * only coverage for findings 1-4 and the masking/stripping logic that gates
- * them. Free and offline: every case spawns the real script against a
+ * see lint-pr-body.js's header for why), plus the structural checks no real
+ * body happens to violate. None of the eight PR bodies this repo has
+ * labelled exercises the masking or stripping paths (zero contain an em
+ * dash, an emoji, or even one fenced block), and all eight carry exactly one
+ * verification heading, so this fixture set is the only coverage for the
+ * voice checks, the missing or duplicated verification section, and the two
+ * narration forms besides review rounds. Free and offline: every case spawns the real script against a
  * scratch body file and inspects its exit code and stdout; nothing here
  * calls a model or the network.
  *
@@ -30,6 +32,12 @@ const CASES = path.join(__dirname, 'fixtures', 'lint-pr-body', 'cases.json');
 
 const EM_DASH = '\u2014';
 const WARNING_EMOJI = '\u26A0';
+// A keycap sequence (digit + combining U+20E3, no variation selector) and a
+// regional-indicator flag sequence (two regional indicators): neither is
+// \p{Extended_Pictographic} on its own, so checkEmoji has to match them as
+// their own alternatives.
+const KEYCAP = '3\u20E3';
+const FLAG = '\u{1F1FA}\u{1F1F8}';
 
 function run(body) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lint-pr-body-'));
@@ -215,6 +223,112 @@ async function quotedProblemHeadingInFenceWithRealSummaryPasses() {
   assertClean(run(body));
 }
 
+async function missingVerificationHeadingHardFails() {
+  const body = ['## Summary', 'This describes the change with no verification section at all.', ''].join('\n');
+  // A body with only "## Summary" and no "## Test plan"/"## Verification"
+  // heading must hard-fail: that section is required, not optional.
+  assertHardFails(run(body), /HARD: expected exactly one "## Test plan" or "## Verification" heading: observed no such heading/);
+}
+
+async function duplicateVerificationHeadingsHardFails() {
+  const body = [
+    '## Summary',
+    'This describes the change.',
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+    '## Verification',
+    '- [x] ran the check again',
+    '',
+  ].join('\n');
+  // Exactly one of "## Test plan" / "## Verification" is required; carrying
+  // both must hard-fail rather than silently pick one.
+  assertHardFails(run(body), /HARD: expected exactly one "## Test plan" or "## Verification" heading: observed 2 such headings/);
+}
+
+async function alternativesConsideredHeadingHardFails() {
+  const body = [
+    '## Summary',
+    'This describes the change.',
+    '',
+    '## Alternatives considered',
+    'We could have done it a different way instead.',
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // "Alternatives considered" is one of the three banned narration headings;
+  // it must hard-fail, not just warn.
+  assertHardFails(run(body), /HARD: alternatives-considered narration heading/);
+}
+
+async function knownLimitsHeadingHardFails() {
+  const body = [
+    '## Summary',
+    'This describes the change.',
+    '',
+    '## Known limits',
+    'Some edge case is not yet handled.',
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // "Known limits" is one of the three banned narration headings; it must
+  // hard-fail, not just warn.
+  assertHardFails(run(body), /HARD: known-limits narration heading/);
+}
+
+async function fencedBlockWithMultiTokenInfoStringPasses() {
+  const body = [
+    '## Summary',
+    'This describes the change; the block below quotes some output.',
+    '',
+    '```js title="example"',
+    `some quoted output ${EM_DASH} with a dash right here`,
+    '```',
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // A multi-token info string (a language tag plus an attribute) must still
+  // open a real fence; before the fence-parsing fix, only a single info
+  // token was recognized, so this content would have been scanned as prose
+  // and hard-failed on the em dash inside it.
+  assertClean(run(body));
+}
+
+async function keycapSequenceInProseHardFails() {
+  const body = [
+    '## Summary',
+    `This sentence has a keycap sequence ${KEYCAP} right in the prose.`,
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // A keycap sequence is not \p{Extended_Pictographic} on its own; it must
+  // still be caught as emoji.
+  assertHardFails(run(body), /HARD: emoji in prose/);
+}
+
+async function regionalIndicatorFlagInProseHardFails() {
+  const body = [
+    '## Summary',
+    `This sentence has a flag sequence ${FLAG} right in the prose.`,
+    '',
+    '## Test plan',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // A regional-indicator flag sequence is not \p{Extended_Pictographic} on
+  // its own; it must still be caught as emoji.
+  assertHardFails(run(body), /HARD: emoji in prose/);
+}
+
 const HANDLERS = {
   'em-dash-in-fenced-block-passes': emDashInFencedBlockPasses,
   'em-dash-in-nested-list-continuation-hard-fails': emDashInNestedListContinuationHardFails,
@@ -227,6 +341,13 @@ const HANDLERS = {
   'unclosed-fence-scans-remainder-as-prose': unclosedFenceScansRemainderAsProse,
   'banned-heading-inside-fenced-block-passes': bannedHeadingInsideFencedBlockPasses,
   'quoted-problem-heading-in-fence-with-real-summary-passes': quotedProblemHeadingInFenceWithRealSummaryPasses,
+  'missing-verification-heading-hard-fails': missingVerificationHeadingHardFails,
+  'duplicate-verification-headings-hard-fails': duplicateVerificationHeadingsHardFails,
+  'alternatives-considered-heading-hard-fails': alternativesConsideredHeadingHardFails,
+  'known-limits-heading-hard-fails': knownLimitsHeadingHardFails,
+  'fenced-block-with-multi-token-info-string-passes': fencedBlockWithMultiTokenInfoStringPasses,
+  'keycap-sequence-in-prose-hard-fails': keycapSequenceInProseHardFails,
+  'regional-indicator-flag-in-prose-hard-fails': regionalIndicatorFlagInProseHardFails,
 };
 
 async function main() {

@@ -16,13 +16,18 @@
  *
  * HARD findings:
  *   1. The first markdown heading in the body is not `## Summary` (case-insensitive).
- *   2. Any heading line matching /^#{1,6}\s+.*\breview\s+rounds?\b/i (review-loop narration).
- *   3. An em dash (U+2014) in prose.
- *   4. An emoji in prose (\p{Extended_Pictographic}, minus the text-presentation
+ *   2. Any heading line matching one of the banned-narration-heading patterns:
+ *      review round(s), alternatives considered, or known limits/limitations.
+ *   3. The body does not carry exactly one level-2 heading whose text is
+ *      `Test plan` or `Verification` (case-insensitive, trimmed): zero or two
+ *      or more is a HARD finding.
+ *   4. An em dash (U+2014) in prose.
+ *   5. An emoji in prose (\p{Extended_Pictographic}, plus regional-indicator
+ *      flag sequences and keycap sequences, minus the text-presentation
  *      exceptions (c), (r), (tm)).
  *
  * WARN findings:
- *   5. Any ##-level heading whose text isn't Summary, Implementation, Test
+ *   6. Any ##-level heading whose text isn't Summary, Implementation, Test
  *      plan, or Verification (case-insensitive). Warn only: that allowlist is
  *      inferred from eight samples and is a style preference, not a
  *      correctness claim.
@@ -53,7 +58,12 @@ const EM_DASH = '\u2014';
 // (c), (r), (tm) are text-presentation characters in this context, not emoji.
 const EXCLUDED_PICTOGRAPHS = new Set(['©', '®', '™']);
 const ALLOWED_HEADINGS = new Set(['summary', 'implementation', 'test plan', 'verification']);
-const REVIEW_ROUNDS_RE = /^#{1,6}\s+.*\breview\s+rounds?\b/i;
+const VERIFICATION_HEADINGS = new Set(['test plan', 'verification']);
+const BANNED_NARRATION_HEADINGS = [
+  { name: 'review-round narration', re: /^#{1,6}\s+.*\breview\s+rounds?\b/i },
+  { name: 'alternatives-considered narration', re: /^#{1,6}\s+.*\balternatives\s+considered\b/i },
+  { name: 'known-limits narration', re: /^#{1,6}\s+.*\bknown\s+limit(s|ations)?\b/i },
+];
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 const HUMANIZER_POINTER = 'see the humanizer skill for PR-body prose';
 
@@ -69,13 +79,16 @@ function parseHeading(line) {
 // fence marker lines). An opening fence with no matching close leaves every
 // remaining line unmarked, per the "must never swallow the remainder"
 // requirement: fence detection simply stops there.
+// Per CommonMark's fenced-code-block info string rule, a backtick fence's
+// info string must not itself contain a backtick (a tilde fence's may
+// contain anything, backticks included).
 function codeLineMask(lines) {
   const isCode = new Array(lines.length).fill(false);
-  const openRe = /^ {0,3}(`{3,}|~{3,})\s*\S*\s*$/;
+  const openRe = /^ {0,3}(`{3,}|~{3,})(.*)$/;
   let i = 0;
   while (i < lines.length) {
     const open = openRe.exec(lines[i]);
-    if (!open) {
+    if (!open || (open[1][0] === '`' && open[2].includes('`'))) {
       i += 1;
       continue;
     }
@@ -129,14 +142,36 @@ function checkFirstHeading(nonCode, findings) {
   findings.push({ severity: 'HARD', message: 'first heading is not "## Summary": observed no markdown heading in the body' });
 }
 
-function checkReviewRoundHeadings(nonCode, findings) {
+function checkBannedNarrationHeadings(nonCode, findings) {
   for (const { lineNumber, text } of nonCode) {
-    if (REVIEW_ROUNDS_RE.test(text)) {
-      findings.push({
-        severity: 'HARD',
-        message: `review-round narration heading: observed "${text.trim()}" on line ${lineNumber}`,
-      });
+    for (const { name, re } of BANNED_NARRATION_HEADINGS) {
+      if (re.test(text)) {
+        findings.push({
+          severity: 'HARD',
+          message: `${name} heading: observed "${text.trim()}" on line ${lineNumber}`,
+        });
+      }
     }
+  }
+}
+
+function checkVerificationHeading(nonCode, findings) {
+  let count = 0;
+  for (const { text } of nonCode) {
+    const heading = parseHeading(text);
+    if (!heading || heading.level !== 2) continue;
+    if (VERIFICATION_HEADINGS.has(heading.text.trim().toLowerCase())) count += 1;
+  }
+  if (count === 0) {
+    findings.push({
+      severity: 'HARD',
+      message: 'expected exactly one "## Test plan" or "## Verification" heading: observed no such heading',
+    });
+  } else if (count > 1) {
+    findings.push({
+      severity: 'HARD',
+      message: `expected exactly one "## Test plan" or "## Verification" heading: observed ${count} such headings`,
+    });
   }
 }
 
@@ -171,18 +206,24 @@ function checkEmDash(prose, findings) {
   }
 }
 
+// \p{Extended_Pictographic} alone misses two emoji classes that are not
+// themselves pictographic: a regional-indicator flag sequence (two regional
+// indicators) and a keycap sequence (a digit, # or *, an optional U+FE0F,
+// then the combining U+20E3). Both multi-character alternatives are listed
+// before the single-character \p{Extended_Pictographic} one so the engine
+// prefers the longer match.
 function checkEmoji(prose, findings) {
-  const re = /\p{Extended_Pictographic}/gu;
+  const re = /\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3|\p{Extended_Pictographic}/gu;
   for (const { lineNumber, text } of prose) {
     re.lastIndex = 0;
     let m = re.exec(text);
     while (m !== null) {
       const ch = m[0];
       if (!EXCLUDED_PICTOGRAPHS.has(ch)) {
-        const codePoint = ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+        const codePoints = Array.from(ch, (c) => `U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`).join(' ');
         findings.push({
           severity: 'HARD',
-          message: `emoji in prose on line ${lineNumber}: observed "${ch}" (U+${codePoint}) (${HUMANIZER_POINTER})`,
+          message: `emoji in prose on line ${lineNumber}: observed "${ch}" (${codePoints}) (${HUMANIZER_POINTER})`,
         });
       }
       m = re.exec(text);
@@ -204,7 +245,8 @@ function main() {
 
   const findings = [];
   checkFirstHeading(nonCode, findings);
-  checkReviewRoundHeadings(nonCode, findings);
+  checkBannedNarrationHeadings(nonCode, findings);
+  checkVerificationHeading(nonCode, findings);
   checkHeadingAllowlist(nonCode, findings);
 
   const prose = nonCode.map(({ lineNumber, text }) => ({ lineNumber, text: stripInlineCode(text) }));
