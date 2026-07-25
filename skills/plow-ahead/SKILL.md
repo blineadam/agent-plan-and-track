@@ -5,7 +5,7 @@ description: 'Use when the user explicitly wants autonomous progress without rou
 
 # Plow Ahead
 
-This skill elaborates the "Autonomous bug fixing" rule already in `rules/agent-guidelines.md` ("Given a bug report, logs, or failing tests, just fix it end-to-end. No hand-holding required.") into a full autonomy contract that applies to any explicitly-autonomous task, not just bug fixes.
+This skill elaborates the "Autonomous execution" rule already in `rules/agent-guidelines.md` into the full autonomy contract summarized there, applying it to any explicitly-autonomous task, not just bug fixes.
 
 ## Autonomy Contract
 
