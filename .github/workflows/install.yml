@@ -191,6 +191,33 @@ jobs:
           grep -qF 'tools: ["read", "search"]' "$HOME/.copilot/agents/zz-probe-single.agent.md" \
             || { echo "FAIL: zz-probe-single.agent.md missing expected YAML flow array tools"; exit 1; }
           rm -f agents/zz-probe-single.md agents/zz-probe-escape.md
+          # New defect: a value whose backslash escapes something the
+          # installers cannot render (a tab) is legal YAML, so it would abort
+          # the installers even though it passes frontmatter_invalid_yaml;
+          # --precheck-agents must reject it before it ever reaches disk.
+          cat > agents/zz-probe-uninstallable.md <<'PROBE'
+          ---
+          name: zz-probe-uninstallable
+          description: "Use when: testing an uninstallable escape \t here."
+          model: sonnet
+          effort: high
+          tools: Read, Grep, Glob
+          ---
+
+          Probe agent for CI only; removed at the end of this step.
+          PROBE
+          # No installed-home argument on purpose. This probe is never
+          # installed, so passing one would make all three description-match
+          # flags false and the run would exit nonzero whatever the new check
+          # did, which is a vacuous test. Source-only, then attribute the
+          # rejection to the flag by name rather than trusting the exit code.
+          probe_out="$RUNNER_TEMP/uninstallable-probe.json"
+          if node skills/skill-activation/scripts/run-activation-cases.js --precheck-agents agents > "$probe_out" 2>&1; then
+            echo "FAIL: --precheck-agents accepted an uninstallable \\t escape"; exit 1
+          fi
+          grep -q '"frontmatter_uninstallable_escape": true' "$probe_out" \
+            || { echo "FAIL: rejection was not attributed to frontmatter_uninstallable_escape"; cat "$probe_out"; exit 1; }
+          rm -f agents/zz-probe-uninstallable.md
           # Third defect: a value whose two ends are different quotes must come
           # back byte-verbatim rather than have each end stripped on its own.
           # Asserted against the render directly, not through
@@ -576,6 +603,34 @@ jobs:
           if ($probeContent -notmatch [regex]::Escape('tools: ["read", "search"]')) { throw "zz-probe-single.agent.md missing expected YAML flow array tools" }
           Remove-Item -LiteralPath 'agents\zz-probe-single.md' -Force
           Remove-Item -LiteralPath 'agents\zz-probe-escape.md' -Force
+          # New defect: a value whose backslash escapes something the
+          # installers cannot render (a tab) is legal YAML, so it would abort
+          # the installers even though it passes frontmatter_invalid_yaml;
+          # --precheck-agents must reject it before it ever reaches disk.
+          $probeUninstallable = @'
+          ---
+          name: zz-probe-uninstallable
+          description: "Use when: testing an uninstallable escape \t here."
+          model: sonnet
+          effort: high
+          tools: Read, Grep, Glob
+          ---
+
+          Probe agent for CI only; removed at the end of this step.
+          '@
+          Write-Probe 'agents\zz-probe-uninstallable.md' $probeUninstallable
+          # No installed-home argument on purpose, mirroring the unix job. This
+          # probe is never installed, so passing one would make all three
+          # description-match flags false and the run would exit nonzero
+          # whatever the new check did, which is a vacuous test. Source-only,
+          # then attribute the rejection to the flag by name.
+          $probeOut = "$env:RUNNER_TEMP\uninstallable-probe.json"
+          node skills\skill-activation\scripts\run-activation-cases.js --precheck-agents agents > $probeOut 2>&1
+          if ($LASTEXITCODE -eq 0) { throw "--precheck-agents accepted an uninstallable \t escape" }
+          if ((Get-Content -Raw $probeOut) -notmatch [regex]::Escape('"frontmatter_uninstallable_escape": true')) {
+            throw "rejection was not attributed to frontmatter_uninstallable_escape"
+          }
+          Remove-Item -LiteralPath 'agents\zz-probe-uninstallable.md' -Force
           # Third defect: a value whose two ends are different quotes must come
           # back byte-verbatim rather than have each end stripped on its own.
           # Asserted against the render directly, not through

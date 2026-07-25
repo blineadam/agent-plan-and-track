@@ -55,6 +55,14 @@
  *                              carrying a colon-space or space-hash sequence, or a quoted value
  *                              with an unescaped delimiter or invalid escape (counts into
  *                              schema_issue_count)
+ *
+ * --precheck-agents flags (in addition to frontmatter_invalid_yaml above):
+ *   frontmatter_uninstallable_escape   a balanced double-quoted frontmatter value containing a
+ *                                      backslash that escapes anything other than a double quote
+ *                                      or a backslash: legal YAML the installers' own decoders
+ *                                      cannot render, so ./install.sh/.ps1 would abort on it even
+ *                                      though frontmatter_invalid_yaml stays false (agents only;
+ *                                      counts into schema_issue_count)
  */
 'use strict';
 
@@ -278,6 +286,7 @@ function modePrecheckAgents(args) {
     const descriptionChars = description.length;
     const descriptionLengthOk = descriptionChars >= 1 && descriptionChars <= 1024;
     const frontmatterInvalidYaml = hasInvalidFrontmatterValue(file);
+    const frontmatterUninstallableEscape = hasUninstallableFrontmatterEscape(file);
     const model = frontmatterScalar(file, 'model');
     const effort = frontmatterScalar(file, 'effort');
     const tools = frontmatterScalar(file, 'tools')
@@ -295,6 +304,7 @@ function modePrecheckAgents(args) {
       name_pattern_ok: namePatternOk,
       description_length_ok: descriptionLengthOk,
       frontmatter_invalid_yaml: frontmatterInvalidYaml,
+      frontmatter_uninstallable_escape: frontmatterUninstallableEscape,
       model_effort_ok: modelEffortOk,
       tool_vocabulary_ok: toolVocabularyOk,
       unknown_tools: unknownTools,
@@ -322,6 +332,7 @@ function modePrecheckAgents(args) {
       !agent.name_pattern_ok ||
       !agent.description_length_ok ||
       agent.frontmatter_invalid_yaml ||
+      agent.frontmatter_uninstallable_escape ||
       !agent.model_effort_ok ||
       !agent.tool_vocabulary_ok ||
       (installedHome &&
@@ -803,6 +814,51 @@ function hasInvalidFrontmatterValue(file) {
     const inner = value.slice(1, -1);
     if (q === '"' && !decodeDoubleQuotedScalar(inner).valid) return true;
     if (q === "'" && inner.replace(/''/g, '').includes("'")) return true;
+  }
+  return false;
+}
+
+// agents/*.md only (never wired into modePrecheck): whether a balanced
+// double-quoted frontmatter value contains a backslash escaping anything
+// other than a double quote or a backslash. This repo's authored grammar for
+// agent description/model/effort/tools values is single-line text whose only
+// double-quoted escapes are \" and \\; both installers' own decoders
+// (install.sh's frontmatter_field/decode_dq, install.ps1's
+// Get-AgentFrontmatterField) know only that pair and abort on anything else,
+// so a value that is valid YAML by the fuller decodeDoubleQuotedScalar table
+// above (\t, \n, \uXXXX, ...) can still be uninstallable. Single-quoted and
+// unquoted values are out of scope for a narrower reason: the only
+// single-quoted escape is '', which both installers decode, and an unquoted
+// or unbalanced value is returned byte-verbatim without ever aborting.
+// Left-to-right scan (not a regex), sharing
+// hasInvalidFrontmatterValue's frontmatter-line-walk shape: a regex matching
+// a backslash followed by a non-quote non-backslash would false-positive on
+// `a\\tb`, where the first backslash escapes the second and the `t` is plain.
+function hasUninstallableFrontmatterEscape(file) {
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  let fm = 0;
+  for (const line of lines) {
+    if (line === '---') {
+      fm++;
+      if (fm >= 2) break;
+      continue;
+    }
+    if (fm !== 1) continue;
+    const m = /^[A-Za-z0-9_-]+:[ \t]*(.*)$/.exec(line);
+    if (!m) continue;
+    const value = m[1];
+    if (value[0] !== '"') continue; // single-quoted and unquoted are out of scope
+    if (value.length < 2 || value[value.length - 1] !== '"') continue; // unbalanced is out of scope
+    const inner = value.slice(1, -1);
+    for (let i = 0; i < inner.length; i++) {
+      if (inner[i] !== '\\') continue;
+      const next = inner[i + 1];
+      if (next === '"' || next === '\\') {
+        i++; // consume the escaped character too
+        continue;
+      }
+      return true;
+    }
   }
   return false;
 }
