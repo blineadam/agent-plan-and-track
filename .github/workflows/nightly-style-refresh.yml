@@ -48,8 +48,18 @@ name: nightly style refresh
 # replied to. Within that step, replies are posted first, from session
 # 2's thread-replies.json, so each thread carries the triage verdict a
 # human can read before it collapses as resolved (interactive sessions
-# leave the same trail by hand); a missing or malformed replies file
-# degrades to resolve-only rather than blocking the merge path. Wait for
+# leave the same trail by hand). That step then refuses to resolve any
+# thread it has no reply for. This reverses an earlier decision that a
+# missing or malformed replies file should degrade to resolve-only rather
+# than block the merge path; PR #129 showed the premise was wrong. An
+# absent reply is indistinguishable from a finding session 2 never
+# received, and since thread resolution is the only thing the ruleset
+# checks, treating that ambiguity as benign turned a delivery bug into a
+# merged PR carrying four unaddressed findings. The safe reading is the
+# pessimistic one, so an uncovered thread now fails the run red and
+# leaves the PR open. A reply whose POST fails is still resolved: the
+# file already proves session 2 triaged the finding, and the fixes are
+# pushed by then, so only the visible trail is missing. Wait for
 # required checks runs after the guard and before the merge because the
 # review-fix push emits its own pull_request: synchronize event, which
 # re-triggers CI on the new head SHA, and the merge step must not race
@@ -245,13 +255,27 @@ jobs:
         run: |
           set -euo pipefail
           pr="${{ steps.pr.outputs.number }}"
+          # Copilot's login is spelled differently on each API surface:
+          # "copilot-pull-request-reviewer[bot]" on /reviews, plain "Copilot"
+          # on /comments, and "copilot-pull-request-reviewer" on the GraphQL
+          # thread author below. Matching /reviews' spelling against /comments
+          # is what silently emptied this dump on PR #129 and let that run
+          # resolve four findings session 2 never saw. So only /reviews is
+          # filtered by login here; the comments are selected by which review
+          # they belong to, an id rather than a name, so no spelling can drift
+          # again. The surviving login filter is safe because the wait step
+          # above matches the same string on the same endpoint and fails the
+          # run red on timeout, so drift there stops the run before session 2
+          # sees anything; keep those two in sync if either is edited.
+          reviews="$(gh api "repos/${{ github.repository }}/pulls/$pr/reviews?per_page=100" \
+            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")]')"
+          review_ids="$(jq -c '[.[].id]' <<<"$reviews")"
           {
             echo "## Reviews"
-            gh api "repos/${{ github.repository }}/pulls/$pr/reviews" \
-              --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")]'
+            echo "$reviews"
             echo "## Review comments"
-            gh api "repos/${{ github.repository }}/pulls/$pr/comments" \
-              --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")]'
+            gh api "repos/${{ github.repository }}/pulls/$pr/comments?per_page=100" \
+              --jq "[.[] | select(.pull_request_review_id as \$id | $review_ids | index(\$id))]"
           } > "$RUNNER_TEMP/copilot-review.json"
 
       - name: Address the review (Claude session 2)
@@ -297,10 +321,10 @@ jobs:
           set -euo pipefail
           pr="${{ steps.pr.outputs.number }}"
           # Post session 2's per-thread replies first, so each thread carries
-          # the triage verdict before it collapses as resolved. Fail open to
-          # resolve-only on a missing or malformed file: the replies exist
-          # for the human reading the PR, and their absence must not kill
-          # the merge path.
+          # the triage verdict before it collapses as resolved. A missing or
+          # malformed file degrades to posting nothing here, but it does not
+          # let the run resolve anything: the coverage check below still has
+          # to pass, and with no replies it cannot.
           replies="$RUNNER_TEMP/thread-replies.json"
           if jq -e 'type == "array"' "$replies" >/dev/null 2>&1; then
             sha="$(git rev-parse --short HEAD)"
@@ -316,19 +340,50 @@ jobs:
                 || echo "reply to comment $id failed; continuing" >&2
             done
           else
-            echo "no valid thread-replies.json; resolving without replies" >&2
+            echo "no valid thread-replies.json; the coverage check below will fail" >&2
           fi
           # Scoped to threads Copilot itself opened: resolving a thread a human
           # reviewer left while this unattended run was in flight would satisfy
           # the ruleset's required_review_thread_resolution rule without the
-          # feedback ever having been addressed.
-          ids="$(gh api graphql \
+          # feedback ever having been addressed. A thread's first comment is
+          # its top-level review comment, and that comment's databaseId is
+          # exactly the REST numeric id session 2 emits as comment_id, so it
+          # doubles as the join key for the coverage check below.
+          threads="$(gh api graphql \
             -f query='query($owner: String!, $repo: String!, $number: Int!) {
               repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
-                reviewThreads(first: 100) { nodes { id isResolved comments(first: 1) { nodes { author { login } } } } } } } }' \
+                reviewThreads(first: 100) { nodes { id isResolved comments(first: 1) { nodes { databaseId author { login } } } } } } } }' \
             -f owner="${{ github.repository_owner }}" -f repo="${GITHUB_REPOSITORY#*/}" -F number="$pr" \
-            --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | select(.comments.nodes[0].author.login == "copilot-pull-request-reviewer") | .id')"
-          for id in $ids; do
+            --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | select(.comments.nodes[0].author.login == "copilot-pull-request-reviewer") | {id, root: .comments.nodes[0].databaseId}]')"
+          # Refuse to resolve a finding no one triaged. Resolution is the only
+          # thing the ruleset checks before the merge, so resolving a thread
+          # session 2 never saw silently converts a delivery bug into a merged
+          # PR -- exactly what happened on #129, where an empty comment dump
+          # produced no replies and all four threads were resolved anyway.
+          # A reply in the file is the only evidence that a finding reached
+          # session 2 at all, so require one per unresolved thread and leave
+          # the PR open for a human otherwise. Zero unresolved threads passes
+          # vacuously, keeping a clean-review night green.
+          # The select mirrors the posting loop's own skip condition above, so
+          # an entry it declined to post can never count as coverage here:
+          # accepting one would resolve a thread carrying no reply at all,
+          # which is the exact hole this check exists to close. tonumber then
+          # tolerates session 2 emitting the id as a JSON string, since a type
+          # mismatch would otherwise read as an uncovered thread and fail a
+          # run whose findings were in fact triaged.
+          replied='[]'
+          if jq -e 'type == "array"' "$replies" >/dev/null 2>&1; then
+            replied="$(jq -c '[.[] | select((.reply // "") | tostring | length > 0) | .comment_id | tonumber? // empty]' "$replies")"
+          fi
+          uncovered="$(jq -r --argjson replied "$replied" \
+            '[.[] | select(.root as $root | $replied | index($root) | not) | .root] | join(" ")' <<<"$threads")"
+          if [ -n "$uncovered" ]; then
+            echo "no usable triage reply for review comment(s): $uncovered" >&2
+            echo "candidate causes: the fetch delivered no comments, session 2 failed before writing its replies file, it wrote a partial or malformed one, or a later review opened threads it never saw" >&2
+            echo "leaving PR #$pr open for a human" >&2
+            exit 1
+          fi
+          for id in $(jq -r '.[].id' <<<"$threads"); do
             gh api graphql \
               -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
               -f id="$id"
