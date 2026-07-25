@@ -25,6 +25,7 @@
     { "id": "mutation-plan-unlock", "expect": "valid-apply-patch-stamp-allows-retry" },
     { "id": "mutation-threshold-validation", "expect": "invalid-defaults-two-above-three-disables" },
     { "id": "attribution-denial-before-mutation", "expect": "deny-before-target-or-transaction-mutation" },
+    { "id": "attribution-environment-id", "expect": "valid-remote-envelope-denies" },
     { "id": "attribution-aged-retry", "expect": "aged-marker-allows-intentional-retry" },
     { "id": "attribution-concurrent-first-calls", "expect": "both-racing-first-calls-denied" },
     { "id": "attribution-legitimate-main-reason", "expect": "allow-work-fact" },

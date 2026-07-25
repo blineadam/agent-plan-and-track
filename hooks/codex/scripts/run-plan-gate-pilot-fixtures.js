@@ -464,6 +464,23 @@ async function attributionDenialBeforeMutation() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+async function attributionEnvironmentId() {
+  const f = fixture();
+  const baseline = '# Start\n';
+  const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
+  source(f.root, 'tasks/todo.md', baseline);
+  const command = replacementPatch('tasks/todo.md', baseline, result).replace(
+    '*** Begin Patch\n',
+    '*** Begin Patch\n*** Environment ID: remote-123\n',
+  );
+  const input = event(f.root, 'tasks/todo.md', 'attribution-environment-id', {
+    tool_input: { command },
+  });
+  assert.match(denial(run('--pre', input, f.env)), /claim about what the user did or asked/);
+  assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 async function attributionAgedRetry() {
   const f = fixture();
   const baseline = '# Start\n';
@@ -619,11 +636,11 @@ async function attributionUnreadableStateFailOpen() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
-const HANDLERS = { fresh, 'new-todo-plan': newTodoPlan, stale, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-scope-prune': expiredScopePrune, 'mutation-classifier': mutationClassifier, 'mutation-distinct-denial-retry': mutationDistinctDenialRetry, 'mutation-single-call-union': mutationSingleCallUnion, 'mutation-old-scope-compatibility': mutationOldScopeCompatibility, 'mutation-concurrent': mutationConcurrent, 'mutation-plan-unlock': mutationPlanUnlock, 'mutation-threshold-validation': mutationThresholdValidation, 'attribution-denial-before-mutation': attributionDenialBeforeMutation, 'attribution-aged-retry': attributionAgedRetry, 'attribution-concurrent-first-calls': attributionConcurrentFirstCalls, 'attribution-legitimate-main-reason': attributionLegitimateMainReason, 'attribution-non-main-tag': attributionNonMainTag, 'attribution-lint-disabled': attributionLintDisabled, 'attribution-continuation-line': attributionContinuationLine, 'attribution-ambiguous-context-fail-open': attributionAmbiguousContextFailOpen, 'attribution-fuzzy-context-fail-open': attributionFuzzyContextFailOpen, 'attribution-unsupported-syntax-fail-open': attributionUnsupportedSyntaxFailOpen, 'attribution-multi-file-fail-open': attributionMultiFileFailOpen, 'attribution-unreadable-state-fail-open': attributionUnreadableStateFailOpen };
+const HANDLERS = { fresh, 'new-todo-plan': newTodoPlan, stale, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-scope-prune': expiredScopePrune, 'mutation-classifier': mutationClassifier, 'mutation-distinct-denial-retry': mutationDistinctDenialRetry, 'mutation-single-call-union': mutationSingleCallUnion, 'mutation-old-scope-compatibility': mutationOldScopeCompatibility, 'mutation-concurrent': mutationConcurrent, 'mutation-plan-unlock': mutationPlanUnlock, 'mutation-threshold-validation': mutationThresholdValidation, 'attribution-denial-before-mutation': attributionDenialBeforeMutation, 'attribution-environment-id': attributionEnvironmentId, 'attribution-aged-retry': attributionAgedRetry, 'attribution-concurrent-first-calls': attributionConcurrentFirstCalls, 'attribution-legitimate-main-reason': attributionLegitimateMainReason, 'attribution-non-main-tag': attributionNonMainTag, 'attribution-lint-disabled': attributionLintDisabled, 'attribution-continuation-line': attributionContinuationLine, 'attribution-ambiguous-context-fail-open': attributionAmbiguousContextFailOpen, 'attribution-fuzzy-context-fail-open': attributionFuzzyContextFailOpen, 'attribution-unsupported-syntax-fail-open': attributionUnsupportedSyntaxFailOpen, 'attribution-multi-file-fail-open': attributionMultiFileFailOpen, 'attribution-unreadable-state-fail-open': attributionUnreadableStateFailOpen };
 
 async function main() {
   const fixtureCases = JSON.parse(fs.readFileSync(CASES, 'utf8')).cases;
-  assert.strictEqual(fixtureCases.length, 36, 'expected the complete thirty-six-case matrix');
+  assert.strictEqual(fixtureCases.length, 37, 'expected the complete thirty-seven-case matrix');
   for (const fixtureCase of fixtureCases) {
     assert.strictEqual(typeof HANDLERS[fixtureCase.id], 'function', `no handler for ${fixtureCase.id}`);
     await HANDLERS[fixtureCase.id]();

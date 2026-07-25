@@ -244,10 +244,11 @@ function decode(snapshot) {
 }
 
 // Parses only the deliberately supported structured apply_patch subset:
-// Begin/End Patch containing Update File operations whose hunks use a bare
-// `@@` header and ordinary context/add/remove lines. Any Add/Delete/Move,
-// contextual hunk header, malformed envelope, or other syntax returns null
-// so the attribution guard fails open instead of approximating upstream.
+// Begin/End Patch containing an optional remote Environment ID and Update File
+// operations whose hunks use a bare `@@` header and ordinary context/add/remove
+// lines. Any Add/Delete/Move, contextual hunk header, malformed envelope, or
+// other syntax returns null so the attribution guard fails open instead of
+// approximating upstream.
 function parseStructuredPatch(command) {
   const lines = String(command || '').split('\n');
   if (lines[lines.length - 1] === '') lines.pop();
@@ -255,6 +256,7 @@ function parseStructuredPatch(command) {
   const operations = [];
   const end = lines.length - 1;
   let i = 1;
+  if (/^\*\*\* Environment ID: .+$/.test(lines[i])) i += 1;
   while (i < end) {
     const header = /^\*\*\* Update File:\s*(.+?)\s*$/.exec(lines[i]);
     if (!header) return null;
