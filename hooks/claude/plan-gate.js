@@ -739,11 +739,17 @@ function lintMsg(offenders) {
   ].join('\n');
 }
 
-function attributionMsg(offender) {
+// `reason` is the text captured from inside the offending `(main: ...)` tag.
+// It is shown on its own line because a wrapped step keeps its tag on a
+// continuation line, so firstLine alone would name the step without ever
+// showing what actually tripped the check.
+function attributionMsg(offender, reason) {
   const text = offender.firstLine.length > 100 ? offender.firstLine.slice(0, 100) + '...' : offender.firstLine;
+  const shownReason = reason.length > 100 ? reason.slice(0, 100) + '...' : reason;
   return [
     "[PlanGate] This step's (main: ...) reason reads as a claim about what the user did or asked, not a fact about the work itself:",
     `  ${text}`,
+    `  offending reason: (main: ${shownReason})`,
     'A (main: <why>) reason should state a fact about the work (context needed, timing, low mechanical cost), not attribute an action or preference to the user. If the user genuinely did ask/confirm/decide this, retry the same write: this check denies only once per session.',
     '(PLANGATE_LINT_DISABLED=1 turns off this check along with the tag lint; PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
   ].join('\n');
@@ -879,9 +885,14 @@ function maybeGuardMainAttribution(toolName, toolInput, stamp) {
     // unrelated prose on its continuation line changes, which isn't this
     // lint's job.
     const steps = collectChangedUncheckedPlanSteps(sim.baseline, sim.result);
+    let offendingReason = null;
     const offender = steps.find((s) => {
       const m = MAIN_REASON_RE.exec(s.joined);
-      return m && MAIN_USER_ATTRIBUTION_RE.test(m[1]);
+      if (m && MAIN_USER_ATTRIBUTION_RE.test(m[1])) {
+        offendingReason = m[1];
+        return true;
+      }
+      return false;
     });
     if (!offender) return false;
     try {
@@ -895,7 +906,7 @@ function maybeGuardMainAttribution(toolName, toolInput, stamp) {
         // fresh marker means contention: deny this invocation too.
         try {
           if (Date.now() - fs.statSync(stamp + '.mainattr').mtimeMs < 2000) {
-            emitGateDecision(attributionMsg(offender));
+            emitGateDecision(attributionMsg(offender, offendingReason));
             return true;
           }
         } catch {
@@ -906,7 +917,7 @@ function maybeGuardMainAttribution(toolName, toolInput, stamp) {
       process.stderr.write('[PlanGate] main-attribution marker could not be persisted; allowing the edit.\n');
       return false; // never deny what we can't record, or the deny would repeat forever
     }
-    emitGateDecision(attributionMsg(offender));
+    emitGateDecision(attributionMsg(offender, offendingReason));
     return true;
   } catch {
     return false; // fail open: any simulation/guard error allows the edit

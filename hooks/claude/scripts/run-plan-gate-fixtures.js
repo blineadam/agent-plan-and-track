@@ -386,6 +386,11 @@ async function continuationLineAttributionDenied() {
   const content = '## Plan\n- [ ] wrapped step needs detail\n  more context (main: user requested this)\n';
   const reason = denyReason(run(writeEvent(session, todo, content), f.env));
   assert.match(reason, /reads as a claim about what the user did/);
+  // The tag lives on the continuation line, so firstLine alone would name the
+  // step without ever showing what tripped the check. The message must quote
+  // the offending reason back, or a wrapped step gets a strictly worse
+  // diagnostic than a single-line one.
+  assert.match(reason, /offending reason: \(main: user requested this\)/);
   assert.strictEqual(fs.existsSync(mainAttrMarker(f.root, session)), true);
   fs.rmSync(f.root, { recursive: true, force: true });
 }
