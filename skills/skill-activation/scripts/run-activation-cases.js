@@ -739,6 +739,13 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
 // a description is a type violation the check is meant to catch, not permit.
 // A value opening with a quote is a quoted scalar (a plain scalar may not start
 // with one), so it is judged by the quoted rules; anything else is plain.
+// The plain-scalar rules below come from YAML 1.2.2 section 7.3.3 Plain Style,
+// productions [126] ns-plain-first and [130] ns-plain-char, and the indicator
+// set is production [22] c-indicator in section 5.3 Indicator Characters:
+// https://yaml.org/spec/1.2.2/#733-plain-style
+// The unconditional set is c-indicator's nineteen characters minus the three
+// ns-plain-first reintroduces conditionally (`?`, `:`, `-`) and the two quotes
+// the branch above already handles, so exactly fourteen remain.
 //   plain scalar    -> a first character in `[ ] { } , # & * ! | > % @` or a
 //                      backtick (flagged unconditionally, since ns-plain-first
 //                      forbids all of them regardless of what follows); a
