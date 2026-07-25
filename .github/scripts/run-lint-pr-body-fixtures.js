@@ -419,6 +419,40 @@ async function noHeadingAtAllHardFails() {
   assertHardFails(run(body), /HARD: first heading is not "## Summary": observed no markdown heading in the body/);
 }
 
+async function implementationAfterVerificationHardFails() {
+  const body = [
+    '## Summary',
+    'This describes the change.',
+    '',
+    '## Verification',
+    '- [x] ran the check',
+    '',
+    '## Implementation',
+    'This section arrives too late, after the verification heading.',
+    '',
+  ].join('\n');
+  // The convention orders Implementation before verification; out of order
+  // must hard-fail rather than pass silently.
+  assertHardFails(run(body), /HARD: "## Implementation" must come before the "## Test plan"\/"## Verification" heading/);
+}
+
+async function implementationBeforeVerificationPasses() {
+  const body = [
+    '## Summary',
+    'This describes the change.',
+    '',
+    '## Implementation',
+    'This section arrives in the correct place, before verification.',
+    '',
+    '## Verification',
+    '- [x] ran the check',
+    '',
+  ].join('\n');
+  // Companion to the case above: the correct order must produce no findings
+  // at all, not just avoid the new HARD finding.
+  assertClean(run(body));
+}
+
 const HANDLERS = {
   'em-dash-in-fenced-block-passes': emDashInFencedBlockPasses,
   'em-dash-in-nested-list-continuation-hard-fails': emDashInNestedListContinuationHardFails,
@@ -444,6 +478,8 @@ const HANDLERS = {
   'bare-copyright-symbol-in-prose-passes': bareCopyrightSymbolInProsePasses,
   'wrong-first-heading-hard-fails': wrongFirstHeadingHardFails,
   'no-heading-at-all-hard-fails': noHeadingAtAllHardFails,
+  'implementation-after-verification-hard-fails': implementationAfterVerificationHardFails,
+  'implementation-before-verification-passes': implementationBeforeVerificationPasses,
 };
 
 async function main() {
