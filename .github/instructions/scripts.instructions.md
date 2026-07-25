@@ -1,5 +1,5 @@
 ---
-applyTo: "hooks/**/*.js,hooks/**/*.json,skills/**/scripts/*.js,**/*.sh,install.sh,install.ps1,install-office-skills.ps1,.gitattributes,.github/workflows/*.yml"
+applyTo: "hooks/**/*.js,hooks/**/*.json,skills/**/scripts/*.js,.github/scripts/*.js,**/*.sh,install.sh,install.ps1,install-office-skills.ps1,.gitattributes,.github/workflows/*.yml"
 excludeAgent: "cloud-agent"
 ---
 

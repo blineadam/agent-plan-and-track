@@ -1,0 +1,31 @@
+name: PR body lint
+
+# Runs .github/scripts/lint-pr-body.js against every pull request's body: the
+# same script a contributor can run locally, so there is no separate "CI
+# version" of the check to drift from what runs on a laptop. Wired on
+# `edited` in addition to `opened`/`synchronize`/`reopened` because a body
+# edited after the PR is already open is exactly the case those three types
+# alone would miss. The body is attacker-controlled on a fork PR, so it is
+# never interpolated into a `run:` block; it is passed through `env:` and
+# written to a file from the environment variable instead.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Write PR body to a file
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+      - name: Lint PR body
+        run: node .github/scripts/lint-pr-body.js "$RUNNER_TEMP/pr-body.md"

@@ -1,0 +1,28 @@
+{
+  "cases": [
+    { "id": "em-dash-in-fenced-block-passes", "expect": "clean" },
+    { "id": "em-dash-in-nested-list-continuation-hard-fails", "expect": "hard-fail" },
+    { "id": "em-dash-in-inline-span-passes", "expect": "clean" },
+    { "id": "em-dash-in-prose-hard-fails", "expect": "hard-fail" },
+    { "id": "emoji-in-fenced-block-passes", "expect": "clean" },
+    { "id": "emoji-in-nested-list-continuation-hard-fails", "expect": "hard-fail" },
+    { "id": "emoji-in-inline-span-passes", "expect": "clean" },
+    { "id": "emoji-in-prose-hard-fails", "expect": "hard-fail" },
+    { "id": "unclosed-fence-scans-remainder-as-prose", "expect": "hard-fail" },
+    { "id": "banned-heading-inside-fenced-block-passes", "expect": "clean" },
+    { "id": "quoted-problem-heading-in-fence-with-real-summary-passes", "expect": "clean" },
+    { "id": "missing-verification-heading-hard-fails", "expect": "hard-fail" },
+    { "id": "duplicate-verification-headings-hard-fails", "expect": "hard-fail" },
+    { "id": "alternatives-considered-heading-hard-fails", "expect": "hard-fail" },
+    { "id": "known-limits-heading-hard-fails", "expect": "hard-fail" },
+    { "id": "fenced-block-with-multi-token-info-string-passes", "expect": "clean" },
+    { "id": "keycap-sequence-in-prose-hard-fails", "expect": "hard-fail" },
+    { "id": "regional-indicator-flag-in-prose-hard-fails", "expect": "hard-fail" },
+    { "id": "indented-review-rounds-heading-hard-fails", "expect": "hard-fail" },
+    { "id": "known-limitation-singular-heading-hard-fails", "expect": "hard-fail" },
+    { "id": "emoji-presentation-copyright-in-prose-hard-fails", "expect": "hard-fail" },
+    { "id": "bare-copyright-symbol-in-prose-passes", "expect": "clean" },
+    { "id": "wrong-first-heading-hard-fails", "expect": "hard-fail" },
+    { "id": "no-heading-at-all-hard-fails", "expect": "hard-fail" }
+  ]
+}

@@ -149,6 +149,7 @@ jobs:
           node hooks/claude/scripts/run-plan-gate-fixtures.js >/dev/null
           node skills/rules-distill/scripts/scan-rules.js >/dev/null
           node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
+          node .github/scripts/run-lint-pr-body-fixtures.js >/dev/null
       - name: Office skills installer (stubbed fetch, no network)
         run: |
           set -euo pipefail
@@ -437,6 +438,7 @@ jobs:
           node hooks\claude\scripts\run-plan-gate-fixtures.js | Out-Null; Assert-Node 'Claude plan-gate fixtures'
           node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
           node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'
+          node .github\scripts\run-lint-pr-body-fixtures.js | Out-Null; Assert-Node 'lint-pr-body fixtures'
       - name: Office skills installer (stubbed fetch, no network)
         shell: powershell
         run: |

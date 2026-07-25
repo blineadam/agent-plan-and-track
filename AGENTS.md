@@ -10,6 +10,10 @@ Portable, user-scoped agent rules/skills/hooks for Claude Code, GitHub Copilot, 
 
 This repo's implicit conventions are captured in `.ai-style-rules.md` at the project root. Read it before writing or editing code here, and follow its Golden Files, naming/state-control rules, and DONTs.
 
+## PR body convention
+
+A PR body describes the change as it stands, not the review history that produced it (the portable half of this lives in `rules/core-rules.md` and `rules/agent-guidelines.md`). This repo's own heading set: `## Summary` (required, first), then an optional `## Implementation`, then either `## Test plan` or `## Verification` (exactly one required). `.github/scripts/lint-pr-body.js`, wired into `.github/workflows/pr-body-lint.yml`, hard-fails a first heading that isn't `## Summary`, a missing or duplicated verification section, a banned narration heading, and an em dash or emoji in prose; any other level-2 heading only warns. The voice checks read prose only, skipping fenced blocks and inline code, because a body routinely quotes output it did not write: that is the same carve-out the `humanizer` skill already makes for secondhand text. For the body's own prose, this doesn't add a second rule: `rules/core-rules.md`'s writing-voice rule already points PR descriptions at the `humanizer` skill.
+
 ## Local additions
 
 If this checkout has an `AGENTS.local.md` next to this file, read it too: it holds machine-local tooling instructions that aren't checked in because not every checkout has that tooling installed.
