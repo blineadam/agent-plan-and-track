@@ -364,12 +364,16 @@ jobs:
           # session 2 at all, so require one per unresolved thread and leave
           # the PR open for a human otherwise. Zero unresolved threads passes
           # vacuously, keeping a clean-review night green.
-          # tonumber tolerates session 2 emitting the id as a JSON string:
-          # a type mismatch would otherwise read as an uncovered thread and
-          # fail a run whose findings were in fact triaged.
+          # The select mirrors the posting loop's own skip condition above, so
+          # an entry it declined to post can never count as coverage here:
+          # accepting one would resolve a thread carrying no reply at all,
+          # which is the exact hole this check exists to close. tonumber then
+          # tolerates session 2 emitting the id as a JSON string, since a type
+          # mismatch would otherwise read as an uncovered thread and fail a
+          # run whose findings were in fact triaged.
           replied='[]'
           if jq -e 'type == "array"' "$replies" >/dev/null 2>&1; then
-            replied="$(jq -c '[.[].comment_id | tonumber? // empty]' "$replies")"
+            replied="$(jq -c '[.[] | select((.reply // "") | tostring | length > 0) | .comment_id | tonumber? // empty]' "$replies")"
           fi
           uncovered="$(jq -r --argjson replied "$replied" \
             '[.[] | select(.root as $root | $replied | index($root) | not) | .root] | join(" ")' <<<"$threads")"
