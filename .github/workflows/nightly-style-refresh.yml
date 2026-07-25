@@ -340,7 +340,7 @@ jobs:
                 || echo "reply to comment $id failed; continuing" >&2
             done
           else
-            echo "no valid thread-replies.json; resolving without replies" >&2
+            echo "no valid thread-replies.json; the coverage check below will fail" >&2
           fi
           # Scoped to threads Copilot itself opened: resolving a thread a human
           # reviewer left while this unattended run was in flight would satisfy
