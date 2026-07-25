@@ -23,6 +23,8 @@
     { "id": "emoji-presentation-copyright-in-prose-hard-fails", "expect": "hard-fail" },
     { "id": "bare-copyright-symbol-in-prose-passes", "expect": "clean" },
     { "id": "wrong-first-heading-hard-fails", "expect": "hard-fail" },
-    { "id": "no-heading-at-all-hard-fails", "expect": "hard-fail" }
+    { "id": "no-heading-at-all-hard-fails", "expect": "hard-fail" },
+    { "id": "implementation-after-verification-hard-fails", "expect": "hard-fail" },
+    { "id": "implementation-before-verification-passes", "expect": "clean" }
   ]
 }

@@ -25,9 +25,12 @@
  *   5. An emoji in prose (\p{Extended_Pictographic}, plus regional-indicator
  *      flag sequences and keycap sequences, minus the text-presentation
  *      exceptions (c), (r), (tm)).
+ *   6. A level-2 `## Implementation` heading occurring after the first
+ *      `## Test plan`/`## Verification` heading: the convention orders
+ *      Implementation before verification, not after.
  *
  * WARN findings:
- *   6. Any ##-level heading whose text isn't Summary, Implementation, Test
+ *   7. Any ##-level heading whose text isn't Summary, Implementation, Test
  *      plan, or Verification (case-insensitive). Warn only: that allowlist is
  *      inferred from eight samples and is a style preference, not a
  *      correctness claim.
@@ -178,6 +181,25 @@ function checkVerificationHeading(nonCode, findings) {
   }
 }
 
+function checkHeadingOrder(nonCode, findings) {
+  let verificationLine = null;
+  for (const { lineNumber, text } of nonCode) {
+    const heading = parseHeading(text);
+    if (!heading || heading.level !== 2) continue;
+    const normalized = heading.text.trim().toLowerCase();
+    if (verificationLine === null && VERIFICATION_HEADINGS.has(normalized)) {
+      verificationLine = lineNumber;
+      continue;
+    }
+    if (verificationLine !== null && normalized === 'implementation') {
+      findings.push({
+        severity: 'HARD',
+        message: `"## Implementation" must come before the "## Test plan"/"## Verification" heading: observed "${text.trim()}" on line ${lineNumber}, after the verification heading on line ${verificationLine}`,
+      });
+    }
+  }
+}
+
 function checkHeadingAllowlist(nonCode, findings) {
   for (const { lineNumber, text } of nonCode) {
     const heading = parseHeading(text);
@@ -254,6 +276,7 @@ function main() {
   checkFirstHeading(nonCode, findings);
   checkBannedNarrationHeadings(nonCode, findings);
   checkVerificationHeading(nonCode, findings);
+  checkHeadingOrder(nonCode, findings);
   checkHeadingAllowlist(nonCode, findings);
 
   const prose = nonCode.map(({ lineNumber, text }) => ({ lineNumber, text: stripInlineCode(text) }));
