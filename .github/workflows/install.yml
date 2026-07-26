@@ -151,6 +151,7 @@ jobs:
           node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
           node .github/scripts/run-lint-pr-body-fixtures.js >/dev/null
           node .github/scripts/check-digest-preview.js >/dev/null
+          node .github/scripts/run-check-digest-preview-fixtures.js >/dev/null
       - name: Probe-agent frontmatter escape/quote round-trip
         run: |
           set -euo pipefail
@@ -548,6 +549,7 @@ jobs:
           node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'
           node .github\scripts\run-lint-pr-body-fixtures.js | Out-Null; Assert-Node 'lint-pr-body fixtures'
           node .github\scripts\check-digest-preview.js | Out-Null; Assert-Node 'check-digest-preview'
+          node .github\scripts\run-check-digest-preview-fixtures.js | Out-Null; Assert-Node 'check-digest-preview fixtures'
       - name: Probe-agent frontmatter escape/quote round-trip
         shell: powershell
         run: |
