@@ -77,8 +77,11 @@ before/after for revisions). Then:
 
 - The user approves / modifies / skips each candidate by number.
 - **Never edit the rules automatically: always require approval.**
-- When editing `rules/core-rules.md`, keep the matching one-liner in sync with
-  the fuller bullet in `rules/agent-guidelines.md` (they mirror each other).
+- When editing `rules/core-rules.md`, keep any bullet the digest carries in sync
+  with the fuller bullet in `rules/agent-guidelines.md`. The digest is a
+  deliberate subset, not a mirror (see AGENTS.md's rule-delivery section): some
+  rules live at full force only in `rules/agent-guidelines.md`, and re-adding
+  one of those to the digest is drift, not a gap to close.
 - After applying, remind the user to re-run `./install.sh all` (or `install.ps1 all` on Windows) so the digest and
   instruction managed blocks propagate to every harness (and to restart
   Copilot/Codex sessions for instruction-file changes).
