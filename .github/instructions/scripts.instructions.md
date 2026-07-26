@@ -58,6 +58,33 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   reimplements this differently, or that relies on `agent_type` alone (also
   set for a whole session launched with `--agent`, which is main-thread).
 
+## CI guard scripts
+
+- `.github/scripts/*.js` (e.g. `lint-pr-body.js`, `check-digest-preview.js`)
+  are a distinct category from the JS hooks above: they enforce a convention
+  this repo's own instruction files already state, from CI, not from a
+  PreToolUse/Stop hook at edit or session time. Their control flow is the
+  opposite of a hook's: they must hard-fail (exit 1) on a real violation, not
+  fail open. Flag a new script under `.github/scripts/` that swallows an
+  error into a soft warning instead of a nonzero exit, or that copies a
+  hook's fail-open `try { main() } catch { ...; process.exit(0) }` shape.
+- `lint-pr-body.js`'s header comment enumerates its findings by number, split
+  into HARD (exit 1) and WARN (stderr-only, exit 0) groups, and it's wired
+  into its own single-purpose `pr-body-lint.yml`; that's its own convention,
+  not a requirement for every guard here. `check-digest-preview.js` describes
+  its check in prose instead and runs inside the general `install.yml` smoke
+  job, since it's a smoke-test invariant on the digest file rather than a
+  PR-shaped lint. Both still ship a same-directory `run-<name>-fixtures.js`
+  (mirroring the hook and skill fixture-runner convention below). Flag a new
+  guard script with no fixture runner.
+- A workflow step that touches PR/issue title, body, or comment text (all
+  attacker-controlled on a fork PR) must pass it through `env:` and write it
+  to a file, never interpolate a `${{ ... }}` expression directly inside a
+  `run:` block: that's template substitution before the shell runs, not a
+  shell-quoted value. Flag a `run:` step that references
+  `${{ github.event.pull_request.body }}` or similar untrusted context data
+  directly instead of through an `env:` var.
+
 ## Skill maintenance scripts
 
 - Node core modules only, no external npm dependencies, same as the hook
@@ -176,3 +203,20 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   (`Read`→`read`, `Grep`/`Glob`→`search`, `Edit`/`Write`/`MultiEdit`→`edit`,
   `Bash`→`execute`, `WebFetch`/`WebSearch`→`web`). Flag a PR that adds a
   model-tier translation table to either renderer.
+- `frontmatter_field` (bash) and `Get-AgentFrontmatterField` (PowerShell)
+  decode a quoted frontmatter value's escapes: single-quoted `''` is a plain
+  global replace (safe, since a doubled single-quote has no adjacency
+  ambiguity), while double-quoted `\"`/`\\` decodes in one left-to-right pass,
+  not sequential global replaces (which mis-handles a backslash immediately
+  before a quote). Both abort the install loudly, naming the file/key/escape,
+  on an escape neither decoder can render, rather than installing a silently
+  corrupted rendered value. Flag a double-quoted decoder that switches to
+  global find-replace instead of a single pass, or that swallows an unhandled
+  escape instead of aborting.
+  The two installers deliberately differ on how the abort propagates through
+  nesting: `install.ps1` safely nests the extractor call inside another
+  function call because PowerShell's `throw` unwinds regardless of nesting,
+  while `install.sh` must assign the extractor's result to its own local
+  variable first, since bash's `set -e` only observes the outer command's
+  exit status and would mask a nested command substitution's abort. Don't
+  flag that divergence as an inconsistency to reconcile.
