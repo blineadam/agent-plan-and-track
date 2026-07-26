@@ -17,6 +17,14 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   verbatim into Claude, Copilot, and Codex. Never name a single AI tool in a
   rule meant for all three: phrase by pattern (e.g. "the `Co-Authored-By:`
   trailer") or enumerate every tool explicitly.
+- `rules/core-rules.md` is a deliberate subset of `rules/agent-guidelines.md`,
+  not a mirror: a rule dropped from or compressed in the digest (per
+  `AGENTS.md`'s rule-delivery section) is intentional, not a gap to backfill.
+  Flag a PR that re-adds a deliberately-dropped rule to the digest on the
+  assumption every rule should mirror both files; that's a judgment call
+  `.github/scripts/check-digest-preview.js` can't make, since it only checks
+  three specific bullets' presence, byte budget, and order, not which other
+  rules belong in the digest at all.
 
 ## Skill files
 
@@ -34,7 +42,12 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   nested YAML mapping key and invalidates the whole frontmatter block for
   a strict parser, even though this repo's own lenient parsers keep
   working. Flag an unquoted `description` containing `: `, and flag a
-  quoted value containing an unescaped copy of its own delimiter.
+  quoted value containing an unescaped copy of its own delimiter. The same
+  problem also applies, less commonly, to an unquoted value starting with a
+  YAML indicator character (`[`, `{`, `#`, `&`, `*`, etc.), starting with a
+  bare `?`/`:`/`-` followed by a space, or containing a space-then-`#`
+  sequence (which YAML reads as a trailing comment, silently truncating the
+  value): flag any of those the same way as an unquoted colon-space.
 - A skill's own reference material (a checklist, a lookup table specific to
   that skill) lives under its own `references/` folder, not top-level
   `docs/`, since `docs/` documents the repo's architecture, not one skill's
@@ -116,6 +129,12 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   flag an `agents/*.md` `description` containing `: ` (e.g. a "Read-only:
   ..." clause) left unquoted. Only quote when the value actually needs it;
   don't flag a description with no colon-space for being unquoted.
+- A double-quoted `agents/*.md` frontmatter value is installable only if its
+  one legitimate use of a backslash is `\"` or `\\`: both installers' decoders
+  know only that pair and abort on anything else (`\t`, `\n`, `\uXXXX`, ...),
+  even though those are all legal YAML. Flag a new escape sequence added to an
+  agent's frontmatter value beyond `\"`/`\\`; it will pass a strict YAML
+  parser but fail `./install.sh`/`.ps1`.
 
 ## Don't hand-edit installed copies
 
