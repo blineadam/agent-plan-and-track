@@ -67,7 +67,10 @@ Launch a general-purpose subagent per cluster with this prompt:
 
 Remember this repo's own top lesson: **keep rule content tool-agnostic**: no
 harness names in a shared rule. And respect the taxonomy: a constant
-behavioral constraint belongs in the instructions file + digest, not a skill.
+behavioral constraint belongs in the instructions file rather than a skill.
+Whether it also belongs in the digest is a separate question, answered by the
+selection criteria in AGENTS.md's rule-delivery section, since the digest is a
+deliberate subset of the instruction file.
 
 ## Phase 3: User review & execution
 
