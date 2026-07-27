@@ -57,8 +57,8 @@ correction into a rule for next time.
 - **`yeet`** (skill) kicks in once work is done and ready to ship: commits,
   pushes, and opens a GitHub PR with the standing PR-body heading set via
   `--body-file`, requests a Copilot review when the repo doesn't
-  auto-request one, then triages, replies to, and resolves every review
-  thread before calling it done.
+  auto-request one, then triages, replies to, and resolves every Copilot
+  thread before calling it done. Threads people opened are left for them.
 
 A harness that can't run a given hook still gets the rule as a skill.
 That's why Copilot gets gateguard but not delivery-gate: its `agentStop`
