@@ -231,8 +231,8 @@ jobs:
           gh api "repos/${{ github.repository }}/pulls/$pr/requested_reviewers" \
             -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
           for i in $(seq 1 30); do
-            matching_review="$(gh api "repos/${{ github.repository }}/pulls/$pr/reviews" \
-              --jq "[.[] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" and .commit_id == \"$head_sha\")] | length")"
+            matching_review="$(gh api --paginate "repos/${{ github.repository }}/pulls/$pr/reviews?per_page=100" \
+              --jq ".[] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" and .commit_id == \"$head_sha\") | .id" | jq -sc 'length')"
             successful_full_run="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$head_sha&event=dynamic&per_page=100" \
               --jq "[.workflow_runs[] | select(.head_sha == \"$head_sha\" and .path == \"dynamic/agents/copilot-pull-request-reviewer\" and .status == \"completed\" and .conclusion == \"success\")] | length")"
             if [ "$matching_review" -gt 0 ] && [ "$successful_full_run" -gt 0 ]; then
@@ -267,15 +267,15 @@ jobs:
           # above matches the same string on the same endpoint and fails the
           # run red on timeout, so drift there stops the run before session 2
           # sees anything; keep those two in sync if either is edited.
-          reviews="$(gh api "repos/${{ github.repository }}/pulls/$pr/reviews?per_page=100" \
-            --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")]')"
+          reviews="$(gh api --paginate "repos/${{ github.repository }}/pulls/$pr/reviews?per_page=100" \
+            --jq '.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")' | jq -sc '.')"
           review_ids="$(jq -c '[.[].id]' <<<"$reviews")"
           {
             echo "## Reviews"
             echo "$reviews"
             echo "## Review comments"
-            gh api "repos/${{ github.repository }}/pulls/$pr/comments?per_page=100" \
-              --jq "[.[] | select(.pull_request_review_id as \$id | $review_ids | index(\$id))]"
+            gh api --paginate "repos/${{ github.repository }}/pulls/$pr/comments?per_page=100" \
+              --jq ".[] | select(.pull_request_review_id as \$id | $review_ids | index(\$id))" | jq -sc '.'
           } > "$RUNNER_TEMP/copilot-review.json"
 
       - name: Address the review (Claude session 2)
@@ -349,12 +349,21 @@ jobs:
           # its top-level review comment, and that comment's databaseId is
           # exactly the REST numeric id session 2 emits as comment_id, so it
           # doubles as the join key for the coverage check below.
-          threads="$(gh api graphql \
-            -f query='query($owner: String!, $repo: String!, $number: Int!) {
+          # reviewThreads caps at 100 nodes per page, and a thread past the cap
+          # is invisible to both the coverage check and the resolve loop below,
+          # so it passes the check vacuously instead of failing it: the one
+          # truncation on this path that waves a finding through rather than
+          # stopping the run. --paginate drives $endCursor until hasNextPage is
+          # false, and the per-page --jq emits one object per thread, so slurp
+          # every page before anything filters or counts it.
+          threads="$(gh api graphql --paginate \
+            -f query='query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
               repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
-                reviewThreads(first: 100) { nodes { id isResolved comments(first: 1) { nodes { databaseId author { login } } } } } } } }' \
+                reviewThreads(first: 100, after: $endCursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes { id isResolved comments(first: 1) { nodes { databaseId author { login } } } } } } } }' \
             -f owner="${{ github.repository_owner }}" -f repo="${GITHUB_REPOSITORY#*/}" -F number="$pr" \
-            --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | select(.comments.nodes[0].author.login == "copilot-pull-request-reviewer") | {id, root: .comments.nodes[0].databaseId}]')"
+            --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | select(.comments.nodes[0].author.login == "copilot-pull-request-reviewer") | {id, root: .comments.nodes[0].databaseId}' | jq -sc '.')"
           # Refuse to resolve a finding no one triaged. Resolution is the only
           # thing the ruleset checks before the merge, so resolving a thread
           # session 2 never saw silently converts a delivery bug into a merged
