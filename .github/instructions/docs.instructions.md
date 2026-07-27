@@ -75,17 +75,16 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   competing procedure). Flag a skill whose procedure is scattered across the
   file with no named section to anchor it.
 - A skill vendored wholesale from an external repo (e.g. `canvas-design`,
-  `frontend-design`, `theme-factory`, `slack-gif-creator`, `webapp-testing`,
-  all from `anthropics/skills`; `security-threat-model`, from
-  `openai/skills`) must carry an
-  HTML comment right after its frontmatter naming the source URL, the exact
-  edits made (not a vague "lightly edited"), and pointing at a sibling
-  `LICENSE.txt` with the upstream license text. Flag a vendored skill missing
-  either the attribution comment or the `LICENSE.txt`, and flag a skill whose
-  license forbids redistribution (check the license text, don't assume) if
-  it's vendored under `skills/` at all rather than fetched live at install
-  time, the way `install-office-skills.sh` handles the restricted
-  `docx`/`pdf`/`pptx`/`xlsx` skills.
+  `frontend-design`, `theme-factory`, `webapp-testing`, all from
+  `anthropics/skills`; `security-threat-model`, from `openai/skills`) must
+  carry an HTML comment right after its frontmatter naming the source URL,
+  the exact edits made (not a vague "lightly edited"), and pointing at a
+  sibling `LICENSE.txt` with the upstream license text. Flag a vendored
+  skill missing either the attribution comment or the `LICENSE.txt`, and
+  flag a skill whose license forbids redistribution (check the license
+  text, don't assume) if it's vendored under `skills/` at all rather than
+  fetched live at install time, the way `install-office-skills.sh` handles
+  the restricted `docx`/`pdf`/`pptx`/`xlsx` skills.
 - A skill or standing rule that's merely *inspired by* another repo's idea
   but rewritten from scratch, not vendored wholesale, gets a one-line
   "adapted from X" credit instead: in `AGENTS.md`'s Skills section for a

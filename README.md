@@ -114,7 +114,6 @@ skills/yeet/                 publish end to end: branch, commit, push, PR, Copil
 skills/canvas-design/        original visual art (poster/PDF/PNG) built from a stated design philosophy (portable)
 skills/frontend-design/      distinctive visual/UI design direction, not templated defaults (portable)
 skills/theme-factory/        apply or generate a cohesive color/font theme for a deck or artifact (portable)
-skills/slack-gif-creator/    create animated GIFs optimized for Slack with dimension/FPS/color constraints, validation tools, and animation guidance (portable)
 skills/webapp-testing/       drive a local web app in a real browser with Playwright: verify frontend behavior, debug UI, screenshot, read console logs (portable)
 skills/migration-discipline/ disciplines for large migrations/ports: ownership isolation, validation ladder, work-queue batching, durable migration state (portable)
 agents/                      tiered subagents (Claude .md + rendered Codex TOML + rendered Copilot
