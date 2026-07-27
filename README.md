@@ -110,6 +110,7 @@ skills/plow-ahead/           autonomy contract for open-ended work: state assump
                               stop only for true blockers (portable)
 skills/efficient-frontier/   routing doctrine: which tiered subagent fits a piece of delegated work (portable)
 skills/read-the-damn-docs/   docs-first grounding before third-party API/version work (portable)
+skills/yeet/                 publish end to end: branch, commit, push, PR, Copilot review to resolution (portable)
 skills/canvas-design/        original visual art (poster/PDF/PNG) built from a stated design philosophy (portable)
 skills/frontend-design/      distinctive visual/UI design direction, not templated defaults (portable)
 skills/theme-factory/        apply or generate a cohesive color/font theme for a deck or artifact (portable)
