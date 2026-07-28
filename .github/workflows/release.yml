@@ -1,21 +1,27 @@
 name: release
 
-# Creates a GitHub Release when a version tag (v*.*.*) is pushed. This repo has
-# no build artifacts: a release is the tag plus notes auto-generated from merged
-# PRs, a known-good snapshot users can pin with `git checkout vX.Y.Z` before
-# running the installer. Single ubuntu job by design: creating a release is
-# platform-independent, unlike install.yml's mirrored unix/windows assertions.
-# Tag only commits already green on main; the guard below refuses to release a
-# commit the installer smoke test hasn't passed. If the smoke test is still
-# running when the tag lands, wait for green and re-run this workflow from the
-# Actions tab.
+# Guards a version tag (v*.*.*) push. This repo's releases always carry
+# hand-written notes, published with
+# `gh release create <tag> --target <sha> --notes-file <file>`. That one call
+# creates the tag when it does not already exist
+# (https://cli.github.com/manual/gh_release_create), so the release and its
+# notes land together and this workflow's own run is a no-op. Single ubuntu
+# job by design: the guard is platform-independent, unlike install.yml's
+# mirrored unix/windows assertions. Tag only commits already green on main;
+# the first guard refuses to pass a commit the installer smoke test hasn't
+# passed. The second guard fails if a tag lands with no release attached (a
+# bare `git push --tags` ahead of the notes, or notes creation skipped),
+# rather than silently generating a bare PR-title changelog in its place.
+# Either guard failing just means: finish the release for this tag (wait for
+# install.yml to go green, or publish the notes with `gh release create`),
+# then re-run this workflow from the Actions tab.
 
 on:
   push:
     tags: ["v*.*.*"]
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
@@ -36,13 +42,31 @@ jobs:
             echo "Wait for install.yml to pass on this commit, then re-run this workflow."
             exit 1
           }
-      - name: Create the GitHub Release
+      - name: Assert a release with curated notes exists for this tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          # Listed rather than fetched per-tag so the gh exit code means "the
+          # API call failed" and nothing else: a per-tag lookup returns nonzero
+          # for a missing release and for auth, rate-limit, and transient
+          # errors alike, which would report an unverifiable state as a
+          # definite missing release. The tag match itself is exact, against
+          # structured JSON rather than CLI error text.
+          if ! releases="$(gh release list --limit 1000 --json tagName 2>&1)"; then
+            echo "FAIL: could not read the release list for $GITHUB_REPOSITORY."
+            echo "This says nothing about whether $GITHUB_REF_NAME has a release;"
+            echo "the check itself did not complete. gh reported:"
+            echo "$releases"
+            exit 1
+          fi
+          if jq -e --arg tag "$GITHUB_REF_NAME" 'any(.[]; .tagName == $tag)' <<<"$releases" >/dev/null; then
             echo "release $GITHUB_REF_NAME already exists -- nothing to do"
             exit 0
           fi
-          gh release create "$GITHUB_REF_NAME" --generate-notes
+          echo "FAIL: the release list came back without $GITHUB_REF_NAME, so no"
+          echo "release exists for it yet. This repo publishes hand-written notes"
+          echo "rather than a generated changelog. Publish them with:"
+          echo "  gh release create $GITHUB_REF_NAME --target <sha> --notes-file <file>"
+          echo "then re-run this workflow from the Actions tab."
+          exit 1
