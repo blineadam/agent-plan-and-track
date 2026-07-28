@@ -1,6 +1,6 @@
 ---
 name: efficient-frontier
-description: "Use before subagent selection/spawn or handback review: high-stakes security/architecture; plan drafting (task plan: plan-and-track); plan/spec/todo execution; research; bug repro; mechanical edits."
+description: "Use before subagent selection/spawn or handback review: high-stakes security/architecture; plan drafting (task plan: plan-and-track); plan/spec/todo execution; research; bug repro; mechanical edits. Also use before taking a technical-judgment question of your own (which design, is this safe, better approach, second opinion) to the user: consult the fitting advisor first. Not for authorization, scope, or intent questions, which go straight to the user."
 ---
 
 # Efficient Frontier
@@ -52,6 +52,7 @@ The default ladder for a spec-shaped task: `planner` writes the spec after readi
 
 - Don't reach for the harness's generic catch-all agent when a roster tier fits; the catch-all is the fallback for work no tier covers, not the default.
 - Don't delegate objective blockers such as fact checks, file lookups, or quick reads; resolve them in the main session. Exception: consult the appropriate roster advisor for design, architecture, security, or judgment calls, even when they block the next step. 
+- Don't carry a technical-judgment question of your own to the user before consulting the fitting advisor: which design, is this safe, is there a better approach, do I want a second opinion. Route it to `fable-advisor` for a quick gut-check, `architect-reviewer` for a design tradeoff, or `security-auditor` for a security implication, then bring the user a recommendation rather than an open question. Authorization, scope, and disambiguating the user's own intent are not judgment calls to route: those go straight to the user, and an advisor never substitutes for the user's decision.
 - Don't send two agents to edit the same files at the same time.
 - Don't fan a repetitive change out across the full target set on the first pass. Pilot the brief on a small representative subset, review those results, fold the corrections into the brief, then scale to the rest.
 - Don't assume delegation always saves time. It pays off when the work is genuinely parallelizable or genuinely bounded, not as a reflex for everything.
