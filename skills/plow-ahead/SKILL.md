@@ -16,7 +16,7 @@ Treat the user's instruction as permission to continue through normal uncertaint
 - Use repo conventions, nearby patterns, local docs, tests, and existing product behavior as the decision source.
 - Keep working through normal test failures, missing context, implementation choices, and minor ambiguity.
 - Use subagents for independent research, implementation, or verification when parallel work can reduce idle time or improve coverage; pick which tier per [[efficient-frontier]] when the tiered subagent roster is available.
-- Do not pause merely to ask which reasonable option the user prefers. Pick one, record why, and keep going. When a judgment call feels close enough to want a second opinion and the tiered subagent roster is available (per [[efficient-frontier]]), delegate it to the `fable-advisor` subagent for an independent gut-check, weigh it, and continue; without the roster, apply the Decision Rules below inline and continue.
+- Do not pause merely to ask which reasonable option the user prefers. Pick one, record why, and keep going. When a judgment call feels close enough to want a second opinion and the tiered subagent roster is available (per [[efficient-frontier]]), route it to the advisor that fits its kind, `fable-advisor` for a quick gut-check, `architect-reviewer` for a design tradeoff, `security-auditor` for a security implication, then weigh the read and continue; without the roster, apply the Decision Rules below inline and continue.
 
 ## Stop Conditions
 
