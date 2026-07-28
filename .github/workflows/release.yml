@@ -1,19 +1,20 @@
 name: release
 
 # Guards a version tag (v*.*.*) push. This repo's releases always carry
-# curated notes (tasks/tag-and-release.md's outline), published directly via
-# `gh release create --target <sha> --notes-file <file>`, which mints the tag
-# and the release together in one call and makes this workflow's own run a
-# no-op. Single ubuntu job by design: the guard is platform-independent, unlike
-# install.yml's mirrored unix/windows assertions. Tag only commits already
-# green on main; the first guard refuses to pass a commit the installer smoke
-# test hasn't passed. The second guard fails if a tag lands with no release
-# attached (a bare `git push --tags` ahead of the notes, or notes creation
-# skipped), rather than silently generating a bare PR-title changelog in its
-# place. Either guard failing just means: finish the documented process for
-# this tag (wait for install.yml to go green, or publish the release via
-# `gh release create --notes-file`), then re-run this workflow from the
-# Actions tab.
+# hand-written notes, published with
+# `gh release create <tag> --target <sha> --notes-file <file>`. That one call
+# creates the tag when it does not already exist
+# (https://cli.github.com/manual/gh_release_create), so the release and its
+# notes land together and this workflow's own run is a no-op. Single ubuntu
+# job by design: the guard is platform-independent, unlike install.yml's
+# mirrored unix/windows assertions. Tag only commits already green on main;
+# the first guard refuses to pass a commit the installer smoke test hasn't
+# passed. The second guard fails if a tag lands with no release attached (a
+# bare `git push --tags` ahead of the notes, or notes creation skipped),
+# rather than silently generating a bare PR-title changelog in its place.
+# Either guard failing just means: finish the release for this tag (wait for
+# install.yml to go green, or publish the notes with `gh release create`),
+# then re-run this workflow from the Actions tab.
 
 on:
   push:
@@ -46,11 +47,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          # Listed rather than fetched per-tag so the gh exit code means "the
+          # API call failed" and nothing else: a per-tag lookup returns nonzero
+          # for a missing release and for auth, rate-limit, and transient
+          # errors alike, which would report an unverifiable state as a
+          # definite missing release. The tag match itself is exact, against
+          # structured JSON rather than CLI error text.
+          if ! releases="$(gh release list --limit 1000 --json tagName 2>&1)"; then
+            echo "FAIL: could not read the release list for $GITHUB_REPOSITORY."
+            echo "This says nothing about whether $GITHUB_REF_NAME has a release;"
+            echo "the check itself did not complete. gh reported:"
+            echo "$releases"
+            exit 1
+          fi
+          if jq -e --arg tag "$GITHUB_REF_NAME" 'any(.[]; .tagName == $tag)' <<<"$releases" >/dev/null; then
             echo "release $GITHUB_REF_NAME already exists -- nothing to do"
             exit 0
           fi
-          echo "FAIL: no release exists yet for $GITHUB_REF_NAME."
-          echo "This repo always publishes curated notes (tasks/tag-and-release.md);"
-          echo "run that process, then 'gh release create $GITHUB_REF_NAME --notes-file <file>'."
+          echo "FAIL: the release list came back without $GITHUB_REF_NAME, so no"
+          echo "release exists for it yet. This repo publishes hand-written notes"
+          echo "rather than a generated changelog. Publish them with:"
+          echo "  gh release create $GITHUB_REF_NAME --target <sha> --notes-file <file>"
+          echo "then re-run this workflow from the Actions tab."
           exit 1
