@@ -1,13 +1,18 @@
 name: release
 
-# Creates a GitHub Release when a version tag (v*.*.*) is pushed. This repo has
-# no build artifacts: a release is the tag plus notes auto-generated from merged
-# PRs, a known-good snapshot users can pin with `git checkout vX.Y.Z` before
-# running the installer. Single ubuntu job by design: creating a release is
-# platform-independent, unlike install.yml's mirrored unix/windows assertions.
-# Tag only commits already green on main; the guard below refuses to release a
-# commit the installer smoke test hasn't passed. If the smoke test is still
-# running when the tag lands, wait for green and re-run this workflow from the
+# Guards a version tag (v*.*.*) push. This repo's releases always carry
+# curated notes (tasks/tag-and-release.md's outline), published directly via
+# `gh release create --target <sha> --notes-file <file>`, which mints the tag
+# and the release together in one call and makes this workflow's own run a
+# no-op. Single ubuntu job by design: the guard is platform-independent, unlike
+# install.yml's mirrored unix/windows assertions. Tag only commits already
+# green on main; the first guard refuses to pass a commit the installer smoke
+# test hasn't passed. The second guard fails if a tag lands with no release
+# attached (a bare `git push --tags` ahead of the notes, or notes creation
+# skipped), rather than silently generating a bare PR-title changelog in its
+# place. Either guard failing just means: finish the documented process for
+# this tag (wait for install.yml to go green, or publish the release via
+# `gh release create --notes-file`), then re-run this workflow from the
 # Actions tab.
 
 on:
@@ -15,7 +20,7 @@ on:
     tags: ["v*.*.*"]
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
@@ -36,7 +41,7 @@ jobs:
             echo "Wait for install.yml to pass on this commit, then re-run this workflow."
             exit 1
           }
-      - name: Create the GitHub Release
+      - name: Assert a release with curated notes exists for this tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -45,4 +50,7 @@ jobs:
             echo "release $GITHUB_REF_NAME already exists -- nothing to do"
             exit 0
           fi
-          gh release create "$GITHUB_REF_NAME" --generate-notes
+          echo "FAIL: no release exists yet for $GITHUB_REF_NAME."
+          echo "This repo always publishes curated notes (tasks/tag-and-release.md);"
+          echo "run that process, then 'gh release create $GITHUB_REF_NAME --notes-file <file>'."
+          exit 1
