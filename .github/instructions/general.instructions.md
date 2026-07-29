@@ -52,6 +52,14 @@ just a suggestion.
   blocks the heading-shaped version mechanically, so what needs review
   judgment here is the same narration written as ordinary prose underneath
   an allowed heading.
+- Flag a PR description written for density instead of skimming: a
+  multi-clause sentence carrying an unpacked colon-chain or parenthetical
+  where separate sentences would read easier, three or more parallel items
+  left as one packed sentence instead of a bulleted list, or an
+  `## Implementation` section covering more than one distinct topic with no
+  `###` subsections to jump to. Flag a spelled-out status collapsed into
+  prose (e.g. "a 401" instead of `` `401 Unauthorized` ``), and flag a
+  literal identifier, filename, flag, or endpoint left unbacktick'd.
 
 ## Scope discipline
 
