@@ -1,6 +1,6 @@
 ---
 name: plan-and-track
-description: Plan and track any non-trivial task (3+ steps or architectural decisions) using tasks/todo.md in the active project. Use BEFORE starting implementation of any multi-step task, the moment a task grows to 3+ steps mid-session, when the user's own message enumerates 3+ steps (tracking them isn't re-litigating them), when resuming work that has an existing tasks/todo.md, or when work goes sideways and needs re-planning. Also triggers when the user asks to plan, scope, or spec out work.
+description: Plan and track any non-trivial task (3+ steps or architectural decisions) using tasks/todo.md in the active project. Use BEFORE starting implementation of any multi-step task, the moment a task grows to 3+ steps mid-session, when the user's own message enumerates 3+ steps (tracking them isn't re-litigating them), when resuming work that has an existing tasks/todo.md, or when work goes sideways and needs re-planning. Also triggers when the user asks to plan, scope, or spec out work, and when the user authorizes autonomous progress ("plow ahead", "keep going until done", "use your best judgment", "don't ask unless blocked"), which applies the Running autonomously section.
 ---
 
 # Plan and Track
@@ -46,3 +46,14 @@ All paths are relative to the active project root.
 11. Add a `## Review` section to `tasks/todo.md` summarizing what changed, why, and how it was verified; record the batch's first and last commit SHAs or PR when one exists (e.g. `Commits: abc1234 through def5678` or `PR #X`).
 12. Update `README.md` if the change is critical or important.
 13. If the user corrected anything along the way, record it via the `capture-lesson` skill.
+
+## Running autonomously
+
+When the user has explicitly authorized autonomous progress ("plow ahead", "do not stop", "use your best judgment", "keep going until done", "finish while I am away"), run the workflow above without routine clarification stops. This section is the full contract behind the "Autonomous execution" rule in `rules/agent-guidelines.md`.
+
+- Turn routine questions into explicit assumptions and act on them; prefer the smallest reversible choice; decide from repo conventions, nearby patterns, local docs, tests, and existing behavior. Keep a lightweight decision log in the plan or the final answer, not a new repo artifact.
+- Don't pause to ask which reasonable option the user prefers: pick one, record why, keep going. A judgment call close enough to want a second opinion routes to the fitting advisor per [[efficient-frontier]] (`fable-advisor` for a quick gut-check, `architect-reviewer` for a design tradeoff, `security-auditor` for a security implication); weigh the read and continue. Without the roster, decide inline the same way.
+- Stop and hand back only for true blockers needing the user's authorization or private input: required credentials, secrets, accounts, paid services, or private data are unavailable; the next step is destructive, irreversible, or production-mutating; the task needs a branch operation, history rewrite, force push, or deletion the user did not directly request; legal, safety, privacy, or security risk is high and no conservative local choice reduces it; or the user explicitly reserved the decision.
+- A verification failure that repeats after reasonable investigation, where the next fix would be speculative or broad, is a judgment call, not an authorization blocker: get a proceed/narrow-scope/stop read from `fable-advisor` where the roster exists (inline otherwise) and follow it; a stop read hands back to the user.
+- If blocked, leave a self-contained handoff: what was done, what blocks progress, the exact input needed, and the next command or file to inspect.
+- End with an auditable recap: what was completed, the key decisions and assumptions with short reasons, what changed, the validation run and its results, and remaining risk. Don't hide uncertainty, skipped validation, or judgment calls.

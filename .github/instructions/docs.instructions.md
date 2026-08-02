@@ -69,7 +69,7 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   bulleted H2 sections in strict execution order, like `plan-and-track`) or a
   judgment/reference skill (reference or definitional H2 sections up front,
   ending in a late, distinctly named procedure subsection, like `humanizer`'s
-  `## Process`, `plow-ahead`'s `## Work Loop`, or `read-the-damn-docs`'s
+  `## Process` or `read-the-damn-docs`'s
   `## Required Workflow`; a short top-level framing section stating output
   requirements, like humanizer's `## Task`, doesn't count as a second
   competing procedure). Flag a skill whose procedure is scattered across the
@@ -87,7 +87,7 @@ themselves. See `.ai-style-rules.md` for the full convention set.
 - A skill or standing rule that's merely *inspired by* another repo's idea
   but rewritten from scratch, not vendored wholesale, gets a one-line
   "adapted from X" credit instead: in `AGENTS.md`'s Skills section for a
-  skill (e.g. `humanizer`, `plow-ahead`), or in `AGENTS.md`'s rule-mechanism
+  skill (e.g. `humanizer`), or in `AGENTS.md`'s rule-mechanism
   section for a rule folded into `rules/agent-guidelines.md`/
   `rules/core-rules.md` (e.g. the action-first output rule adapted from
   `ayghri/i-have-adhd`). No in-file HTML comment or `LICENSE.txt` for this

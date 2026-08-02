@@ -111,8 +111,6 @@ skills/skill-activation/     routing regression: does the right skill fire? (sta
 skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
 skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
 skills/copilot-review-instructions/ generate Copilot PR-review instructions from a project's documented conventions (portable; Copilot-only output)
-skills/plow-ahead/           autonomy contract for open-ended work: state assumptions, keep going,
-                              stop only for true blockers (portable)
 skills/efficient-frontier/   routing doctrine: which tiered subagent fits a piece of delegated work (portable)
 skills/read-the-damn-docs/   docs-first grounding before third-party API/version work (portable)
 skills/yeet/                 publish end to end: branch, commit, push, PR, Copilot review to resolution (portable)
