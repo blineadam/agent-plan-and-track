@@ -52,10 +52,15 @@
   Uninstall never reads, writes, or deletes .plan-and-track-manifest or
   .plan-and-track-pruned in any destination. Those belong to install.ps1 and
   record a different, much larger set of skills this script never touches.
-  Uninstall also leaves ~/.agents/.skill-lock.json stale on
-  purpose: that lock file belongs to the pinned third-party `skills` CLI, its
-  format is undocumented, and it self-heals on the next install, so
-  hand-editing it here would be worse than leaving it stale.
+  Uninstall also leaves ~/.agents/.skill-lock.json alone on purpose. That
+  lock belongs to the pinned third-party `skills` CLI, which tracks it one
+  skill name at a time and never reconciles an entry against what is on
+  disk: `addSkillToLock` upserts an entry, `removeSkillFromLock` deletes
+  one, and nothing prunes (read in its dist/cli.mjs at skills@1.5.19). So
+  these four entries persist until the same skills are installed again,
+  which rewrites them. Hand-editing another tool's state file is worse than
+  leaving an entry that names a directory no longer there. Recheck this
+  when SKILLS_CLI moves.
 
   PARITY: this script and install-office-skills.sh must stay in lockstep.
 #>
