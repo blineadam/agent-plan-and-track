@@ -186,7 +186,14 @@ jobs:
             || { echo "FAIL: bare install did not disable the plugin"; exit 1; }
           [ "$(jq -r '.enabledPlugins["life@laerdal"]' "$s")" = "true" ] \
             || { echo "FAIL: bare install disturbed an unrelated plugin entry"; exit 1; }
-          # 3. Negative control: prove part A's assertion is not vacuous by running
+          # 3. Null intermediates: a settings file whose permissions/enabledPlugins
+          # are JSON null must not abort the install. jq's setpath replaces a null
+          # with an object, and Set-JsonPath has to match that.
+          export HOME="$RUNNER_TEMP/scratch-home-bypass-null"; mkdir -p "$HOME/.claude"
+          printf '%s' '{"permissions":null,"enabledPlugins":null}' > "$HOME/.claude/settings.json"
+          ./install.sh claude >/dev/null
+          assert_bare_permission_posture "$HOME"
+          # 4. Negative control: prove part A's assertion is not vacuous by running
           # it against a home whose settings deliberately already carry both bypass keys.
           export HOME="$RUNNER_TEMP/scratch-home-bypass-negctrl"; mkdir -p "$HOME/.claude"
           printf '%s' '{"permissions":{"defaultMode":"bypassPermissions"},"skipDangerousModePermissionPrompt":true,"enabledPlugins":{"frontend-design@claude-plugins-official":false}}' > "$HOME/.claude/settings.json"
@@ -693,7 +700,15 @@ jobs:
           if ($s.PSObject.Properties.Name -contains 'skipDangerousModePermissionPrompt') { throw "bare install added the skip flag" }
           if ($s.enabledPlugins.'frontend-design@claude-plugins-official' -ne $false) { throw "bare install did not disable the plugin" }
           if ($s.enabledPlugins.'life@laerdal' -ne $true) { throw "bare install disturbed an unrelated plugin entry" }
-          # 3. Negative control: prove part A's assertion is not vacuous by running
+          # 3. Null intermediates: a settings file whose permissions/enabledPlugins
+          # are JSON null must not abort the install. jq's setpath replaces a null
+          # with an object, and Set-JsonPath has to match that.
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-bypass-null"
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
+          Set-Content -Path "$env:USERPROFILE\.claude\settings.json" -Value '{"permissions":null,"enabledPlugins":null}'
+          .\install.ps1 claude | Out-Null
+          Assert-BarePermissionPosture $env:USERPROFILE
+          # 4. Negative control: prove part A's assertion is not vacuous by running
           # it against a home whose settings deliberately already carry both bypass keys.
           $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-bypass-negctrl"
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null

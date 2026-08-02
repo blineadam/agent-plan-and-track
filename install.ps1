@@ -529,7 +529,10 @@ function Set-JsonPath($file, $path, $value, $label) {
   $node = $json
   for ($i = 0; $i -lt $path.Count - 1; $i++) {
     $key = $path[$i]
-    if (-not ($node.PSObject.Properties.Name -contains $key)) {
+    # A null intermediate counts as absent, matching jq's setpath, which
+    # replaces a null with an object instead of failing. Without this the
+    # Add-Member below binds a null InputObject and aborts the install.
+    if (-not ($node.PSObject.Properties.Name -contains $key) -or $null -eq $node.$key) {
       $node | Add-Member -NotePropertyName $key -NotePropertyValue ([PSCustomObject]@{}) -Force
     }
     $node = $node.$key

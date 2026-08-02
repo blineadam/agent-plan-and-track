@@ -75,10 +75,10 @@ header. To update, `git pull` and rerun; tagged releases (`vX.Y.Z`, on the
 Releases tab) are known-good snapshots you can pin with
 `git checkout v1.0.0` first.
 
-Installing never changes Claude Code's permission prompts. Set
-`PT_BYPASS_PERMISSIONS=1` before running if you want the installer
-to switch Claude Code to `bypassPermissions` and suppress its
-dangerous-mode warning.
+Installing does not change Claude Code's permission prompts unless you
+ask it to. Set `PT_BYPASS_PERMISSIONS=1` before running if you want the
+installer to switch Claude Code to `bypassPermissions` and suppress
+its dangerous-mode warning.
 
 ### First run in a new project
 
