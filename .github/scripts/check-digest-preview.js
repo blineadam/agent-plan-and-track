@@ -17,11 +17,13 @@
  * by default (same convention the hooks use), or the single CLI arg when
  * given (used to check a draft file before it lands).
  *
- * Exit 1 on any HARD finding (missing bullet, past-budget bullet, or
- * out-of-order bullets), with a message naming the offending bullet and its
- * end offset. Exit 0 otherwise, with a WARN-only stderr line if the file's
- * total character count exceeds INLINE_THRESHOLD_CHARS: the trim decision
- * for that is deliberately still open, so it never fails the check.
+ * Exit 1 on any HARD finding (missing bullet, past-budget bullet,
+ * out-of-order bullets, or a total character count over
+ * INLINE_THRESHOLD_CHARS), with a message naming the offense. The digest
+ * was deliberately trimmed under the threshold on 2026-08-02 so the whole
+ * file arrives inline; an edit that pushes it back over loses that
+ * delivery property, so the threshold is a hard failure, not a warning.
+ * Exit 0 otherwise.
  */
 
 const fs = require('fs');
@@ -89,8 +91,8 @@ function main() {
 
   const totalChars = content.length;
   if (totalChars > INLINE_THRESHOLD_CHARS) {
-    process.stderr.write(
-      `WARN: digest is ${totalChars} chars, over the ${INLINE_THRESHOLD_CHARS}-char inline persistence threshold\n`
+    findings.push(
+      `digest is ${totalChars} chars, over the ${INLINE_THRESHOLD_CHARS}-char inline persistence threshold`
     );
   }
 

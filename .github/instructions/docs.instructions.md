@@ -74,9 +74,8 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   requirements, like humanizer's `## Task`, doesn't count as a second
   competing procedure). Flag a skill whose procedure is scattered across the
   file with no named section to anchor it.
-- A skill vendored wholesale from an external repo (e.g. `canvas-design`,
-  `frontend-design`, `theme-factory`, `webapp-testing`, all from
-  `anthropics/skills`; `security-threat-model`, from `openai/skills`) must
+- A skill vendored wholesale from an external repo (e.g. `frontend-design`,
+  `theme-factory`, `webapp-testing`, all from `anthropics/skills`) must
   carry an HTML comment right after its frontmatter naming the source URL,
   the exact edits made (not a vague "lightly edited"), and pointing at a
   sibling `LICENSE.txt` with the upstream license text. Flag a vendored

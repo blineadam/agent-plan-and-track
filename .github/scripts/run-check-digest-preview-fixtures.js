@@ -105,17 +105,15 @@ async function outOfOrderSwapHardFails(ctx, dir) {
   assertExitAndSubstring(runChecker(fixturePath), 1, 'stderr', 'out of order');
 }
 
-async function warnConsistencyMatchesThreshold(ctx, dir) {
-  const fixturePath = writeFixture(dir, 'warn-consistency.md', ctx.lines);
-  const result = runChecker(fixturePath);
-  const expectWarn = ctx.content.length > INLINE_THRESHOLD_CHARS;
-  const hasWarn = result.stderr.includes('WARN:');
-  assert.strictEqual(
-    hasWarn,
-    expectWarn,
-    `expected WARN presence to be ${expectWarn} (source digest is ${ctx.content.length} chars vs the ` +
-    `${INLINE_THRESHOLD_CHARS}-char threshold), got ${hasWarn}\nstderr: ${result.stderr}`
-  );
+async function overThresholdTotalHardFails(ctx, dir) {
+  const lines = ctx.lines.slice();
+  // Pad a trailing bullet so the copy lands just past the threshold while
+  // the three priority bullets stay untouched inside the preview budget,
+  // isolating the total-size check from the packing checks.
+  const padding = 'x'.repeat(Math.max(0, INLINE_THRESHOLD_CHARS - ctx.content.length) + 1);
+  lines.push(`- Fixture padding bullet: ${padding}`);
+  const fixturePath = writeFixture(dir, 'over-threshold.md', lines);
+  assertExitAndSubstring(runChecker(fixturePath), 1, 'stderr', 'inline persistence threshold');
 }
 
 const CASES = [
@@ -123,7 +121,7 @@ const CASES = [
   ['missing-action-first-hard-fails', missingActionFirstHardFails],
   ['over-budget-action-first-hard-fails', overBudgetActionFirstHardFails],
   ['out-of-order-swap-hard-fails', outOfOrderSwapHardFails],
-  ['warn-consistency-matches-threshold', warnConsistencyMatchesThreshold],
+  ['over-threshold-total-hard-fails', overThresholdTotalHardFails],
 ];
 
 async function main() {
