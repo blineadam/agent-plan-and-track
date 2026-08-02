@@ -314,6 +314,56 @@ jobs:
             grep -qx "$a" "$HOME/agent-invocations.log" \
               || { echo "FAIL: $a was never invoked"; exit 1; }
           done
+      - name: Office skills uninstall (no network, no npx)
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/scratch-home-office"
+          # .claude/skills and .agents/skills already carry the four office
+          # skills from the install step above; .copilot/skills needs seeding
+          # directly since the stub's github-copilot route never writes there.
+          mkdir -p "$HOME/.copilot/skills"
+          for s in docx pdf pptx xlsx; do
+            mkdir -p "$HOME/.copilot/skills/$s"
+            printf -- '---\nname: %s\ndescription: stub\n---\n# stub\n' "$s" > "$HOME/.copilot/skills/$s/SKILL.md"
+          done
+          # A decoy repo-owned skill plus its manifest record and an empty
+          # pruned-attic dir, seeded in the one destination install.sh
+          # actually manages: uninstall must never touch any of the three.
+          decoy="$HOME/.claude/skills/zz-decoy-skill"
+          mkdir -p "$decoy"
+          printf -- '---\nname: zz-decoy-skill\ndescription: decoy\n---\n# decoy\n' > "$decoy/SKILL.md"
+          manifest="$HOME/.claude/skills/.plan-and-track-manifest"
+          echo "zz-decoy-skill" >> "$manifest"
+          mkdir -p "$HOME/.claude/skills/.plan-and-track-pruned"
+          # Establish presence before asserting absence. Two of the three
+          # destinations are seeded by the install step above rather than
+          # here, so without this the post-uninstall test would pass against
+          # a skill that was never there and check nothing.
+          for dest in "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.copilot/skills"; do
+            for s in docx pdf pptx xlsx; do
+              test -e "$dest/$s" \
+                || { echo "FAIL: $dest/$s absent before uninstall; the absence check below would be vacuous"; exit 1; }
+            done
+          done
+          # PATH stripped to bare coreutils, no npx anywhere on it: proves
+          # uninstall needs neither network nor the third-party skills CLI.
+          export PATH="/usr/bin:/bin"
+          ./install-office-skills.sh uninstall
+          for dest in "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.copilot/skills"; do
+            for s in docx pdf pptx xlsx; do
+              test ! -e "$dest/$s" \
+                || { echo "FAIL: $dest/$s survived uninstall"; exit 1; }
+            done
+          done
+          test -f "$decoy/SKILL.md" \
+            || { echo "FAIL: uninstall deleted the decoy skill it must never touch"; exit 1; }
+          test -f "$manifest" \
+            || { echo "FAIL: uninstall deleted .plan-and-track-manifest"; exit 1; }
+          grep -qx zz-decoy-skill "$manifest" \
+            || { echo "FAIL: .plan-and-track-manifest content changed"; exit 1; }
+          test -d "$HOME/.claude/skills/.plan-and-track-pruned" \
+            || { echo "FAIL: uninstall deleted .plan-and-track-pruned"; exit 1; }
+          ./install-office-skills.sh uninstall   # rerun: must exit 0
       - name: Stale prune quarantines removed repo copies, never non-repo content
         run: |
           set -euo pipefail
@@ -748,6 +798,56 @@ jobs:
           foreach ($a in @('claude-code', 'codex', 'github-copilot')) {
             if ($invoked -notcontains $a) { throw "$a was never invoked" }
           }
+      - name: Office skills uninstall (no network, no npx)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-office"
+          $H = $env:USERPROFILE
+          # .claude\skills and .agents\skills already carry the four office
+          # skills from the install step above; .copilot\skills needs seeding
+          # directly since the stub's github-copilot route never writes there.
+          $copilotSkills = Join-Path $H '.copilot\skills'
+          New-Item -ItemType Directory -Force -Path $copilotSkills | Out-Null
+          foreach ($s in @('docx', 'pdf', 'pptx', 'xlsx')) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $copilotSkills $s) | Out-Null
+            Set-Content -Path (Join-Path $copilotSkills "$s\SKILL.md") -Value "stub"
+          }
+          # A decoy repo-owned skill plus its manifest record and an empty
+          # pruned-attic dir, seeded in the one destination install.ps1
+          # actually manages: uninstall must never touch any of the three.
+          $decoy = Join-Path $H '.claude\skills\zz-decoy-skill'
+          New-Item -ItemType Directory -Force -Path $decoy | Out-Null
+          Set-Content -Path (Join-Path $decoy 'SKILL.md') -Value "decoy"
+          $manifest = Join-Path $H '.claude\skills\.plan-and-track-manifest'
+          Add-Content -Path $manifest -Value "zz-decoy-skill"
+          New-Item -ItemType Directory -Force -Path (Join-Path $H '.claude\skills\.plan-and-track-pruned') | Out-Null
+          # Establish presence before asserting absence. Two of the three
+          # destinations are seeded by the install step above rather than
+          # here, so without this the post-uninstall test would pass against
+          # a skill that was never there and check nothing.
+          foreach ($dest in @("$H\.claude\skills", "$H\.agents\skills", "$H\.copilot\skills")) {
+            foreach ($s in @('docx', 'pdf', 'pptx', 'xlsx')) {
+              if (-not (Test-Path -LiteralPath (Join-Path $dest $s))) { throw "$dest\$s absent before uninstall; the absence check below would be vacuous" }
+            }
+          }
+          # PATH stripped to the Windows system directory only, no npx
+          # anywhere on it: proves uninstall needs neither network nor the
+          # third-party skills CLI.
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          .\install-office-skills.ps1 uninstall
+          if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 uninstall failed with exit code $LASTEXITCODE" }
+          foreach ($dest in @("$H\.claude\skills", "$H\.agents\skills", "$H\.copilot\skills")) {
+            foreach ($s in @('docx', 'pdf', 'pptx', 'xlsx')) {
+              if (Test-Path -LiteralPath (Join-Path $dest $s)) { throw "$dest\$s survived uninstall" }
+            }
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $decoy 'SKILL.md'))) { throw "uninstall deleted the decoy skill it must never touch" }
+          if (-not (Test-Path -LiteralPath $manifest)) { throw "uninstall deleted .plan-and-track-manifest" }
+          if ((Get-Content -Raw $manifest) -notmatch 'zz-decoy-skill') { throw ".plan-and-track-manifest content changed" }
+          if (-not (Test-Path -LiteralPath (Join-Path $H '.claude\skills\.plan-and-track-pruned'))) { throw "uninstall deleted .plan-and-track-pruned" }
+          .\install-office-skills.ps1 uninstall   # rerun: must exit 0
+          if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 (rerun uninstall) failed with exit code $LASTEXITCODE" }
       - name: Stale prune quarantines removed repo copies, never non-repo content
         shell: powershell
         run: |
