@@ -18,6 +18,10 @@
 #     model=auto, Codex plan_mode_reasoning_effort=xhigh) are repo-owned and
 #     OVERWRITTEN on every install. PT_KEEP_MODEL=1 keeps an existing per-machine
 #     model choice; a Copilot settings.json jq can't round-trip is left untouched.
+#   - a bare install never changes Claude's permission posture.
+#     PT_BYPASS_PERMISSIONS=1 sets permissions.defaultMode to bypassPermissions and
+#     skipDangerousModePermissionPrompt to true in ~/.claude/settings.json; leaving
+#     the variable unset is the opt-out.
 #   - the user's global git excludes file (whatever core.excludesfile already
 #     points to, or ~/.gitignore_global if unset) gets tasks/todo.md and
 #     tasks/lessons.md appended if missing, once per run regardless of target;
@@ -436,6 +440,23 @@ set_json_default() {
     "$(jq -r --arg k "$key" '.[$k]' "$file")" "$prev"
 }
 
+# Set a repo-owned JSON default at a nested path (jq setpath), overwriting on
+# every install so a re-run re-asserts the intended value. $2 is a JSON array
+# path literal ('["permissions","defaultMode"]'), passed via --argjson rather
+# than string-interpolated into the jq program, so a key containing a dot or
+# an '@' (e.g. "frontend-design@claude-plugins-official") can never be
+# reinterpreted as a path expression. $3 is a JSON value literal
+# ('"bypassPermissions"', false). Not gated by PT_KEEP_MODEL, which covers
+# model settings only.
+set_json_path() {
+  local file="$1" path="$2" jqval="$3" label="$4" tmp prev
+  prev="$(jq -r --argjson p "$path" 'getpath($p) as $v | if $v == null then "unset" else ($v|tostring) end' "$file")"
+  tmp="$(mktemp)"
+  jq --argjson p "$path" --argjson v "$jqval" 'setpath($p; $v)' "$file" > "$tmp" && write_back "$tmp" "$file"
+  printf '  %-16s-> %s (was: %s)\n' "$label" \
+    "$(jq -r --argjson p "$path" '($p|join(".")) + "=" + (getpath($p)|tostring)' "$file")" "$prev"
+}
+
 # Set a top-level (root-table) TOML `key = "value"`, overwriting on every install.
 # TOML has no jq, so this stays dependency-free. Scope is the ROOT table (lines
 # before the first [section]); a same-named key inside a [section] is a different
@@ -582,6 +603,18 @@ install_claude() {
   # a message is flagged by safety measures, instead of pausing the session.
   set_json_default "$settings" model '"opusplan"' "model default"
   set_json_default "$settings" switchModelsOnFlag true "safety-switch"
+  # Repo-owned plugin disable, re-asserted on every install: this repo ships its
+  # own frontend-design skill, and the frontend-design@claude-plugins-official
+  # plugin bundles a second skill of the same name, a routing collision.
+  set_json_path "$settings" '["enabledPlugins","frontend-design@claude-plugins-official"]' false "plugin disable"
+  # Bypass posture is opt-in only (PT_BYPASS_PERMISSIONS=1): a bare install must
+  # never silently stop a stranger's sessions from asking before tool calls.
+  if [ "${PT_BYPASS_PERMISSIONS:-}" = "1" ]; then
+    set_json_path "$settings" '["permissions","defaultMode"]' '"bypassPermissions"' "permission mode"
+    set_json_path "$settings" '["skipDangerousModePermissionPrompt"]' true "dangerous skip"
+  else
+    printf '  %-16s-- PT_BYPASS_PERMISSIONS not set; posture left alone\n' "permission mode"
+  fi
   local cscripts="$HOME/.claude/scripts"
   # Match either the new digest command (core-rules-digest) or an old install's
   # inline `cat ...core-rules.md`, so upgrading never double-merges the hook.

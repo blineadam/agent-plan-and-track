@@ -24,6 +24,10 @@
       model=auto, Codex plan_mode_reasoning_effort=xhigh) are repo-owned and
       OVERWRITTEN on every install. PT_KEEP_MODEL=1 keeps an existing per-machine
       model choice; a Copilot settings.json that isn't plain JSON is left alone.
+    - a bare install never changes Claude's permission posture.
+      PT_BYPASS_PERMISSIONS=1 sets permissions.defaultMode to bypassPermissions and
+      skipDangerousModePermissionPrompt to true in ~/.claude/settings.json; leaving
+      the variable unset is the opt-out.
     - the user's global git excludes file (whatever core.excludesfile already
       points to, or ~/.gitignore_global if unset) gets tasks/todo.md and
       tasks/lessons.md appended if missing, once per run regardless of target;
@@ -502,6 +506,46 @@ function Set-JsonDefault($file, $key, $value, $label) {
   Write-Host ("  {0,-16}-> {1}={2} (was: {3})" -f $label, $key, (Format-Val $value), (Format-Val $prev))
 }
 
+# Set a repo-owned JSON default at a nested path, overwriting on every install so a
+# re-run re-asserts the intended value. $path is a string array of property names
+# (e.g. @('permissions','defaultMode')), walked one segment at a time as data, never
+# string-interpolated into an expression, so a key containing an '@' or a '-' (e.g.
+# "frontend-design@claude-plugins-official") can never be reinterpreted. Missing
+# intermediate objects are created as needed. Not gated by PT_KEEP_MODEL, which
+# covers model settings only.
+function Set-JsonPath($file, $path, $value, $label) {
+  $json = [System.IO.File]::ReadAllText($file) | ConvertFrom-Json
+  $node = $json
+  $found = $true
+  foreach ($key in $path) {
+    if ($null -eq $node -or -not ($node.PSObject.Properties.Name -contains $key)) {
+      $found = $false
+      break
+    }
+    $node = $node.$key
+  }
+  $prev = if ($found) { $node } else { $null }
+
+  $node = $json
+  for ($i = 0; $i -lt $path.Count - 1; $i++) {
+    $key = $path[$i]
+    # A null intermediate counts as absent, matching jq's setpath, which
+    # replaces a null with an object instead of failing. Without this the
+    # Add-Member below binds a null InputObject and aborts the install.
+    if (-not ($node.PSObject.Properties.Name -contains $key) -or $null -eq $node.$key) {
+      $node | Add-Member -NotePropertyName $key -NotePropertyValue ([PSCustomObject]@{}) -Force
+    }
+    $node = $node.$key
+  }
+  $lastKey = $path[$path.Count - 1]
+  if ($node.PSObject.Properties.Name -contains $lastKey) { $node.$lastKey = $value }
+  else { $node | Add-Member -NotePropertyName $lastKey -NotePropertyValue $value -Force }
+
+  $tmp = New-TempFileWith (ConvertTo-Json -InputObject $json -Depth 100)
+  Write-Back $tmp $file
+  Write-Host ("  {0,-16}-> {1}={2} (was: {3})" -f $label, ($path -join '.'), (Format-Val $value), (Format-Val $prev))
+}
+
 # Set a top-level (root-table) TOML `key = "value"`, overwriting on every install.
 # Line-based scan of the ROOT table (lines before the first [section]); a
 # same-named key inside a [section] is never touched. Absent key is PREPENDED as
@@ -696,6 +740,18 @@ function Install-Claude {
   if (-not (Test-Path -LiteralPath $settings)) { [System.IO.File]::WriteAllText($settings, '{}', $Utf8NoBom) }
   Set-JsonDefault $settings 'model' 'opusplan' 'model default'
   Set-JsonDefault $settings 'switchModelsOnFlag' $true 'safety-switch'
+  # Repo-owned plugin disable, re-asserted on every install: this repo ships its
+  # own frontend-design skill, and the frontend-design@claude-plugins-official
+  # plugin bundles a second skill of the same name, a routing collision.
+  Set-JsonPath $settings @('enabledPlugins', 'frontend-design@claude-plugins-official') $false 'plugin disable'
+  # Bypass posture is opt-in only (PT_BYPASS_PERMISSIONS=1): a bare install must
+  # never silently stop a stranger's sessions from asking before tool calls.
+  if ($env:PT_BYPASS_PERMISSIONS -eq '1') {
+    Set-JsonPath $settings @('permissions', 'defaultMode') 'bypassPermissions' 'permission mode'
+    Set-JsonPath $settings @('skipDangerousModePermissionPrompt') $true 'dangerous skip'
+  } else {
+    Write-Host ("  {0,-16}-- PT_BYPASS_PERMISSIONS not set; posture left alone" -f 'permission mode')
+  }
 
   $scriptsFwd = $scripts.Replace('\', '/')
   $raw = [System.IO.File]::ReadAllText($settings)
