@@ -57,7 +57,7 @@ missing `jq` is caught partway through rather than up front.
 git clone https://github.com/blineadam/agent-plan-and-track.git
 cd agent-plan-and-track
 ./install.sh all        # macOS/Linux; or: claude | copilot | codex
-./install-office-skills.sh   # optional docx, pdf, pptx, xlsx skills, kept separate for licensing reasons
+./install-office-skills.sh   # optional docx, pdf, pptx, xlsx skills, kept separate for licensing reasons; or: uninstall
 ```
 
 On Windows, run the PowerShell installer instead (same targets):
