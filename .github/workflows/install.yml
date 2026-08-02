@@ -172,6 +172,18 @@ jobs:
             || { echo "FAIL: opt-in install did not set skip flag"; exit 1; }
           [ "$(jq -r '.enabledPlugins["frontend-design@claude-plugins-official"]' "$s")" = "false" ] \
             || { echo "FAIL: opt-in install did not disable the plugin"; exit 1; }
+          # All three are re-asserted over conflicting existing values, not merely
+          # inserted into an empty file. Checked in the same home because the
+          # assertions above start from empty, which a set-if-absent implementation
+          # would also satisfy.
+          printf '%s' '{"permissions":{"defaultMode":"plan"},"skipDangerousModePermissionPrompt":false,"enabledPlugins":{"frontend-design@claude-plugins-official":true}}' > "$s"
+          PT_BYPASS_PERMISSIONS=1 ./install.sh claude >/dev/null
+          [ "$(jq -r '.permissions.defaultMode' "$s")" = "bypassPermissions" ] \
+            || { echo "FAIL: opt-in install did not overwrite a conflicting defaultMode"; exit 1; }
+          [ "$(jq -r '.skipDangerousModePermissionPrompt' "$s")" = "true" ] \
+            || { echo "FAIL: opt-in install did not overwrite a conflicting skip flag"; exit 1; }
+          [ "$(jq -r '.enabledPlugins["frontend-design@claude-plugins-official"]' "$s")" = "false" ] \
+            || { echo "FAIL: opt-in install did not overwrite a conflicting plugin value"; exit 1; }
           # 2. Survival: a pre-existing stricter posture and an unrelated plugin
           # entry must survive a BARE install untouched, aside from the plugin disable.
           export HOME="$RUNNER_TEMP/scratch-home-bypass-survival"; mkdir -p "$HOME/.claude"
@@ -689,6 +701,18 @@ jobs:
           if ($s.permissions.defaultMode -ne 'bypassPermissions') { throw "opt-in install did not set defaultMode" }
           if ($s.skipDangerousModePermissionPrompt -ne $true) { throw "opt-in install did not set skip flag" }
           if ($s.enabledPlugins.'frontend-design@claude-plugins-official' -ne $false) { throw "opt-in install did not disable the plugin" }
+          # All three are re-asserted over conflicting existing values, not merely
+          # inserted into an empty file. Checked in the same home because the
+          # assertions above start from empty, which a set-if-absent implementation
+          # would also satisfy.
+          Set-Content -Path "$env:USERPROFILE\.claude\settings.json" -Value '{"permissions":{"defaultMode":"plan"},"skipDangerousModePermissionPrompt":false,"enabledPlugins":{"frontend-design@claude-plugins-official":true}}'
+          $env:PT_BYPASS_PERMISSIONS = '1'
+          .\install.ps1 claude | Out-Null
+          Remove-Item Env:PT_BYPASS_PERMISSIONS -ErrorAction SilentlyContinue
+          $s = Get-Content -Raw "$env:USERPROFILE\.claude\settings.json" | ConvertFrom-Json
+          if ($s.permissions.defaultMode -ne 'bypassPermissions') { throw "opt-in install did not overwrite a conflicting defaultMode" }
+          if ($s.skipDangerousModePermissionPrompt -ne $true) { throw "opt-in install did not overwrite a conflicting skip flag" }
+          if ($s.enabledPlugins.'frontend-design@claude-plugins-official' -ne $false) { throw "opt-in install did not overwrite a conflicting plugin value" }
           # 2. Survival: a pre-existing stricter posture and an unrelated plugin
           # entry must survive a BARE install untouched, aside from the plugin disable.
           $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-bypass-survival"
