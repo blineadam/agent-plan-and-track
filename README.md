@@ -127,6 +127,8 @@ hooks/codex/                  Codex wiring: digest + gateguard + delivery-gate +
 install.sh                    per-tool installer
 docs/skills.md                full skill catalog
 docs/models.md                model defaults, tiered subagents, per-tool notes
+docs/hooks.md                 per-hook behavior, harness scope, wiring contract
+docs/installers.md            install.sh / install.ps1 deploy and idempotency rules
 ```
 
 ## Customizing
