@@ -29,6 +29,8 @@
  *    tasks/todo.md.
  *  - Rationalization language in recent assistant text ("good enough", "should
  *    work", "didn't run", ...) → nudge to actually verify.
+ *  - Agreement opener + self-blame in recent assistant text -> evidence-free
+ *    capitulation nudge (re-derive, then state the fact, no meta-narration).
  *  - Low free disk on the working directory.
  *
  * Two transcript formats are read in one pass, keyed off record shape:
@@ -160,6 +162,12 @@ const RATIONALIZATION = [
 ];
 const TODO_RE = /tasks\/todo\.md$/;
 
+// Evidence-free capitulation: an agreement opener plus self-blame narration in
+// the same recent text window. Either alone is often genuine; the combo is the
+// "You're right, and I over-corrected" reflex the standing rules forbid.
+const AGREEMENT = /\byou(?:'|’)?re (?:absolutely |completely |totally )?right\b/i;
+const SELF_BLAME = /\b(?:i (?:over-?corrected|over-?reacted|was wrong)|my (?:mistake|error|apologies)|i apologi[sz]e)\b/i;
+
 // Full streaming pass over the whole transcript: session-wide edit count and
 // whether tasks/todo.md was ever checkpointed. Handles both the Claude JSONL
 // and the Codex rollout shapes; the two record forms are disjoint, so one pass
@@ -202,9 +210,9 @@ function scanEditsAndCheckpoint(transcriptPath) {
   return { edits, touchedTodo };
 }
 
-// Rationalization scan over recent assistant text only (the bounded tail), a
-// phrase early in a long session that was later resolved shouldn't trip the gate.
-function scanRationalization(entries) {
+// Assembles recent assistant text (bounded tail) from the transcript entries,
+// which both the rationalization and capitulation scans test.
+function recentAssistantText(entries) {
   const texts = [];
   for (const obj of entries) {
     const msg = obj && obj.message;
@@ -215,8 +223,7 @@ function scanRationalization(entries) {
       }
     }
   }
-  const recent = texts.slice(-6).join('\n');
-  return RATIONALIZATION.some((re) => re.test(recent));
+  return texts.slice(-6).join('\n');
 }
 
 function freeDiskMB(dir) {
@@ -254,9 +261,13 @@ function main() {
   const { edits, touchedTodo } = scanEditsAndCheckpoint(transcriptPath);
   const lastMsg =
     input && typeof input.last_assistant_message === 'string' ? input.last_assistant_message : '';
-  const rationalized =
-    scanRationalization(readTranscriptTail(transcriptPath, tailBytes)) ||
-    (!!lastMsg && RATIONALIZATION.some((re) => re.test(lastMsg)));
+  const tailText = recentAssistantText(readTranscriptTail(transcriptPath, tailBytes));
+  const rationalized = [tailText, lastMsg].some(
+    (t) => !!t && RATIONALIZATION.some((re) => re.test(t))
+  );
+  const capitulated = [tailText, lastMsg].some(
+    (t) => !!t && AGREEMENT.test(t) && SELF_BLAME.test(t)
+  );
 
   const warnings = [];
   if (edits >= editThreshold && !touchedTodo) {
@@ -267,6 +278,11 @@ function main() {
   if (rationalized) {
     warnings.push(
       `Recent text reads like an unverified claim ("good enough"/"should work"/"didn't test"); verify before done: run it, show the output.`
+    );
+  }
+  if (capitulated) {
+    warnings.push(
+      `Recent text pairs an agreement opener ("you're right") with self-blame ("over-corrected"/"my mistake"): if that concession wasn't re-derived from the artifact, re-check and state the conclusion; if it was, state the corrected fact without the meta-narration.`
     );
   }
   if (minDiskMB > 0) {
