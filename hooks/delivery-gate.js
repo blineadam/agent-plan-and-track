@@ -165,8 +165,24 @@ const TODO_RE = /tasks\/todo\.md$/;
 // Evidence-free capitulation: an agreement opener plus self-blame narration in
 // the same recent text window. Either alone is often genuine; the combo is the
 // "You're right, and I over-corrected" reflex the standing rules forbid.
-const AGREEMENT = /\byou(?:'|’)?re (?:absolutely |completely |totally )?right\b/i;
+// The agreement half is anchored to the start of a line or sentence (one
+// optional interjection word allowed, "Ah, you're right"), so prose ABOUT the
+// phrase reads as discussion rather than concession.
+const AGREEMENT =
+  /(?:^|[\n.!?]\s*)(?:[a-z]+,\s*)?you(?:'|’)?re (?:absolutely |completely |totally )?right\b/i;
 const SELF_BLAME = /\b(?:i (?:over-?corrected|over-?reacted|was wrong)|my (?:mistake|error|apologies)|i apologi[sz]e)\b/i;
+
+// Fenced blocks, inline code, and double-quoted spans are quoting someone
+// else's words, so they come out before the capitulation scan. Same carve-out
+// the PR-body lint makes for secondhand text. Single quotes are left alone:
+// the apostrophes in "you're" and "didn't" would swallow whole sentences.
+function stripSecondhand(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/"[^"\n]*"/g, ' ')
+    .replace(/“[^”\n]*”/g, ' ');
+}
 
 // Full streaming pass over the whole transcript: session-wide edit count and
 // whether tasks/todo.md was ever checkpointed. Handles both the Claude JSONL
@@ -265,9 +281,11 @@ function main() {
   const rationalized = [tailText, lastMsg].some(
     (t) => !!t && RATIONALIZATION.some((re) => re.test(t))
   );
-  const capitulated = [tailText, lastMsg].some(
-    (t) => !!t && AGREEMENT.test(t) && SELF_BLAME.test(t)
-  );
+  const capitulated = [tailText, lastMsg].some((t) => {
+    if (!t) return false;
+    const prose = stripSecondhand(t);
+    return AGREEMENT.test(prose) && SELF_BLAME.test(prose);
+  });
 
   const warnings = [];
   if (edits >= editThreshold && !touchedTodo) {

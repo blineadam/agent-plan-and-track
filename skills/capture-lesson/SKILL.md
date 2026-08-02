@@ -1,6 +1,6 @@
 ---
 name: capture-lesson
-description: Record a lesson in the active project's tasks/lessons.md after the user corrects a mistake, rejects an approach, points out something missed, or gives feedback on how to work, or when you catch yourself or a subagent repeating a mistake without any user correction. Use IMMEDIATELY after ANY correction from the user; the goal is to never repeat the same mistake twice.
+description: Record a lesson in the active project's tasks/lessons.md after the user corrects a mistake, rejects an approach, points out something missed, or gives feedback on how to work, or when you catch yourself or a subagent repeating a mistake without any user correction. Use IMMEDIATELY after ANY correction from the user; the goal is to never repeat the same mistake twice. Not for a question or displeasure with no established mistake, which calls for re-deriving rather than recording.
 ---
 
 # Capture Lesson
