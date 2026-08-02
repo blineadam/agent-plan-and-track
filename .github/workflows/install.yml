@@ -51,6 +51,18 @@ jobs:
           done
           [ "$(jq -r .model "$HOME/.claude/settings.json")" = "opusplan" ]
           [ "$(jq -r .switchModelsOnFlag "$HOME/.claude/settings.json")" = "true" ]
+          assert_bare_permission_posture() {
+            local h="$1" dm skip plugin
+            local s="$h/.claude/settings.json"
+            dm="$(jq -r '.permissions.defaultMode as $v | if $v == null then "unset" else ($v|tostring) end' "$s")"
+            skip="$(jq -r '.skipDangerousModePermissionPrompt as $v | if $v == null then "unset" else ($v|tostring) end' "$s")"
+            plugin="$(jq -r '.enabledPlugins["frontend-design@claude-plugins-official"] as $v | if $v == null then "unset" else ($v|tostring) end' "$s")"
+            if [ "$dm" != "unset" ] || [ "$skip" != "unset" ] || [ "$plugin" != "false" ]; then
+              echo "FAIL: bare install permission posture violated (defaultMode='$dm' skip='$skip' plugin='$plugin')"
+              return 1
+            fi
+          }
+          assert_bare_permission_posture "$HOME"
           [ "$(jq -r .model "$HOME/.copilot/settings.json")" = "auto" ]
           grep -q 'plan_mode_reasoning_effort = "xhigh"' "$HOME/.codex/config.toml"
           grep -q 'agent-plan-and-track:begin' "$HOME/.claude/CLAUDE.md"
@@ -131,6 +143,60 @@ jobs:
             || { echo "FAIL: executor.agent.md does not start with a --- fence"; exit 1; }
           if grep -q '^model:' "$executor_agent"; then echo "FAIL: executor.agent.md unexpectedly carries a model: line"; exit 1; fi
           if grep -q '^effort:' "$executor_agent"; then echo "FAIL: executor.agent.md unexpectedly carries an effort: line"; exit 1; fi
+      - name: Permission posture is opt-in only
+        run: |
+          set -euo pipefail
+          # Duplicated verbatim from the "Assert layout, defaults, and hook wiring"
+          # step: each run: block is its own process, so a function defined there
+          # does not exist here. Edit both copies together.
+          assert_bare_permission_posture() {
+            local h="$1" dm skip plugin
+            local s="$h/.claude/settings.json"
+            dm="$(jq -r '.permissions.defaultMode as $v | if $v == null then "unset" else ($v|tostring) end' "$s")"
+            skip="$(jq -r '.skipDangerousModePermissionPrompt as $v | if $v == null then "unset" else ($v|tostring) end' "$s")"
+            plugin="$(jq -r '.enabledPlugins["frontend-design@claude-plugins-official"] as $v | if $v == null then "unset" else ($v|tostring) end' "$s")"
+            if [ "$dm" != "unset" ] || [ "$skip" != "unset" ] || [ "$plugin" != "false" ]; then
+              echo "FAIL: bare install permission posture violated (defaultMode='$dm' skip='$skip' plugin='$plugin')"
+              return 1
+            fi
+          }
+          # 1. Opt-in: with the variable set, the Claude target must set all three keys.
+          export HOME="$RUNNER_TEMP/scratch-home-bypass-optin"; mkdir -p "$HOME"
+          export PT_BYPASS_PERMISSIONS=1
+          ./install.sh claude >/dev/null
+          unset PT_BYPASS_PERMISSIONS
+          s="$HOME/.claude/settings.json"
+          [ "$(jq -r '.permissions.defaultMode' "$s")" = "bypassPermissions" ] \
+            || { echo "FAIL: opt-in install did not set defaultMode"; exit 1; }
+          [ "$(jq -r '.skipDangerousModePermissionPrompt' "$s")" = "true" ] \
+            || { echo "FAIL: opt-in install did not set skip flag"; exit 1; }
+          [ "$(jq -r '.enabledPlugins["frontend-design@claude-plugins-official"]' "$s")" = "false" ] \
+            || { echo "FAIL: opt-in install did not disable the plugin"; exit 1; }
+          # 2. Survival: a pre-existing stricter posture and an unrelated plugin
+          # entry must survive a BARE install untouched, aside from the plugin disable.
+          export HOME="$RUNNER_TEMP/scratch-home-bypass-survival"; mkdir -p "$HOME/.claude"
+          printf '%s' '{"permissions":{"defaultMode":"default"},"enabledPlugins":{"life@laerdal":true}}' > "$HOME/.claude/settings.json"
+          ./install.sh claude >/dev/null
+          s="$HOME/.claude/settings.json"
+          [ "$(jq -r '.permissions.defaultMode' "$s")" = "default" ] \
+            || { echo "FAIL: bare install altered a pre-existing defaultMode"; exit 1; }
+          [ "$(jq -r '.skipDangerousModePermissionPrompt as $v | if $v == null then "unset" else ($v|tostring) end' "$s")" = "unset" ] \
+            || { echo "FAIL: bare install added the skip flag"; exit 1; }
+          [ "$(jq -r '.enabledPlugins["frontend-design@claude-plugins-official"]' "$s")" = "false" ] \
+            || { echo "FAIL: bare install did not disable the plugin"; exit 1; }
+          [ "$(jq -r '.enabledPlugins["life@laerdal"]' "$s")" = "true" ] \
+            || { echo "FAIL: bare install disturbed an unrelated plugin entry"; exit 1; }
+          # 3. Negative control: prove part A's assertion is not vacuous by running
+          # it against a home whose settings deliberately already carry both bypass keys.
+          export HOME="$RUNNER_TEMP/scratch-home-bypass-negctrl"; mkdir -p "$HOME/.claude"
+          printf '%s' '{"permissions":{"defaultMode":"bypassPermissions"},"skipDangerousModePermissionPrompt":true,"enabledPlugins":{"frontend-design@claude-plugins-official":false}}' > "$HOME/.claude/settings.json"
+          # Its own diagnostic is discarded: this call is EXPECTED to fail, and a
+          # stray "FAIL:" line in a green log reads as a broken job.
+          if assert_bare_permission_posture "$HOME" >/dev/null 2>&1; then
+            echo "FAIL: assert_bare_permission_posture passed against a fixture that deliberately carries both bypass keys"
+            exit 1
+          fi
+          echo "OK: the bare-posture assertion rejects a settings file carrying the bypass keys"
       - name: Shared Node scripts run
         run: |
           set -euo pipefail
@@ -473,6 +539,19 @@ jobs:
           $s = Get-Content -Raw "$H\.claude\settings.json" | ConvertFrom-Json
           if ($s.model -ne 'opusplan') { throw "model != opusplan" }
           if ($s.switchModelsOnFlag -ne $true) { throw "switchModelsOnFlag != true" }
+          function Assert-BarePermissionPosture($h) {
+            $j = Get-Content -Raw (Join-Path $h '.claude\settings.json') | ConvertFrom-Json
+            $dm = $null
+            if ($j.PSObject.Properties.Name -contains 'permissions' -and $j.permissions.PSObject.Properties.Name -contains 'defaultMode') { $dm = $j.permissions.defaultMode }
+            $skip = $null
+            if ($j.PSObject.Properties.Name -contains 'skipDangerousModePermissionPrompt') { $skip = $j.skipDangerousModePermissionPrompt }
+            $plugin = $null
+            if ($j.PSObject.Properties.Name -contains 'enabledPlugins' -and $j.enabledPlugins.PSObject.Properties.Name -contains 'frontend-design@claude-plugins-official') { $plugin = $j.enabledPlugins.'frontend-design@claude-plugins-official' }
+            if ($null -ne $dm -or $null -ne $skip -or $plugin -ne $false) {
+              throw "bare install permission posture violated (defaultMode=$dm skip=$skip plugin=$plugin)"
+            }
+          }
+          Assert-BarePermissionPosture $H
           $c = (Get-Content -Raw "$H\.copilot\settings.json" | ConvertFrom-Json).model
           if ($c -ne 'auto') { throw "copilot model != auto" }
           if ((Get-Content -Raw "$H\.codex\config.toml") -notmatch 'plan_mode_reasoning_effort = "xhigh"') { throw "codex effort missing" }
@@ -574,6 +653,55 @@ jobs:
           if ($firstLine -ne '---') { throw "executor.agent.md does not start with a --- fence" }
           if ($executorContent -match '(?m)^model:') { throw "executor.agent.md unexpectedly carries a model: line" }
           if ($executorContent -match '(?m)^effort:') { throw "executor.agent.md unexpectedly carries an effort: line" }
+      - name: Permission posture is opt-in only
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Duplicated verbatim from the "Assert layout, defaults, and hook wiring"
+          # step: each run: block is its own process, so a function defined there
+          # does not exist here. Edit both copies together.
+          function Assert-BarePermissionPosture($h) {
+            $j = Get-Content -Raw (Join-Path $h '.claude\settings.json') | ConvertFrom-Json
+            $dm = $null
+            if ($j.PSObject.Properties.Name -contains 'permissions' -and $j.permissions.PSObject.Properties.Name -contains 'defaultMode') { $dm = $j.permissions.defaultMode }
+            $skip = $null
+            if ($j.PSObject.Properties.Name -contains 'skipDangerousModePermissionPrompt') { $skip = $j.skipDangerousModePermissionPrompt }
+            $plugin = $null
+            if ($j.PSObject.Properties.Name -contains 'enabledPlugins' -and $j.enabledPlugins.PSObject.Properties.Name -contains 'frontend-design@claude-plugins-official') { $plugin = $j.enabledPlugins.'frontend-design@claude-plugins-official' }
+            if ($null -ne $dm -or $null -ne $skip -or $plugin -ne $false) {
+              throw "bare install permission posture violated (defaultMode=$dm skip=$skip plugin=$plugin)"
+            }
+          }
+          # 1. Opt-in: with the variable set, the Claude target must set all three keys.
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-bypass-optin"
+          New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null
+          $env:PT_BYPASS_PERMISSIONS = '1'
+          .\install.ps1 claude | Out-Null
+          Remove-Item Env:PT_BYPASS_PERMISSIONS -ErrorAction SilentlyContinue
+          $s = Get-Content -Raw "$env:USERPROFILE\.claude\settings.json" | ConvertFrom-Json
+          if ($s.permissions.defaultMode -ne 'bypassPermissions') { throw "opt-in install did not set defaultMode" }
+          if ($s.skipDangerousModePermissionPrompt -ne $true) { throw "opt-in install did not set skip flag" }
+          if ($s.enabledPlugins.'frontend-design@claude-plugins-official' -ne $false) { throw "opt-in install did not disable the plugin" }
+          # 2. Survival: a pre-existing stricter posture and an unrelated plugin
+          # entry must survive a BARE install untouched, aside from the plugin disable.
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-bypass-survival"
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
+          Set-Content -Path "$env:USERPROFILE\.claude\settings.json" -Value '{"permissions":{"defaultMode":"default"},"enabledPlugins":{"life@laerdal":true}}'
+          .\install.ps1 claude | Out-Null
+          $s = Get-Content -Raw "$env:USERPROFILE\.claude\settings.json" | ConvertFrom-Json
+          if ($s.permissions.defaultMode -ne 'default') { throw "bare install altered a pre-existing defaultMode" }
+          if ($s.PSObject.Properties.Name -contains 'skipDangerousModePermissionPrompt') { throw "bare install added the skip flag" }
+          if ($s.enabledPlugins.'frontend-design@claude-plugins-official' -ne $false) { throw "bare install did not disable the plugin" }
+          if ($s.enabledPlugins.'life@laerdal' -ne $true) { throw "bare install disturbed an unrelated plugin entry" }
+          # 3. Negative control: prove part A's assertion is not vacuous by running
+          # it against a home whose settings deliberately already carry both bypass keys.
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-bypass-negctrl"
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
+          Set-Content -Path "$env:USERPROFILE\.claude\settings.json" -Value '{"permissions":{"defaultMode":"bypassPermissions"},"skipDangerousModePermissionPrompt":true,"enabledPlugins":{"frontend-design@claude-plugins-official":false}}'
+          $violated = $false
+          try { Assert-BarePermissionPosture $env:USERPROFILE } catch { $violated = $true }
+          if (-not $violated) { throw "Assert-BarePermissionPosture passed against a fixture that deliberately carries both bypass keys" }
+          Write-Host "OK: the bare-posture assertion rejects a settings file carrying the bypass keys"
       - name: Shared Node scripts run
         shell: powershell
         run: |
