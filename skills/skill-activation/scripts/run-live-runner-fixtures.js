@@ -1294,7 +1294,9 @@ async function testBehavioralAllowedTools(binDir) {
       max_turns: 2,
       fixture: 'with-allowed-tools',
       allowed_tools: ['Bash', 'Read'],
-      assertions: [],
+      // Empty assertions now scores invalid (Finding 1); this test is about
+      // argv forwarding, not scoring, so give it a trivially-true assertion.
+      assertions: [{ kind: 'trace_agent_dispatch_count', min: 0, max: 999 }],
     },
   ]);
   const withArgvFile = path.join(root, 'with-argv.json');
@@ -1324,7 +1326,9 @@ async function testBehavioralAllowedTools(binDir) {
       prompt: 'success',
       max_turns: 2,
       fixture: 'without-allowed-tools',
-      assertions: [],
+      // Empty assertions now scores invalid (Finding 1); this test is about
+      // argv forwarding, not scoring, so give it a trivially-true assertion.
+      assertions: [{ kind: 'trace_agent_dispatch_count', min: 0, max: 999 }],
     },
   ]);
   const withoutArgvFile = path.join(root, 'without-argv.json');
@@ -1426,12 +1430,22 @@ async function testBehavioralSetupEnvScrub(binDir) {
       max_turns: 2,
       fixture: 'env-scrub-case',
       setup: 'record-env.setup.js',
-      assertions: [{ kind: 'file_regex', path: 'env.json', regex: '"GIT_DIR":null' }],
+      assertions: [
+        { kind: 'file_regex', path: 'env.json', regex: '"GIT_DIR":null' },
+        { kind: 'file_regex', path: 'env.json', regex: '"GIT_CONFIG_COUNT":null' },
+        { kind: 'file_regex', path: 'env.json', regex: '"GIT_CONFIG_KEY_0":null' },
+        { kind: 'file_regex', path: 'env.json', regex: '"GIT_CONFIG_VALUE_0":null' },
+      ],
     },
   ]);
   fs.writeFileSync(
     path.join(root, 'behavioral', 'record-env.setup.js'),
-    "'use strict';\nrequire('fs').writeFileSync('env.json', JSON.stringify({ GIT_DIR: process.env.GIT_DIR || null }));\n"
+    "'use strict';\nrequire('fs').writeFileSync('env.json', JSON.stringify({ " +
+      'GIT_DIR: process.env.GIT_DIR || null, ' +
+      'GIT_CONFIG_COUNT: process.env.GIT_CONFIG_COUNT || null, ' +
+      'GIT_CONFIG_KEY_0: process.env.GIT_CONFIG_KEY_0 || null, ' +
+      'GIT_CONFIG_VALUE_0: process.env.GIT_CONFIG_VALUE_0 || null ' +
+      "}));\n"
   );
   const results = path.join(root, 'results');
   const run = await runNode(
@@ -1441,12 +1455,26 @@ async function testBehavioralSetupEnvScrub(binDir) {
       ACTIVATION_ALLOW_SPEND: '1',
       LIVE_CASE_TIMEOUT_MS: '2000',
       GIT_DIR: '/nonexistent/should-not-leak',
+      // The scrub was widened from a fixed denylist to a GIT_ prefix sweep
+      // precisely because a denylist misses this dynamic configuration
+      // family (git also reads these to set core.worktree/core.hooksPath);
+      // seed them so this fixture actually covers that regression rather
+      // than only re-proving the original named-variable case.
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'core.worktree',
+      GIT_CONFIG_VALUE_0: '/nonexistent/should-not-leak',
     })
   );
   const report = parseReport(run, 'setup env scrub');
-  assert(run.code === 0 && report.passed === 1, 'the setup child leaked an inherited GIT_DIR');
+  assert(run.code === 0 && report.passed === 1, 'the setup child leaked an inherited GIT_ variable');
   const env = JSON.parse(fs.readFileSync(path.join(results, 'env-scrub-case', 'env.json'), 'utf8'));
-  assert(env.GIT_DIR === null, `setup child observed GIT_DIR=${JSON.stringify(env.GIT_DIR)}, expected scrubbed`);
+  assert(
+    env.GIT_DIR === null &&
+      env.GIT_CONFIG_COUNT === null &&
+      env.GIT_CONFIG_KEY_0 === null &&
+      env.GIT_CONFIG_VALUE_0 === null,
+    `setup child observed GIT env leakage: ${JSON.stringify(env)}, expected all scrubbed`
+  );
 }
 
 async function testCodex(binDir, codexRunner) {

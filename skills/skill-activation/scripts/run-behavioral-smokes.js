@@ -333,6 +333,17 @@ function allowedToolsIsValid(tools) {
   );
 }
 
+// Validates the assertions COLLECTION itself (missing, null, not an array, or
+// empty), shared by lintCase, the modeRun pre-spawn guard, and scoreCase so
+// the three sites can't disagree about what a well-formed collection is. Must
+// run before any code iterates `assertions`: a missing/null/non-array value
+// would otherwise throw on the first `for...of`. Returns a problem string, or
+// '' when the collection is at least structurally iterable.
+function assertionCollectionProblems(assertions) {
+  if (!Array.isArray(assertions) || assertions.length === 0) return 'missing assertions';
+  return '';
+}
+
 // Per-assertion shape validation, shared by lintCase (corpus lint) and
 // scoreCase (--check/--run scoring), so the two can never drift apart: a
 // restated copy of this condition in scoreCase's own words would leave the
@@ -458,8 +469,9 @@ function lintCase(c, fixturesDir) {
     );
   }
 
-  if (!Array.isArray(c.assertions) || c.assertions.length === 0) {
-    problems.push('missing assertions');
+  const assertionsProblem = assertionCollectionProblems(c.assertions);
+  if (assertionsProblem) {
+    problems.push(assertionsProblem);
   } else {
     c.assertions.forEach((a, i) => {
       for (const problem of assertionShapeProblems(a)) {
@@ -626,6 +638,14 @@ function scoreCase(c, resultsDir, dups, runState) {
 
   if (!activated.includes(c.skill)) {
     return { id, status: 'fail', reason: `skill ${c.skill} not activated`, activated };
+  }
+
+  // Validate the COLLECTION before iterating it: a missing/null/non-array
+  // `assertions` would otherwise throw in the loop below instead of scoring
+  // this one case invalid.
+  const assertionsProblem = assertionCollectionProblems(c.assertions);
+  if (assertionsProblem) {
+    return { id, status: 'invalid', reason: assertionsProblem, activated };
   }
 
   const caseDir = path.join(resultsDir, id);
@@ -964,18 +984,18 @@ async function modeRun(args) {
   );
   if (needsRoster) {
     const agentsDir = path.join(os.homedir(), '.claude', 'agents');
-    const REQUIRED_AGENTS = ['architect-reviewer.md', 'security-auditor.md'];
+    const requiredAgents = ['architect-reviewer.md', 'security-auditor.md'];
     let present = new Set();
     if (isDir(agentsDir)) {
       try {
         present = new Set(fs.readdirSync(agentsDir));
       } catch {}
     }
-    const missing = REQUIRED_AGENTS.filter((entry) => !present.has(entry));
+    const missing = requiredAgents.filter((entry) => !present.has(entry));
     if (missing.length > 0) {
       die(
         `error: a trace_agent_dispatch_count assertion needs the reviewer-capable roster entries ` +
-          `${REQUIRED_AGENTS.join(', ')} installed at ${agentsDir}; missing: ${missing.join(', ')} ` +
+          `${requiredAgents.join(', ')} installed at ${agentsDir}; missing: ${missing.join(', ')} ` +
           '(fix: PT_BYPASS_PERMISSIONS=1 HOME=<sandbox> ./install.sh claude); without them a dispatch ' +
           'assertion measures the sandbox, not the skill.'
       );
@@ -986,14 +1006,19 @@ async function modeRun(args) {
     if (parentInterrupted) break;
     const c = cases[caseIndex];
     // Scored as invalid below; never touch the filesystem (or spend) on an
-    // unsafe id/fixture/setup, an invalid allowed_tools, or a duplicate id
-    // that would collide on <id> paths.
+    // unsafe id/fixture/setup, an invalid allowed_tools, a malformed
+    // assertion collection or assertion, or a duplicate id that would
+    // collide on <id> paths. Mirrors the existing rule that a failed setup
+    // suppresses the agent spawn: a malformed corpus entry must never spend
+    // either.
     if (
       !idIsPathSafe(c.id) ||
       !idIsPathSafe(c.fixture) ||
       dups.has(c.id) ||
       (c.setup !== undefined && !setupIsSafe(c.setup)) ||
-      (c.allowed_tools !== undefined && !allowedToolsIsValid(c.allowed_tools))
+      (c.allowed_tools !== undefined && !allowedToolsIsValid(c.allowed_tools)) ||
+      assertionCollectionProblems(c.assertions) !== '' ||
+      c.assertions.some((a) => assertionShapeProblems(a).length > 0)
     ) {
       continue;
     }
@@ -1013,7 +1038,10 @@ async function modeRun(args) {
         cases.length,
         `${c.id}:setup`,
         process.execPath,
-        [path.join(fixturesDir, c.setup)],
+        // Absolute: the child's cwd is caseDir, not wherever CORPUS was
+        // resolved from, so a relative CORPUS would otherwise hand the
+        // child a script path Node resolves from the wrong directory.
+        [path.resolve(fixturesDir, c.setup)],
         { cwd: caseDir, input: '', env: setupChildEnv() },
         timeoutMs
       );
