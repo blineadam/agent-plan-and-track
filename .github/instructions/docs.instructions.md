@@ -84,6 +84,11 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   text, don't assume) if it's vendored under `skills/` at all rather than
   fetched live at install time, the way `install-office-skills.sh` handles
   the restricted `docx`/`pdf`/`pptx`/`xlsx` skills.
+- When one vendored skill is folded into another (e.g. `theme-factory`'s
+  fold-in to `frontend-design`), the surviving skill's attribution comment
+  must be extended to also name the retired skill's source, not silently
+  drop its provenance. Flag a fold-in PR that removes the retired skill
+  without adding that second attribution sentence.
 - A skill or standing rule that's merely *inspired by* another repo's idea
   but rewritten from scratch, not vendored wholesale, gets a one-line
   "adapted from X" credit instead: in `AGENTS.md`'s Skills section for a
