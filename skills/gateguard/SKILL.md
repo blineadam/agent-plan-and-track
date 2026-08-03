@@ -1,6 +1,6 @@
 ---
 name: gateguard
-description: Fact-forcing gate for file edits. Before the first edit to any file in a session, present concrete investigation (importers/callers, affected API, real data schemas, the user's verbatim instruction) instead of guessing. Use when editing unfamiliar files, fixing bugs in an existing codebase, or when AI edits keep breaking callers or mis-assuming data formats. Installs enforce this with a PreToolUse hook on all three harnesses.
+description: Fact-forcing protocol for file edits. Before the first edit to any file in a session, present concrete investigation (importers/callers, affected API, real data schemas, the user's verbatim instruction) instead of guessing. Use when editing unfamiliar files, fixing bugs in an existing codebase, or when AI edits keep breaking callers or mis-assuming data formats. Installs back this with a PreToolUse hook on all three harnesses, a warning reminder by default on Claude and Codex, a blocking gate by default on Copilot.
 ---
 
 # GateGuard: Investigate Before You Edit
@@ -11,8 +11,9 @@ imports this module" forces a real search, and the investigation itself
 changes the edit that follows.
 
 Adapted from the ECC `gateguard` skill. The fact protocol below is
-harness-agnostic guidance; installs additionally get an enforcing
-`PreToolUse` hook (`gateguard.js`) on all three harnesses: see the end.
+harness-agnostic guidance; installs additionally get a `PreToolUse` hook
+(`gateguard.js`) on all three harnesses that re-injects it as a reminder (a
+blocking gate on Copilot): see the end.
 
 ## The protocol
 
@@ -68,10 +69,12 @@ register a `PreToolUse` hook running the same shared `gateguard.js` script on
 every harness; the script detects each harness's wire dialect at runtime.
 Claude Code's wiring matches Edit/Write/MultiEdit/NotebookEdit and Codex's
 matches `apply_patch`; Copilot's hook contract has no matcher, so the script
-filters for edit tools itself. It **denies the first edit to each file per
-session** with the fact demand above. The file is marked at deny time, so the
-retry (after presenting facts) always passes: a file can never be denied
-twice, and the gate can't loop.
+filters for edit tools itself. On the **first edit to each file per
+session**, it injects the fact demand above: as a non-blocking warning by
+default on Claude and Codex, as a blocking deny by default on Copilot (see
+Why the default is warn, below). Either way the file is marked at that
+moment, so a later edit of the same file in the same session is never
+gated again.
 
 Skipped automatically: subagent tool calls, `.claude/settings*.json` (so hook
 repair is never blocked), and `tasks/todo.md` / `tasks/lessons.md`.
@@ -79,11 +82,15 @@ repair is never blocked), and `tasks/todo.md` / `tasks/lessons.md`.
 Tune via environment variables:
 
 - `GATEGUARD_DISABLED=1`: turn the gate off entirely.
-- `GATEGUARD_WARN=1`: demote deny to a non-blocking warning (the fact demand
-  is injected as context instead of blocking the edit).
+- `GATEGUARD_WARN=1`: use the non-blocking warning (the fact demand is
+  injected as context instead of blocking). Already the default on Claude
+  and Codex; on Copilot this explicitly opts into warn, which there means
+  allow plus a stderr note (see below).
+- `GATEGUARD_DENY=1`: use the blocking deny instead. Already the default on
+  Copilot.
 - `GATEGUARD_EXEMPT_GLOBS`: comma-separated globs to exempt (e.g.
   `**/generated/**,*.snap`). `*` matches within a path segment, `**` across.
-- `GATEGUARD_FULL_DENIALS`: how many denials per session get the full
+- `GATEGUARD_FULL_DENIALS`: how many firings per session get the full
   fact block before condensing to one line to avoid repetitive context
   (default 3).
 
@@ -91,6 +98,24 @@ Copilot's PreToolUse contract is fail-closed, so the script's failure path
 emits an explicit allow decision there; Claude Code and Codex share the same
 hook payload shape. All three harnesses also get the
 investigate-before-editing line in the rules digest.
+
+### Why the default is warn
+
+The hook used to deny the first edit and mark the file "checked" at the
+moment of denial, so the retry that followed always passed; the gate had no
+way to confirm the demanded facts were actually presented; it could only
+observe a second tool call. Two data points, gathered together: a sample of
+1,282 real firings across 167 local sessions found no case where the demanded
+investigation changed the resulting edit, and a controlled A/B (4 runs per
+arm, one fixture, Sonnet) found the deny-and-retry loop cost about 20% more
+turns and 18% more dollars than warn, for an identical outcome.
+
+Ceiling caveat: in that A/B the control arm (hook off) never failed either,
+so the result measures the hook's cost and shows no benefit on that task; it
+cannot rule out a benefit on a task hard enough for the control arm to fail.
+One task, one model, not a general verdict on fact-forcing. Copilot keeps
+deny by default because its PreToolUse has no soft-warn channel: a warn
+default there would make the hook silently do nothing.
 
 Deliberately not ported from ECC: the destructive-Bash and routine-Bash gates; Claude Code's own permission system already covers destructive commands,
 and a once-per-session gate on the first Bash call is friction without signal.
