@@ -2,11 +2,12 @@
 /**
  * GateGuard: universal fact-forcing edit gate (Claude Code, Codex, Copilot CLI)
  *
- * A PreToolUse gate that denies the FIRST edit to each file per session with a
- * fact demand: importers/callers, blast radius, real data schemas, the user's
- * verbatim instruction, instead of letting the model guess. Self-evaluation
- * ("are you sure?") always gets "yes"; demanding facts forces a real search,
- * and the investigation itself improves the edit. Adapted (lean) from ECC's
+ * A PreToolUse gate that fires on the first edit to each file per session,
+ * injecting a fact demand (callers, blast radius, real data schemas, the
+ * user's verbatim instruction) instead of letting the model guess. Blocks by
+ * default on Copilot and warns on Claude/Codex (GATEGUARD_DENY=1 restores
+ * blocking everywhere). Demanding facts forces a real search, and the
+ * investigation itself improves the edit. Adapted (lean) from ECC's
  * gateguard-fact-force hook.
  *
  * ONE SCRIPT, THREE HARNESSES. The wire dialect is sniffed from stdin:
@@ -21,10 +22,10 @@
  *     allows too: the gate must never accidentally block by dying.
  *
  * LOOP-FREE BY CONSTRUCTION: each gated file is marked "checked" in session
- * state at deny time, so the retry after presenting facts always passes. A file
- * can never be denied twice. If state can't be persisted, the edit is ALLOWED
- * with a stderr warning: never deny what we can't record, or the model would
- * be denied forever.
+ * state when the hook fires (blocking or warning), so a file can only ever be
+ * gated once per session. If state can't be persisted, the edit is ALLOWED
+ * with a stderr warning: never gate what we can't record, or the model would
+ * be gated forever.
  *
  * Deliberately not ported from ECC: the destructive-Bash and routine-Bash
  * gates. Each harness's own permission system already covers destructive
@@ -36,12 +37,28 @@
  * `tasks/todo.md` / `tasks/lessons.md` (our own rules force frequent edits
  * there; they have no importers or schemas to investigate).
  *
+ * DEFAULT POSTURE: warn, not deny, on Claude and Codex (GATEGUARD_DENY=1
+ * restores blocking). Copilot defaults to deny instead, because its
+ * PreToolUse has no soft-warn channel: its documented output only supports
+ * permissionDecision/permissionDecisionReason/modifiedArgs, with no
+ * additionalContext-style field the way postToolUse has (GitHub Copilot
+ * hooks reference, "preToolUse decision control":
+ * https://docs.github.com/en/copilot/reference/hooks-reference). emitWarn
+ * there degrades to allow plus a stderr note, so a warn default would make
+ * the hook a silent no-op on Copilot.
+ *
  * Config (env):
  *   GATEGUARD_DISABLED      "1" turns the gate off entirely.
- *   GATEGUARD_WARN          "1" demotes deny to a non-blocking warning
- *                           (fact demand injected as additionalContext where
- *                           the harness has a soft channel; Copilot has none,
- *                           so warn there = allow + stderr note).
+ *   GATEGUARD_WARN          "1" forces the warn behavior (fact demand
+ *                           injected as additionalContext where the harness
+ *                           has a soft channel; Copilot has none, so warn
+ *                           there = allow + stderr note). Already the
+ *                           default on Claude/Codex; explicitly selects warn
+ *                           on Copilot. Overridden by GATEGUARD_DENY when
+ *                           both are set (see below).
+ *   GATEGUARD_DENY          "1" forces the blocking deny behavior on any
+ *                           harness, and wins over GATEGUARD_WARN=1 if both
+ *                           are set. Already the default on Copilot.
  *   GATEGUARD_EXEMPT_GLOBS  comma-separated globs to exempt
  *                           (`*` within a segment, `**` across, `?` one char).
  *   GATEGUARD_FULL_DENIALS  denials per session that get the full fact block
@@ -116,11 +133,14 @@ function emitWarn(dialect, reason) {
     emitAllow('copilot');
     return;
   }
+  // No extra suffix here: reason is already mode-aware (see closingLines)
+  // and states the edit is proceeding, so appending it again would repeat
+  // the same sentence.
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
-        additionalContext: reason + '\n(Warn-only mode: the edit proceeds.)',
+        additionalContext: reason,
       },
     })
   );
@@ -331,7 +351,22 @@ function pathLabel(paths) {
   return paths.map(sanitizePath).join(', ');
 }
 
-function editGateMsg(paths) {
+// The closing lines depend on which mode actually fired: deny blocks the
+// call, so a retry is required and meaningful; warn lets the call through
+// immediately, so there is nothing to retry.
+function closingLines(mode, verb) {
+  return mode === 'deny'
+    ? [
+        `Present the facts, then retry the same ${verb}: the retry always passes.`,
+        '(GATEGUARD_DISABLED=1 turns this gate off; GATEGUARD_WARN=1 demotes it to a warning.)',
+      ]
+    : [
+        `This ${verb} is proceeding; present the facts above alongside it.`,
+        '(GATEGUARD_DISABLED=1 turns this gate off; GATEGUARD_DENY=1 makes it block instead.)',
+      ];
+}
+
+function editGateMsg(paths, mode) {
   const head =
     paths.length === 1
       ? `[GateGuard] First edit of ${sanitizePath(paths[0])} this session: before editing, present these facts:`
@@ -344,12 +379,11 @@ function editGateMsg(paths) {
     '3. Data schemas: if this file reads/writes data, show real field names and formats (redacted or synthetic values).',
     "4. The user's current instruction, quoted verbatim.",
     '',
-    'Present the facts, then retry the same edit: the retry always passes.',
-    '(GATEGUARD_DISABLED=1 turns this gate off; GATEGUARD_WARN=1 demotes it to a warning.)',
+    ...closingLines(mode, 'edit'),
   ].join('\n');
 }
 
-function createGateMsg(paths) {
+function createGateMsg(paths, mode) {
   const head =
     paths.length === 1
       ? `[GateGuard] Creating ${sanitizePath(paths[0])}: before writing it, present these facts:`
@@ -362,20 +396,21 @@ function createGateMsg(paths) {
     '3. Data schemas: if it reads/writes data, show real field names and formats (redacted or synthetic values).',
     "4. The user's current instruction, quoted verbatim.",
     '',
-    'Present the facts, then retry the same write: the retry always passes.',
-    '(GATEGUARD_DISABLED=1 turns this gate off; GATEGUARD_WARN=1 demotes it to a warning.)',
+    ...closingLines(mode, 'write'),
   ].join('\n');
 }
 
 // After the full-block budget, condense to one line carrying the denial
 // ordinal so repeated denials never accumulate identical blocks in context.
-function condensedMsg(paths, ordinal) {
+function condensedMsg(paths, ordinal, mode) {
   const what =
     paths.length === 1 ? `First edit of ${sanitizePath(paths[0])}` : `First edit of ${pathLabel(paths)}`;
-  return (
-    `[GateGuard] (denial #${ordinal} this session) ${what}: ` +
-    "briefly state importers/callers, blast radius, data schemas if any, and the user's instruction, then retry."
-  );
+  const tail =
+    mode === 'deny'
+      ? "briefly state importers/callers, blast radius, data schemas if any, and the user's instruction, then retry."
+      : "briefly state importers/callers, blast radius, data schemas if any, and the user's instruction alongside it.";
+  const label = mode === 'deny' ? `denial #${ordinal}` : `reminder #${ordinal}`;
+  return `[GateGuard] (${label} this session) ${what}: ${tail}`;
 }
 
 function main() {
@@ -451,15 +486,29 @@ function main() {
   const creatingAll = newlyGated.every((e) => e.create);
   const ordinal = ordinalBase + 1;
   const fullBudget = intEnv('GATEGUARD_FULL_DENIALS', 3);
+
+  // Default is warn: the marker was claimed above whenever the hook fires,
+  // in either mode, which is what makes the gate once-per-file and
+  // loop-free regardless of whether this call ends up denying or warning.
+  // Because the marker is claimed either way, the gate can never verify the
+  // demanded facts were actually presented, only that the file was touched
+  // once. A measured A/B (see skills/gateguard/SKILL.md) found the
+  // deny-and-retry loop cost ~20% more turns for an identical edit, no
+  // accuracy gain. Copilot keeps deny by default because its warn path has
+  // no soft channel (emitWarn degrades to allow + stderr).
+  const deny =
+    process.env.GATEGUARD_DENY === '1' ||
+    (dialect === 'copilot' && process.env.GATEGUARD_WARN !== '1');
+  const mode = deny ? 'deny' : 'warn';
   const reason =
     ordinal > fullBudget
-      ? condensedMsg(paths, ordinal)
+      ? condensedMsg(paths, ordinal, mode)
       : creatingAll
-        ? createGateMsg(paths)
-        : editGateMsg(paths);
+        ? createGateMsg(paths, mode)
+        : editGateMsg(paths, mode);
 
-  if (process.env.GATEGUARD_WARN === '1') emitWarn(dialect, reason);
-  else emitDeny(dialect, reason);
+  if (deny) emitDeny(dialect, reason);
+  else emitWarn(dialect, reason);
   process.exit(0);
 }
 
