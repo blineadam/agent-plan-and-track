@@ -75,7 +75,7 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   competing procedure). Flag a skill whose procedure is scattered across the
   file with no named section to anchor it.
 - A skill vendored wholesale from an external repo (e.g. `frontend-design`,
-  `theme-factory`, `webapp-testing`, all from `anthropics/skills`) must
+  `webapp-testing`, both from `anthropics/skills`) must
   carry an HTML comment right after its frontmatter naming the source URL,
   the exact edits made (not a vague "lightly edited"), and pointing at a
   sibling `LICENSE.txt` with the upstream license text. Flag a vendored
@@ -84,6 +84,11 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   text, don't assume) if it's vendored under `skills/` at all rather than
   fetched live at install time, the way `install-office-skills.sh` handles
   the restricted `docx`/`pdf`/`pptx`/`xlsx` skills.
+- When one vendored skill is folded into another (e.g. `theme-factory`'s
+  fold-in to `frontend-design`), the surviving skill's attribution comment
+  must be extended to also name the retired skill's source, not silently
+  drop its provenance. Flag a fold-in PR that removes the retired skill
+  without adding that second attribution sentence.
 - A skill or standing rule that's merely *inspired by* another repo's idea
   but rewritten from scratch, not vendored wholesale, gets a one-line
   "adapted from X" credit instead: in `AGENTS.md`'s Skills section for a
@@ -105,13 +110,14 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   ...", "NOT for anything requiring ..."), so routing knows both when to reach
   for the agent and when not to. Flag a bare capability summary that carries no
   trigger clause or no negative case.
-- `model` and `effort` are pinned in lockstep and scaled to the cost of a
-  missed judgment call: `fable`+`xhigh` for high-stakes read-only review and
-  planning (`opus`+`xhigh` remains a valid pin but is currently unused),
-  `sonnet`+`high` for research/diagnosis/execution, `haiku`+`medium` for
-  mechanical no-judgment edits. Flag a mismatched pair (a cheap model with
-  high effort, or vice versa) and a pin whose rationale isn't stated inline
-  in `description`.
+- `model` and `effort` are pinned in lockstep, per agent role rather than a
+  single model-keyed table: `fable`+`high` for the read-only advisors
+  (`architect-reviewer`, `security-auditor`, `fable-advisor`), `opus`+`xhigh`
+  for `planner`, `sonnet`+`high` for research/diagnosis/execution, `haiku`+
+  `medium` for mechanical no-judgment edits. `fable` no longer implies
+  `xhigh`; `planner` is the only `xhigh` pin. Flag a mismatched pair (a cheap
+  model with high effort, or vice versa) and a pin whose rationale isn't
+  stated inline in `description`.
 - `tools` is a bare comma-separated subset that should match the agent's
   authority: read-only reviewers get `Read, Grep, Glob`; only an edit-capable
   agent (e.g. `mechanic`, `executor`) should carry `Edit`/`Write`. Flag a
