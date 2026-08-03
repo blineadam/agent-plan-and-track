@@ -629,7 +629,9 @@ jobs:
           if ($c -ne 'auto') { throw "copilot model != auto" }
           if ((Get-Content -Raw "$H\.codex\config.toml") -notmatch 'plan_mode_reasoning_effort = "xhigh"') { throw "codex effort missing" }
           $codexFeatureCheck = 'import sys, tomllib; config=tomllib.load(open(sys.argv[1], "rb")); features=config.get("features"); assert features == {"multi_agent": True, "multi_agent_v2": False}, f"unexpected Codex feature defaults: {features}"; print("OK: Codex feature defaults are enabled/disabled as expected")'
-          python -c $codexFeatureCheck "$H\.codex\config.toml"
+          $codexFeatureCheckPath = Join-Path $env:RUNNER_TEMP 'validate_codex_features.py'
+          [System.IO.File]::WriteAllText($codexFeatureCheckPath, $codexFeatureCheck, [System.Text.UTF8Encoding]::new($false))
+          python $codexFeatureCheckPath "$H\.codex\config.toml"
           if ($LASTEXITCODE -ne 0) { throw "Codex feature default validation failed" }
           if ((Get-Content -Raw "$H\.claude\CLAUDE.md") -notmatch 'agent-plan-and-track:begin') { throw "managed block missing" }
           if (-not (Test-Path -LiteralPath "$H\.claude\skills\skill-comply\SKILL.md")) { throw "Claude skill-comply missing" }
@@ -729,7 +731,9 @@ jobs:
           $env:USERPROFILE = $featureHome
           .\install.ps1 codex | Out-Null
           $featurePreservationCheck = 'import sys, tomllib; config=tomllib.load(open(sys.argv[1], "rb")); expected={"existing_root": "preserve", "plan_mode_reasoning_effort": "xhigh", "features": {"unrelated_feature": "preserve", "multi_agent": True, "multi_agent_v2": False}}; assert config == expected, f"Codex feature preservation failed: {config}"; print("OK: Codex features preserve unrelated settings")'
-          python -c $featurePreservationCheck $featureConfig
+          $featurePreservationCheckPath = Join-Path $env:RUNNER_TEMP 'validate_codex_feature_preservation.py'
+          [System.IO.File]::WriteAllText($featurePreservationCheckPath, $featurePreservationCheck, [System.Text.UTF8Encoding]::new($false))
+          python $featurePreservationCheckPath $featureConfig
           if ($LASTEXITCODE -ne 0) { throw "Codex feature preservation validation failed" }
           Copy-Item -LiteralPath $featureConfig -Destination "$env:RUNNER_TEMP\codex-features-before-idempotency.toml" -Force
           .\install.ps1 codex | Out-Null
