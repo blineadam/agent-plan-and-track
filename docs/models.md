@@ -2,30 +2,31 @@
 
 ## Model defaults
 
-The installer sets a sensible model default for each harness so routine
-work doesn't run at top-tier cost. These are repo-owned: every install
-restores the intended default, even on a machine that's drifted. What the
-default actually does differs by harness:
+The installer sets a model default for each harness so routine work does not
+run at top-tier cost. These settings are repo-owned: every install restores
+the intended default, even on a machine that has drifted. What each default
+does depends on the harness:
 
 | Harness | Default | Effect |
 | --- | --- | --- |
-| Claude Code | `model: opusplan` | Opus in Plan mode, Sonnet for execution: a real per-phase model swap |
-| Claude Code | `switchModelsOnFlag: true` | Switches to another model on a safety-flagged message instead of stopping the session |
-| Codex | `plan_mode_reasoning_effort: xhigh` | More reasoning in Plan mode only; the execution model and effort stay yours |
-| Copilot | `model: auto` | Copilot routes each task to a fitting model (no fixed plan/execute split) |
+| Claude Code | `model: opusplan` | Opus in Plan mode, Sonnet during execution |
+| Claude Code | `switchModelsOnFlag: true` | Switch models on a safety flag instead of stopping |
+| Codex | `plan_mode_reasoning_effort: xhigh` | Plan mode: `xhigh`; execution unchanged |
+| Copilot | `model: auto` | Let Copilot choose per task; no fixed phase split |
 
-Install with `PT_KEEP_MODEL=1` to keep a machine's existing Claude and
-Copilot model settings (the model and `switchModelsOnFlag`) instead of
-overwriting them; the Codex plan-mode effort still updates.
+Install with `PT_KEEP_MODEL=1` to keep a machine's existing Claude and Copilot
+model settings, including `switchModelsOnFlag`, instead of overwriting them.
+The Codex plan-mode effort still updates.
 
 ## Tiered subagents
 
-Tiered subagents install to `~/.claude/agents/` and, rendered into each
-harness's own native format, `~/.codex/agents/` (TOML) and
-`~/.copilot/agents/` (Markdown custom agents). Each carries a model and
-effort assignment sized to the work: cheaper for routine delegation,
-stronger for judgment calls a same-topic skill can't guarantee a model
-tier for.
+Tiered subagents install to `~/.claude/agents/`. The installer also renders
+them into each harness's native format: TOML under `~/.codex/agents/` and
+Markdown custom agents under `~/.copilot/agents/`.
+
+Each agent carries a model and effort assignment sized to the work. Routine
+delegation stays on a cheaper tier, while judgment calls use a stronger tier
+that a same-topic skill cannot guarantee.
 
 - **`architect-reviewer`** (Fable, read-only) weighs a non-trivial design
   decision before it's locked in: coupling, blast radius, simpler
@@ -49,46 +50,68 @@ tier for.
 - **`mechanic`** (Haiku) handles already-decided mechanical edits, and
   kicks anything needing a judgment call back to you.
 
+### Harness mappings and fallbacks
+
 If your account doesn't have Fable access, agents pinned to it just fall
 back to your normal model. Codex gets the same eight agents through the
-current compatibility mapping: Fable and Opus map to `gpt-5.6-sol`, Sonnet
-to `gpt-5.6-terra`, and Haiku to `gpt-5.6-luna`; the rendered profile carries
-the assigned reasoning effort and sandbox mode. Copilot also gets the same
-eight agents, but only tool permissions carry over there, not the model tier
-and not effort.
+current compatibility mapping:
 
-Claude picks the right agent for the job automatically, or you can call
-one by name ("use the researcher agent to..."). Copilot CLI has its own
-custom-agent and subagent-delegation system, and the roster installs
-there too, rendered as native custom agents at
-`~/.copilot/agents/*.agent.md`; invoke one via `copilot --agent=<name>`,
-the `/agent` picker, or by naming the agent in a prompt.
+| Source tier | Codex model |
+| --- | --- |
+| Fable / Opus | `gpt-5.6-sol` |
+| Sonnet | `gpt-5.6-terra` |
+| Haiku | `gpt-5.6-luna` |
+
+The rendered Codex profile carries the assigned reasoning effort and sandbox
+mode. Copilot also gets the same eight agents, but only tool permissions carry
+over there, not the model tier or effort.
+
+### Invoking agents
+
+Claude picks an agent automatically, or you can call one by name: "use the
+researcher agent to..."
+
+Copilot CLI uses its custom-agent and subagent-delegation system. Invoke an
+installed agent through `copilot --agent=<name>`, the `/agent` picker, or by
+naming the agent in a prompt. The native files live at
+`~/.copilot/agents/*.agent.md`.
 
 Current Codex releases delegate after a direct request or applicable
 `AGENTS.md` and skill instructions; `/agent` shows the threads in an
-interactive CLI session. [OpenAI's subagent reference](https://developers.openai.com/codex/subagents)
+interactive CLI session.
+[OpenAI's subagent reference](https://developers.openai.com/codex/subagents)
 documents that a custom agent's `model` and `model_reasoning_effort` take
 precedence when set. Its effective sandbox can still be narrower than the
 rendered mode because subagents inherit the parent runtime policy.
 
 ## Per-tool notes
 
-- **Claude** (`~/.claude`): the digest gets injected every turn via a
-  `UserPromptSubmit` hook, so edits to `core-rules.md` take effect
-  immediately. Set `"includeCoAuthoredBy": false` in `settings.json` to
-  drop the co-author trailer.
-- **Copilot** (`~/.copilot`): reads instructions at session start, so
-  restart after edits. The digest rides a throttled `postToolUse` hook
-  (once per 10 minutes, since Copilot has no prompt-submit injection).
-  `"includeCoAuthoredBy": false` drops its trailer too.
-- **Codex** (`~/.codex`): the user `AGENTS.md` loads before project ones;
-  skills live in `~/.agents/skills/`, and subagents render to
-  `~/.codex/agents/*.toml`. New or changed hooks get skipped until you
-  review and trust them via `/hooks`; Codex prints a warning at startup if
-  any need attention. Recent builds add no attribution trailer.
-  The rendered roster loads from the global agents directory this installer
-  targets, and current local clients can delegate to it directly or through
-  applicable `AGENTS.md` and skill instructions.
+### Claude
+
+The digest is injected every turn through a `UserPromptSubmit` hook, so edits
+to `core-rules.md` take effect immediately. Set
+`"includeCoAuthoredBy": false` in `~/.claude/settings.json` to drop the
+co-author trailer.
+
+### Copilot
+
+Copilot reads instructions at session start, so restart after editing them.
+The digest rides a throttled `postToolUse` hook once per 10 minutes because
+Copilot has no prompt-submit injection. Set `"includeCoAuthoredBy": false` in
+`~/.copilot/settings.json` to drop its trailer.
+
+### Codex
+
+The user `AGENTS.md` loads before project instruction files. Skills live in
+`~/.agents/skills/`, and subagents render to `~/.codex/agents/*.toml`.
+
+New or changed hooks are skipped until you review and trust them through
+`/hooks`; Codex prints a warning at startup if any need attention. Recent
+builds add no attribution trailer.
+
+The rendered roster loads from the global agents directory this installer
+targets. Current local clients can delegate to it directly or through
+applicable `AGENTS.md` and skill instructions.
 
 To check any of this on a live session: start one, get a few messages in,
 and ask *"what are your standing rules?"*
