@@ -186,13 +186,42 @@ deterministic and corpus-pinned, the same file_regex-or-fail contract this
 skill's own `--check` uses for routing.
 
 Each case in `behavioral-cases.jsonl` is `{ id, skill, prompt, max_turns,
-fixture, assertions: [{ kind, path, regex, flags }], note }`. `fixture` names
+fixture, setup?, allowed_tools?, assertions: [{ kind: file_regex |
+response_regex | trace_agent_dispatch_count, ... }], note }`. `fixture` names
 a directory under `fixtures/behavioral/` copied into the case's working
 directory before the agent runs (a file the skill's mandated output must be
 appended to, not clobber). Unlike this skill's own routing prompts, a
 behavioral-smoke prompt should **name the target skill**: the point here isn't
 to test routing again, it's to prove the body still works once the skill has
 already fired.
+
+An optional `setup` names a sibling `.js` file beside the fixture dir, run
+only by `--run` (never `--dry-run` or `--check`) with the case dir as its
+cwd, before the agent spawns; a nonzero exit, a timeout, or any other unclean
+run scores the case `invalid` and suppresses the agent spawn entirely. An
+optional `allowed_tools` widens `--run`'s fixed `acceptEdits` posture with an
+explicit tool allowlist, for a case whose assertions need a tool beyond
+editing (a `trace_agent_dispatch_count` case reading `git diff` via Bash to
+review a batch, for instance): a non-empty array of bare tool names (e.g.
+`"Bash"`; no parenthesised scoping, which is unverified against the current
+CLI), each matching `/^[A-Za-z][A-Za-z0-9_]*$/`. No case is ever run with a
+bypass or skip-permissions posture.
+
+`response_regex` and `trace_agent_dispatch_count` each hard-fail only what
+they literally measure, per the narrower-than-its-rule disclosure this repo's
+checks carry: `response_regex` hard-fails when its regex doesn't match
+assistant text, proving only that the marker starts some line, not that it
+was the review's first line; `trace_agent_dispatch_count` hard-fails when the
+trace's de-duplicated Task/Agent tool_use count falls outside `[min, max]`,
+proving only how many dispatches happened, not the identity or independence
+of the agents dispatched. `min` must be an integer >= 0; a bare `min: 0` with
+no `max` asserts nothing (any count satisfies it) and is rejected, but
+`{min: 0, max: 0}` is a real, useful assertion ("no dispatches happened") and
+is accepted. A single case asserting either "always high risk, always two
+dispatches" or "always normal risk, never dispatches" can pass by ignoring
+the diff entirely: `plan-and-track-risk-classification` and its
+`-normal` counterpart are a deliberate discriminating pair for exactly this
+reason, and only make sense scored together.
 
 Same three modes as this skill's own runner, with one deliberate difference:
 `--dry-run` here lints the corpus and exits 1 on any problem (a CI guard, not
@@ -202,6 +231,12 @@ just a listing).
 - `--check RESULTS_DIR [CORPUS]`: score pre-captured results (free).
 - `--run [RESULTS_DIR] [CORPUS]`: invoke `claude -p` per case (billable, behind
   the same `ACTIVATION_ALLOW_SPEND=1` gate).
+
+A `trace_agent_dispatch_count` case needs the roster installed before `--run`
+does anything else: `PT_BYPASS_PERMISSIONS=1 HOME=<sandbox> ./install.sh
+claude` installs it into a sandbox `HOME` with a bypass posture that avoids an
+interactive confirmation stalling a headless run. `--run` refuses up front,
+before spending, when the corpus needs a roster and none is installed.
 
 Scoring is liveness-first: a trace's terminal `result` event must show
 `subtype: "success"`, a falsy `is_error`, `num_turns > 0`, and

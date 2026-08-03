@@ -19,14 +19,49 @@
  * its own fixture dirs (fixtures/behavioral/<id>/), node core modules only.
  *
  * Case schema (one JSON object per line in the corpus):
- *   { id, skill, prompt, max_turns, fixture,
- *     assertions: [ { kind: "file_regex", path, regex, flags } ], note }
+ *   { id, skill, prompt, max_turns, fixture, setup?, allowed_tools?,
+ *     assertions: [
+ *       { kind: "file_regex", path, regex, flags } |
+ *       { kind: "response_regex", regex, flags } |
+ *       { kind: "trace_agent_dispatch_count", min, max? }
+ *     ], note }
  * `fixture` names a directory under fixtures/behavioral/ that is copied into
  * the case's working directory before the agent runs (a file the skill's
  * mandated output must be appended to, not clobber). Prompts should name the
  * target skill: unlike activation-cases.jsonl (which tests routing on an
  * unnamed prompt), the naming here is deliberate, since the point is to prove
  * the BODY still works once the skill has fired, not to test routing again.
+ * A `response_regex` assertion hard-fails the case when its regex does not
+ * match assistant text (assistant `text` blocks plus the terminal result's
+ * `result` string): a match only proves the marker appears at the start of
+ * SOME LINE of assistant text, not that it was the review's first line. A
+ * `trace_agent_dispatch_count` assertion hard-fails the case when the
+ * trace's Task/Agent tool_use count (de-duplicated by id) falls outside
+ * [min, max]: it only proves HOW MANY Task/Agent tool_use objects the trace
+ * carries, not that the dispatched agents were the two independent
+ * reviewers a rule names. Any trace_agent_dispatch_count case run via --run
+ * needs the reviewer-capable roster entries the dispatch assertion actually
+ * depends on installed (~/.claude/agents/architect-reviewer.md and
+ * ~/.claude/agents/security-auditor.md) first, or the count would measure
+ * the sandbox, not the skill; --run dies up front, before spending, when a
+ * corpus needs the dispatch assertion and either entry is missing.
+ * response_regex and file_regex both compile an operator-supplied pattern and
+ * run it over trace/file text this runner caps at 64 MB, so a catastrophic
+ * pattern can hang the single-threaded scorer while the per-case timeout only
+ * bounds child processes, not scoring, accepted since the corpus and results
+ * dir are both operator-supplied local input and CI only runs --dry-run,
+ * which compiles patterns but never executes them.
+ * `setup` optionally names a sibling .js file in fixtures/behavioral/, run
+ * only by --run (never by --check or --dry-run) with cwd set to the case
+ * dir, before the agent spawns; a nonzero exit, a timeout, or any other
+ * unclean run scores the case invalid and suppresses the agent spawn
+ * entirely. A hand-assembled results dir missing `<id>.setup.meta.json` is
+ * tolerated as if setup ran cleanly, the same legacy tolerance the agent-run
+ * metadata already gets. `allowed_tools` optionally widens --run's tool
+ * allowlist beyond its fixed `acceptEdits` posture: an array of bare tool
+ * names (e.g. "Bash"; no parenthesised scoping, which is unverified against
+ * the current CLI), each matching /^[A-Za-z][A-Za-z0-9_]*$/, appended to the
+ * child's --allowedTools flag.
  *
  * Usage:
  *   node run-behavioral-smokes.js --dry-run [CORPUS]        # lint the corpus (free); exit 1 on any problem
@@ -37,17 +72,21 @@
  * default to fixtures/behavioral/<fixture>/.
  *
  * --check reads one trace per case at RESULTS_DIR/<id>.jsonl and evaluates
- * file_regex assertions against RESULTS_DIR/<id>/<assertion.path>. --run writes
- * those same files then scores them identically, but is a real, billable,
- * tool-executing operation: it refuses unless ACTIVATION_ALLOW_SPEND=1, and you
- * MUST run it inside an isolated container/VM with restricted mounts and egress
+ * each case's assertions: file_regex against RESULTS_DIR/<id>/<assertion.path>,
+ * response_regex and trace_agent_dispatch_count against the parsed trace
+ * itself. --run writes those same files then scores them identically, but is
+ * a real, billable, tool-executing operation: it refuses unless
+ * ACTIVATION_ALLOW_SPEND=1, and you MUST run it inside an isolated
+ * container/VM with restricted mounts and egress
  * allowed only to the model provider's API; a competing/injected prompt will
  * execute tool calls. Sealing egress off entirely is not the safer setting: the
  * case then cannot reach the API, exits at zero turns, and scores invalid.
- * Never pass --dangerously-skip-permissions here. --run uses --permission-mode
- * acceptEdits (not a read-only mode), since the whole point of a behavioral
- * smoke is that the skill under test WRITES a file; a read-only permission
- * mode would make every case a false negative. --run is Claude-only and
+ * Every case runs --run's fixed --permission-mode acceptEdits (not a
+ * read-only mode: the whole point of a behavioral smoke is that the skill
+ * under test WRITES a file, so a read-only mode would make every case a
+ * false negative); a case may widen the tool allowlist via `allowed_tools`,
+ * and no bypass or skip-permissions flag is ever passed.
+ * --run is Claude-only and
  * intended for a unix sandbox; --dry-run / --check are the cross-platform,
  * free modes. See SKILL.md for the full rationale.
  *
@@ -78,6 +117,7 @@ const { spawn, spawnSync } = require('child_process');
 
 const SCRIPT_DIR = __dirname;
 const DEFAULT_CORPUS = path.join(SCRIPT_DIR, '..', 'fixtures', 'behavioral-cases.jsonl');
+const DISPATCH_TOOL_NAMES = new Set(['task', 'agent']);
 const FORCE_SETTLE_MS = 100;
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const MAX_TIMER_MS = 2_147_483_647;
@@ -189,6 +229,70 @@ function activatedSkills(traceFile) {
   return Array.from(set).sort();
 }
 
+// Count of Task/Agent tool_use objects in a trace, de-duplicated by id so a
+// harness that repeats a tool_use across events cannot inflate the count past
+// the number of real dispatches.
+function agentDispatchCount(traceFile) {
+  const ids = new Set();
+  let idless = 0;
+  let text;
+  try {
+    text = fs.readFileSync(traceFile, 'utf8');
+  } catch {
+    return 0;
+  }
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    for (const obj of walkObjects(parsed)) {
+      if (obj.type !== 'tool_use' || typeof obj.name !== 'string') continue;
+      if (!DISPATCH_TOOL_NAMES.has(obj.name.toLowerCase())) continue;
+      if (typeof obj.id === 'string' && obj.id !== '') ids.add(obj.id);
+      else idless++;
+    }
+  }
+  return ids.size + idless;
+}
+
+// Text a response_regex assertion may match: assistant `text` blocks scoped
+// to assistant-type events only, plus the terminal result's `result` string
+// when it is a string. This scoping is what stops a prompt echo or a tool
+// result from satisfying a response_regex.
+function assistantText(traceFile) {
+  const out = [];
+  let text;
+  try {
+    text = fs.readFileSync(traceFile, 'utf8');
+  } catch {
+    return '';
+  }
+  let resultEvent = null;
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed.type === 'assistant') {
+      for (const obj of walkObjects(parsed)) {
+        if (obj.type === 'text' && typeof obj.text === 'string') out.push(obj.text);
+      }
+    }
+    for (const obj of walkObjects(parsed)) {
+      if (obj.type === 'result') resultEvent = obj; // last one wins: the terminal event
+    }
+  }
+  if (resultEvent && typeof resultEvent.result === 'string') out.push(resultEvent.result);
+  return out.join('\n');
+}
+
 // Reject both path separators (\ is a separator on Windows) plus `..`, so a
 // case id can't escape RESULTS_DIR when interpolated into a path. Also used for
 // `fixture`, which likewise names a single direct-child directory.
@@ -206,6 +310,91 @@ function relPathIsContained(p) {
   if (segments[0] === '') return false; // leading separator: absolute
   if (/^[A-Za-z]:/.test(p)) return false; // Windows drive-absolute
   return !segments.includes('..');
+}
+
+// A case's optional `setup` names a direct-child .js file under
+// fixtures/behavioral/, run only by --run. Shared by lintCase, the modeRun
+// pre-spawn guard, and scoreCase so the three sites can't drift apart.
+function setupIsSafe(setup) {
+  return idIsPathSafe(setup) && setup.endsWith('.js');
+}
+
+// A case's optional `allowed_tools` widens --run's fixed acceptEdits posture
+// with an explicit tool allowlist instead of a bypass mode: a non-empty
+// array of bare tool names (no parenthesised scoping, unverified against the
+// current CLI), each matching /^[A-Za-z][A-Za-z0-9_]*$/. Shared by lintCase,
+// the modeRun pre-spawn guard, and scoreCase so the three sites can't drift
+// apart.
+function allowedToolsIsValid(tools) {
+  return (
+    Array.isArray(tools) &&
+    tools.length > 0 &&
+    tools.every((t) => typeof t === 'string' && /^[A-Za-z][A-Za-z0-9_]*$/.test(t))
+  );
+}
+
+// Validates the assertions COLLECTION itself (missing, null, not an array, or
+// empty), shared by lintCase, the modeRun pre-spawn guard, and scoreCase so
+// the three sites can't disagree about what a well-formed collection is. Must
+// run before any code iterates `assertions`: a missing/null/non-array value
+// would otherwise throw on the first `for...of`. Returns a problem string, or
+// '' when the collection is at least structurally iterable.
+function assertionCollectionProblems(assertions) {
+  if (!Array.isArray(assertions) || assertions.length === 0) return 'missing assertions';
+  return '';
+}
+
+// Per-assertion shape validation, shared by lintCase (corpus lint) and
+// scoreCase (--check/--run scoring), so the two can never drift apart: a
+// restated copy of this condition in scoreCase's own words would leave the
+// exact hole this predicate exists to close. Returns an array of problem
+// descriptions (empty when the assertion is structurally well-formed); an
+// empty array does not vouch for the assertion's semantic outcome, only its
+// shape.
+function assertionShapeProblems(a) {
+  const problems = [];
+  const kind = a && a.kind;
+  if (kind === 'file_regex') {
+    if (!a || typeof a.path !== 'string' || a.path === '') {
+      problems.push('missing path');
+    } else if (!relPathIsContained(a.path)) {
+      problems.push(`unsafe path '${a.path}': must stay inside the case dir`);
+    }
+    if (!a || typeof a.regex !== 'string' || a.regex === '') {
+      problems.push('missing regex');
+    } else {
+      try {
+        new RegExp(a.regex, a.flags);
+      } catch (e) {
+        problems.push(`regex does not compile: ${e.message}`);
+      }
+    }
+  } else if (kind === 'response_regex') {
+    if (!a || typeof a.regex !== 'string' || a.regex === '') {
+      problems.push('missing regex');
+    } else {
+      try {
+        new RegExp(a.regex, a.flags);
+      } catch (e) {
+        problems.push(`regex does not compile: ${e.message}`);
+      }
+    }
+  } else if (kind === 'trace_agent_dispatch_count') {
+    // A min of 0 asserts nothing UNLESS max is also given: {min:0,max:0}
+    // is a real assertion ("no dispatches"), so only a bare min:0 with no
+    // max is the vacuous case.
+    if (!(Number.isInteger(a.min) && a.min >= 0)) {
+      problems.push('min must be an integer >= 0');
+    } else if (a.min === 0 && a.max === undefined) {
+      problems.push('a min of 0 asserts nothing unless max is also given');
+    }
+    if (a.max !== undefined && !(Number.isInteger(a.max) && a.max >= a.min)) {
+      problems.push('max must be an integer >= min');
+    }
+  } else {
+    problems.push('kind must be file_regex, response_regex, or trace_agent_dispatch_count');
+  }
+  return problems;
 }
 
 // Ids appearing more than once in the corpus. Duplicates collide on the same
@@ -265,29 +454,52 @@ function lintCase(c, fixturesDir) {
     problems.push(`fixture dir not found: ${c.fixture}`);
   }
 
-  if (!Array.isArray(c.assertions) || c.assertions.length === 0) {
-    problems.push('missing assertions');
+  if (c.setup !== undefined) {
+    if (!setupIsSafe(c.setup)) {
+      problems.push(`invalid setup '${c.setup}': must be a direct-child .js file, no path syntax`);
+    } else if (!isFile(path.join(fixturesDir, c.setup))) {
+      problems.push(`setup script not found: ${c.setup}`);
+    }
+  }
+
+  if (c.allowed_tools !== undefined && !allowedToolsIsValid(c.allowed_tools)) {
+    problems.push(
+      `invalid allowed_tools ${JSON.stringify(c.allowed_tools)}: must be a non-empty array of bare ` +
+        'tool names matching /^[A-Za-z][A-Za-z0-9_]*$/'
+    );
+  }
+
+  const assertionsProblem = assertionCollectionProblems(c.assertions);
+  if (assertionsProblem) {
+    problems.push(assertionsProblem);
   } else {
     c.assertions.forEach((a, i) => {
-      if (!a || a.kind !== 'file_regex') problems.push(`assertions[${i}]: kind must be file_regex`);
-      if (!a || typeof a.path !== 'string' || a.path === '') {
-        problems.push(`assertions[${i}]: missing path`);
-      } else if (!relPathIsContained(a.path)) {
-        problems.push(`assertions[${i}]: unsafe path '${a.path}': must stay inside the case dir`);
-      }
-      if (!a || typeof a.regex !== 'string' || a.regex === '') {
-        problems.push(`assertions[${i}]: missing regex`);
-      } else {
-        try {
-          new RegExp(a.regex, a.flags);
-        } catch (e) {
-          problems.push(`assertions[${i}]: regex does not compile: ${e.message}`);
-        }
+      for (const problem of assertionShapeProblems(a)) {
+        problems.push(`assertions[${i}]: ${problem}`);
       }
     });
   }
 
   return { id: c.id ?? null, problem_count: problems.length, problems };
+}
+
+// Whether a run's metadata indicates a clean run: no interruption, timeout,
+// spawn error, truncation, non-null signal, or nonzero exit code. Factored
+// out so readRunMetadata (disk-backed, used by scoreCase/--check) and
+// modeRun's in-memory setup-artifact buffering (below) share one judgment of
+// "clean" rather than restating it.
+function metadataIsClean(metadata) {
+  if (metadata.interrupted) return { clean: false, reason: 'live run interrupted' };
+  if (metadata.timed_out) return { clean: false, reason: 'live run timed out' };
+  if (metadata.spawn_error !== null) {
+    return { clean: false, reason: `live run spawn error: ${metadata.spawn_error}` };
+  }
+  if (metadata.stdout_truncated || metadata.stderr_truncated) {
+    return { clean: false, reason: 'live run output truncated' };
+  }
+  if (metadata.signal !== null) return { clean: false, reason: `live run ended by signal ${metadata.signal}` };
+  if (metadata.exit_code !== 0) return { clean: false, reason: `live run exited ${metadata.exit_code}` };
+  return { clean: true, reason: '' };
 }
 
 function readRunMetadata(metaPath) {
@@ -324,23 +536,8 @@ function readRunMetadata(metaPath) {
     Number.isInteger(metadata.duration_ms) &&
     metadata.duration_ms >= 0;
   if (!valid) return { present: true, clean: false, reason: 'invalid run metadata' };
-  if (metadata.interrupted) {
-    return { present: true, clean: false, reason: 'live run interrupted', metadata };
-  }
-  if (metadata.timed_out) return { present: true, clean: false, reason: 'live run timed out', metadata };
-  if (metadata.spawn_error !== null) {
-    return { present: true, clean: false, reason: `live run spawn error: ${metadata.spawn_error}`, metadata };
-  }
-  if (metadata.stdout_truncated || metadata.stderr_truncated) {
-    return { present: true, clean: false, reason: 'live run output truncated', metadata };
-  }
-  if (metadata.signal !== null) {
-    return { present: true, clean: false, reason: `live run ended by signal ${metadata.signal}`, metadata };
-  }
-  if (metadata.exit_code !== 0) {
-    return { present: true, clean: false, reason: `live run exited ${metadata.exit_code}`, metadata };
-  }
-  return { present: true, clean: true, reason: '', metadata };
+  const outcome = metadataIsClean(metadata);
+  return { present: true, clean: outcome.clean, reason: outcome.reason, metadata };
 }
 
 // ---- Liveness ----------------------------------------------------------------
@@ -404,6 +601,31 @@ function scoreCase(c, resultsDir, dups, runState) {
   const trace = path.join(resultsDir, `${id}.jsonl`);
   const activated = activatedSkills(trace);
 
+  // Parity with the unsafe-assertion-path guard below: a hand-assembled
+  // corpus can carry an unsafe setup value that modeRun's pre-spawn guard
+  // never saw.
+  if (c.setup !== undefined && !setupIsSafe(c.setup)) {
+    return { id, status: 'invalid', reason: `invalid setup '${c.setup}': path syntax not allowed`, activated };
+  }
+
+  // Same parity concern for allowed_tools: a hand-assembled corpus can carry
+  // a malformed value that modeRun's pre-spawn guard never saw.
+  if (c.allowed_tools !== undefined && !allowedToolsIsValid(c.allowed_tools)) {
+    return {
+      id,
+      status: 'invalid',
+      reason: `invalid allowed_tools: does not match the required grammar`,
+      activated,
+    };
+  }
+
+  // Absent setup metadata (no `<id>.setup.meta.json`) is tolerated as if
+  // setup ran cleanly, same legacy tolerance as the agent-run metadata below.
+  const setupMetadata = readRunMetadata(path.join(resultsDir, `${id}.setup.meta.json`));
+  if (!setupMetadata.clean) {
+    return { id, status: 'invalid', reason: `setup: ${setupMetadata.reason}`, activated };
+  }
+
   const metadata = readRunMetadata(path.join(resultsDir, `${id}.meta.json`));
   if (!metadata.clean) {
     return { id, status: 'invalid', reason: metadata.reason, activated };
@@ -418,8 +640,53 @@ function scoreCase(c, resultsDir, dups, runState) {
     return { id, status: 'fail', reason: `skill ${c.skill} not activated`, activated };
   }
 
+  // Validate the COLLECTION before iterating it: a missing/null/non-array
+  // `assertions` would otherwise throw in the loop below instead of scoring
+  // this one case invalid.
+  const assertionsProblem = assertionCollectionProblems(c.assertions);
+  if (assertionsProblem) {
+    return { id, status: 'invalid', reason: assertionsProblem, activated };
+  }
+
   const caseDir = path.join(resultsDir, id);
   for (const a of c.assertions) {
+    // Same shape predicate lintCase uses: a malformed assertion (missing
+    // min/max, missing regex, etc.) is scored invalid here, never coerced
+    // into a pass by the comparisons below and never an uncaught throw.
+    const shapeProblems = assertionShapeProblems(a);
+    if (shapeProblems.length > 0) {
+      return {
+        id,
+        status: 'invalid',
+        reason: `malformed assertion (${a && a.kind}): ${shapeProblems.join('; ')}`,
+        activated,
+      };
+    }
+    if (a.kind === 'trace_agent_dispatch_count') {
+      const count = agentDispatchCount(trace);
+      const suffix = a.max !== undefined ? ` max ${a.max}` : '';
+      if (count < a.min || (a.max !== undefined && count > a.max)) {
+        return {
+          id,
+          status: 'fail',
+          reason: `assertion failed: ${count} subagent dispatches, expected min ${a.min}${suffix}`,
+          activated,
+        };
+      }
+      continue;
+    }
+    if (a.kind === 'response_regex') {
+      const re = new RegExp(a.regex, a.flags);
+      if (!re.test(assistantText(trace))) {
+        return {
+          id,
+          status: 'fail',
+          reason: `assertion failed: assistant text !~ /${a.regex}/${a.flags}`,
+          activated,
+        };
+      }
+      continue;
+    }
     if (!relPathIsContained(a.path)) {
       return { id, status: 'invalid', reason: `unsafe assertion path '${a.path}'`, activated };
     }
@@ -655,6 +922,39 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
   };
 }
 
+// The setup child runs git init/add/commit inside the case dir. If GIT_DIR
+// (or a sibling GIT_* var) happens to be exported in the calling shell, an
+// inherited copy would point those commands at the operator's real
+// repository instead, staging and committing a mass deletion there. A
+// denylist of individual names must be kept in sync with git's own variable
+// set, which is the wrong shape: git also reads GIT_CONFIG_COUNT plus its
+// GIT_CONFIG_KEY_<n>/GIT_CONFIG_VALUE_<n> pairs and GIT_CONFIG_SYSTEM, either
+// of which can set core.worktree (making `git add -A` read outside the
+// fixture) or core.hooksPath (making `git commit` execute an
+// operator-supplied hook), and a fixed list would miss them. Strip every
+// inherited variable whose name starts with GIT_ instead. The fixture setup
+// scripts under fixtures/behavioral/ set GIT_AUTHOR_DATE/GIT_COMMITTER_DATE
+// themselves on their own git invocations (spread from this child's own
+// process.env, then overridden), so sweeping the INHERITED environment here
+// does not break them.
+function setupChildEnv() {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key];
+  }
+  return env;
+}
+
+// Setup-artifact writes buffered until flushSetupArtifacts runs (below): the
+// agent's cwd is resultsDir/<id>, so writing these to resultsDir before the
+// agent spawns would let it `ls ..` and see setup output a hand-assembled
+// results dir never presents.
+function flushSetupArtifacts(resultsDir, id, artifacts) {
+  fs.writeFileSync(path.join(resultsDir, `${id}.setup.out`), artifacts.out);
+  fs.writeFileSync(path.join(resultsDir, `${id}.setup.err`), artifacts.err);
+  fs.writeFileSync(path.join(resultsDir, `${id}.setup.meta.json`), artifacts.meta);
+}
+
 async function modeRun(args) {
   if (process.env.ACTIVATION_ALLOW_SPEND !== '1') {
     process.stderr.write('refusing: --run invokes claude -p (billable, executes tool calls).\n');
@@ -674,20 +974,89 @@ async function modeRun(args) {
   const fixturesDir = path.join(path.dirname(corpus), 'behavioral');
   const attempted = new Set();
 
+  // A trace_agent_dispatch_count assertion measures how many subagents the
+  // real installed roster dispatches; without the reviewer-capable agents
+  // the dispatch assertion actually depends on, the count would only
+  // measure the sandbox, not the skill. Checked once, up front, so a whole
+  // run doesn't spend on a foregone-invalid case count.
+  const needsRoster = cases.some(
+    (c) => Array.isArray(c.assertions) && c.assertions.some((a) => a && a.kind === 'trace_agent_dispatch_count')
+  );
+  if (needsRoster) {
+    const agentsDir = path.join(os.homedir(), '.claude', 'agents');
+    const requiredAgents = ['architect-reviewer.md', 'security-auditor.md'];
+    let present = new Set();
+    if (isDir(agentsDir)) {
+      try {
+        present = new Set(fs.readdirSync(agentsDir));
+      } catch {}
+    }
+    const missing = requiredAgents.filter((entry) => !present.has(entry));
+    if (missing.length > 0) {
+      die(
+        `error: a trace_agent_dispatch_count assertion needs the reviewer-capable roster entries ` +
+          `${requiredAgents.join(', ')} installed at ${agentsDir}; missing: ${missing.join(', ')} ` +
+          '(fix: PT_BYPASS_PERMISSIONS=1 HOME=<sandbox> ./install.sh claude); without them a dispatch ' +
+          'assertion measures the sandbox, not the skill.'
+      );
+    }
+  }
+
   for (let caseIndex = 0; caseIndex < cases.length; caseIndex++) {
     if (parentInterrupted) break;
     const c = cases[caseIndex];
     // Scored as invalid below; never touch the filesystem (or spend) on an
-    // unsafe id/fixture or a duplicate id that would collide on <id> paths.
-    if (!idIsPathSafe(c.id) || !idIsPathSafe(c.fixture) || dups.has(c.id)) continue;
+    // unsafe id/fixture/setup, an invalid allowed_tools, a malformed
+    // assertion collection or assertion, or a duplicate id that would
+    // collide on <id> paths. Mirrors the existing rule that a failed setup
+    // suppresses the agent spawn: a malformed corpus entry must never spend
+    // either.
+    if (
+      !idIsPathSafe(c.id) ||
+      !idIsPathSafe(c.fixture) ||
+      dups.has(c.id) ||
+      (c.setup !== undefined && !setupIsSafe(c.setup)) ||
+      (c.allowed_tools !== undefined && !allowedToolsIsValid(c.allowed_tools)) ||
+      assertionCollectionProblems(c.assertions) !== '' ||
+      c.assertions.some((a) => assertionShapeProblems(a).length > 0)
+    ) {
+      continue;
+    }
     attempted.add(c.id);
     const fixtureDir = path.join(fixturesDir, c.fixture);
     const caseDir = path.join(resultsDir, c.id);
     fs.rmSync(caseDir, { recursive: true, force: true });
-    for (const suffix of ['.jsonl', '.err', '.meta.json']) {
+    for (const suffix of ['.jsonl', '.err', '.meta.json', '.setup.out', '.setup.err', '.setup.meta.json']) {
       fs.rmSync(path.join(resultsDir, `${c.id}${suffix}`), { force: true });
     }
     fs.cpSync(fixtureDir, caseDir, { recursive: true });
+
+    let setupArtifacts = null;
+    if (c.setup !== undefined) {
+      const setupRun = await runChildCase(
+        caseIndex + 1,
+        cases.length,
+        `${c.id}:setup`,
+        process.execPath,
+        // Absolute: the child's cwd is caseDir, not wherever CORPUS was
+        // resolved from, so a relative CORPUS would otherwise hand the
+        // child a script path Node resolves from the wrong directory.
+        [path.resolve(fixturesDir, c.setup)],
+        { cwd: caseDir, input: '', env: setupChildEnv() },
+        timeoutMs
+      );
+      setupArtifacts = {
+        out: setupRun.stdout,
+        err: setupRun.stderr,
+        meta: JSON.stringify(setupRun.metadata, null, 2) + '\n',
+      };
+      if (!metadataIsClean(setupRun.metadata).clean) {
+        // Suppress-spawn path: no agent will run to see these, so nothing is
+        // gained by holding them back further.
+        flushSetupArtifacts(resultsDir, c.id, setupArtifacts);
+        continue; // never spend on a broken fixture
+      }
+    }
 
     const run = await runChildCase(
       caseIndex + 1,
@@ -705,10 +1074,13 @@ async function modeRun(args) {
         'acceptEdits',
         '--max-turns',
         String(c.max_turns),
+        ...(c.allowed_tools !== undefined ? ['--allowedTools', ...c.allowed_tools] : []),
       ],
       { cwd: caseDir, input: '' },
       timeoutMs
     );
+    // Flushed only now that the agent run has completed (success path).
+    if (setupArtifacts) flushSetupArtifacts(resultsDir, c.id, setupArtifacts);
     fs.writeFileSync(path.join(resultsDir, `${c.id}.jsonl`), run.stdout);
     fs.writeFileSync(path.join(resultsDir, `${c.id}.err`), run.stderr);
     fs.writeFileSync(
