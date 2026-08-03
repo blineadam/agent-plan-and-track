@@ -73,7 +73,7 @@ repo has since renamed or removed gets moved into a `.plan-and-track-pruned/`
 folder rather than deleted. The per-file rules are in the `install.sh`
 header. To update, `git pull` and rerun; tagged releases (`vX.Y.Z`, on the
 Releases tab) are known-good snapshots you can pin with
-`git checkout 2.3.0` first.
+`git checkout 2.4.0` first.
 
 Installing does not change Claude Code's permission prompts unless you
 ask it to. Set `PT_BYPASS_PERMISSIONS=1` before running if you want the
