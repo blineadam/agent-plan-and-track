@@ -6,9 +6,10 @@ main [README](../README.md#what-you-get).
 
 ## Everyday workflow
 
-Roughly the order you'd hit these in a session: plan the work, implement
-under a fact-forcing gate, get checked before calling it done, and turn any
-correction into a rule for next time.
+These follow the rough order of a session: plan and investigate, finish the
+work, then publish or capture what the session taught you.
+
+### Plan and investigate
 
 - **`plan-and-track`** (skill) kicks in on multi-step work: a feature, a
   refactor, a 3+ step fix, or picking a repo back up that already has a
@@ -19,17 +20,18 @@ correction into a rule for next time.
   executor; `main` needs a stated reason), and speed-bumps any write that
   would delete an existing `## Migration State` block (deny once, retry
   passes).
-- **`plan-and-track`**'s Running autonomously section kicks in when you're
-  told to just proceed: "plow ahead," "use your best judgment," "don't
-  stop." Turns ordinary ambiguity into stated assumptions, keeps moving, and
-  only stops for a real blocker.
-  Ends with a recap of what it decided and any residual risk.
+
+  Its Running autonomously section kicks in when you are told to proceed:
+  "plow ahead," "use your best judgment," or "don't stop." It turns ordinary
+  ambiguity into stated assumptions, stops only for a real blocker, and ends
+  with its decisions and residual risk.
 - **gateguard** (skill + enforcing hook, Claude/Codex/Copilot) wants the
   facts first: before the first edit to a file, it wants to know who calls
-  this code, what breaks, what the data actually looks like. The hook
-  blocks that first edit until you've laid them out; the retry always
-  passes. One script runs on all three harnesses, and an env var can
-  soften or turn it off.
+  this code, what breaks, and what the data actually looks like. One script
+  runs on all three harnesses. It warns by default on Claude and Codex, blocks
+  by default on Copilot, and can be tuned or disabled with environment
+  variables. Either way, it marks the file when it fires, so later edits to
+  that file are not gated again in the same session.
 - **`read-the-damn-docs`** (skill) fires before leaning on memory for how a
   third-party API, library, or provider actually behaves right now. Forces
   a web search for the real docs first, complementing gateguard's local
@@ -42,19 +44,22 @@ correction into a rule for next time.
   files, one mechanical change, possibly parallel agents. Layers on
   `plan-and-track` and `efficient-frontier`, and keeps a durable
   `## Migration State` block in the project's `tasks/todo.md`.
+
+### Finish, learn, and publish
+
 - **delivery-gate** (enforcing hook only, Claude/Codex) is a warn-only check
   right before you finish: did you verify, did you checkpoint? Backs up
   the verify-before-done and capture-lesson rules at the harness level. An
   env var can make it block instead of warn.
-- **`capture-lesson`** (skill) kicks in whenever you get corrected or I
-  notice the same repeated error, and turns the correction into a durable 
+- **`capture-lesson`** (skill) kicks in whenever the user corrects the agent
+  or the agent notices a repeated error. It turns the correction into a durable
   rule in `tasks/lessons.md`.
 - **`humanizer`** (skill, adapted from
   [blader/humanizer](https://github.com/blader/humanizer)) kicks in before
   finalizing longer user-facing writing: README sections, docs, PR
   descriptions, blog-style prose. Strips the usual AI writing tells (em
   dashes, promotional puffery, filler, rule-of-three, chatbot artifacts)
-  and restores something closer to a real voice.
+  while preserving the intended meaning and register.
 - **`yeet`** (skill) kicks in once work is done and ready to ship: commits,
   pushes, and opens a GitHub PR with the standing PR-body heading set via
   `--body-file`, requests a Copilot review when the repo doesn't
@@ -70,12 +75,11 @@ testing. Tuning knobs for these hooks live in their script headers under
 
 ## Security
 
-Threat modeling lives in the `security-auditor` agent rather than a skill:
-`agents/security-auditor.md` carries a threat-model mode (adapted from
-[openai/skills](https://github.com/openai/skills)) that answers an explicit
-threat-modeling request with an AppSec-grade report of trust boundaries,
-abuse paths, and prioritized mitigations, instead of its usual
-finding-ranked security review.
+Threat modeling lives in the `security-auditor` agent rather than a skill.
+`agents/security-auditor.md` defines its threat-model mode, adapted from
+[openai/skills](https://github.com/openai/skills), answers an explicit
+threat-modeling request with trust boundaries, abuse paths, and prioritized
+mitigations instead of the usual finding-ranked security review.
 
 ## Maintenance skills
 
@@ -91,9 +95,11 @@ For writing a new skill or rule and checking that it actually works:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
-| **`rules-distill`** | Finds principles that show up across your skills but aren't rules yet, and proposes promoting them. | All 3 |
-| **`skill-comply`** | Checks whether a fresh agent actually follows a given rule. | Claude + Codex |
-| **`skill-activation`** | Checks whether the *right* skill fires for a prompt, a routing check that's a sibling to `skill-comply`. | All 3 (the runtime check itself is Claude-only) |
+| **`rules-distill`** | Promotes recurring skill principles to rules. | All 3 |
+| **`skill-comply`** | Checks whether a fresh agent follows a rule. | Claude + Codex |
+| **`skill-activation`** | Checks skill routing. | All 3; runtime is Claude-only |
+
+`skill-activation` is the routing counterpart to `skill-comply`.
 
 ### Session and context upkeep
 
@@ -101,8 +107,12 @@ For keeping a live session, and the always-on config behind it, healthy:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
-| **`strategic-compact`** | Guides manual `/compact` at logical boundaries; its current auto-suggest hook is Claude Code-only. | All 3 |
-| **`context-budget`** | Audits configured always-on context input and flags what's too big; Codex's number is a source upper-bound, not an exact session total. | All 3 |
+| **`strategic-compact`** | Guides manual `/compact` timing. | All 3 |
+| **`context-budget`** | Audits always-on context and flags oversized input. | All 3 |
+
+`strategic-compact` uses logical boundaries; its auto-suggest hook is
+Claude-only. The Codex context number from `context-budget` is a source upper
+bound, not an exact session total.
 
 ### Generated docs for agents
 
@@ -110,8 +120,15 @@ For turning a project's conventions into documentation other agents can read:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
-| **`inherit-legacy-style`** | Captures a legacy codebase's conventions into an enforceable `.ai-style-rules.md`; the current hard implementation is Claude Code-specific. | All 3 |
-| **`copilot-review-instructions`** | Generates path-scoped `.github/instructions/*.instructions.md` PR-review directives from a project's documented conventions (style rules, instructions file, README, docs). Codex review rules belong under `## Code Review Rules` in the closest applicable `AGENTS.md`. | All 3 (Copilot-only output) |
+| **`inherit-legacy-style`** | Captures legacy conventions in `.ai-style-rules.md`. | All 3 |
+| **`copilot-review-instructions`** | Writes path-scoped review directives. | All 3 |
+
+`inherit-legacy-style` captures enforceable conventions; its hard
+implementation is Claude-only.
+`copilot-review-instructions` writes Copilot-only output to
+`.github/instructions/*.instructions.md` from style rules, instruction files,
+the README, and other docs. For Codex, review rules belong under
+`## Code Review Rules` in the closest applicable `AGENTS.md`.
 
 ## Design, document, and browser-testing skills
 
@@ -119,10 +136,13 @@ Adapted from [anthropics/skills](https://github.com/anthropics/skills), for
 design, document-creation, and browser-testing work rather than the everyday
 coding workflow above:
 
-| Skill | What it does | Where |
-| --- | --- | --- |
-| **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults; also applies one of ten curated color/font themes, or a generated one, to an existing artifact. | All 3 |
-| **`webapp-testing`** | Drives a local web app in a real browser with Playwright to verify frontend behavior, debug UI, capture screenshots, and read console logs. | All 3 |
+- **`frontend-design`** (all 3) gives distinctive, opinionated direction for
+  palette, typography, and layout in new or reshaped UI. It can also apply one
+  of ten curated color/font themes, or a generated theme, to an existing
+  artifact.
+- **`webapp-testing`** (all 3) drives a local web app in a real browser with
+  Playwright to verify behavior, debug UI, capture screenshots, and read
+  console logs.
 
 [anthropics/skills](https://github.com/anthropics/skills) also has `docx`,
 `pdf`, `pptx`, and `xlsx` skills, but their license doesn't allow vendoring

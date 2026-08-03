@@ -21,30 +21,32 @@ matching each kind of rule to a mechanism that keeps it alive:
 
 | Rule type | Mechanism | Why it sticks |
 | --- | --- | --- |
-| Short, constant constraints | Instructions file | Always loaded; kept tiny so it isn't buried by its own bulk |
-| Procedures (plan, capture lessons) | **Skills** | Loaded just-in-time, at the recent end of context, when triggered |
-| The core rules themselves | **Hooks** re-injecting a digest | Harness-enforced repetition, immune to attention decay |
+| Short, constant constraints | Instructions file | Always loaded and kept short |
+| Procedures | **Skills** | Loaded near the end of context when triggered |
+| Core rules | **Hooks** re-injecting a digest | Repeated by the harness throughout the session |
 
-The extra weight buys two concrete things. This repo checks its own
-enforcement: `skill-comply` measures whether a rule is really followed and
-`skill-activation` measures whether the right skill fires, and both have
-caught real gaps in past runs. Supporting three harnesses is most of the
-installer's bulk and none of the runtime cost: once a session starts, it
-doesn't add anything.
+This repo checks its own enforcement. `skill-comply` measures whether a rule
+is followed, while `skill-activation` measures whether the right skill fires.
+Both have caught real gaps in past runs.
+
+Supporting three harnesses accounts for most of the installer's bulk. At
+runtime, each session uses only its own harness integration.
 
 ## What you get
 
-The skills you'll actually hit every session: `plan-and-track` plans and
-tracks non-trivial work, `gateguard` makes you show your work before the
-first edit to a file, `capture-lesson` turns your corrections into durable
-rules, and `humanizer` cleans up the writing voice before anything
-user-facing ships. A few more round out autonomous work, docs-first
-research, and delegation to subagents.
+The skills used most often are:
+
+- `plan-and-track` plans and tracks non-trivial work.
+- `gateguard` asks for concrete facts before the first edit to a file.
+- `capture-lesson` turns corrections into durable rules.
+- `humanizer` cleans up longer user-facing writing before it ships.
+
+Other skills cover autonomous work, docs-first research, maintenance, and
+delegation to subagents.
 
 See [docs/skills.md](docs/skills.md) for the full catalog, including the
-maintenance and design skills. 
-See [docs/models.md](docs/models.md) for the model defaults each harness 
-gets, the tiered subagents Claude, Codex, and Copilot install, and per-tool notes.
+maintenance and design skills. See [docs/models.md](docs/models.md) for model
+defaults, tiered subagents, and per-tool notes.
 
 ## Install
 
@@ -56,8 +58,10 @@ missing `jq` is caught partway through rather than up front.
 ```sh
 git clone https://github.com/blineadam/agent-plan-and-track.git
 cd agent-plan-and-track
-./install.sh all        # macOS/Linux; or: claude | copilot | codex
-./install-office-skills.sh   # optional docx, pdf, pptx, xlsx skills, kept separate for licensing reasons; or: uninstall
+./install.sh all  # macOS/Linux; or: claude | copilot | codex
+
+# Optional docx, pdf, pptx, and xlsx skills
+./install-office-skills.sh
 ```
 
 On Windows, run the PowerShell installer instead (same targets):
@@ -67,13 +71,20 @@ powershell -ExecutionPolicy Bypass -File install.ps1 all
 powershell -ExecutionPolicy Bypass -File install-office-skills.ps1
 ```
 
-Re-running is safe any time: each run updates the files this repo manages
-and leaves anything you've added yourself alone. A skill or subagent this
-repo has since renamed or removed gets moved into a `.plan-and-track-pruned/`
-folder rather than deleted. The per-file rules are in the `install.sh`
-header. To update, `git pull` and rerun; tagged releases (`vX.Y.Z`, on the
-Releases tab) are known-good snapshots you can pin with
-`git checkout 2.3.0` first.
+Re-running is safe: each run updates the files this repo manages and leaves
+your additions alone. A skill or subagent this repo has renamed or removed is
+moved into `.plan-and-track-pruned/` rather than deleted. The exact ownership
+rules are in the `install.sh` header.
+
+To update, run `git pull` and reinstall. Tagged releases (`vX.Y.Z` on the
+Releases tab) are known-good snapshots you can pin first, for example:
+
+```sh
+git checkout v2.3.0
+```
+
+The office skills stay separate for licensing reasons. Pass `uninstall` to
+either office-skills installer to remove them.
 
 Installing does not change Claude Code's permission prompts unless you
 ask it to. Set `PT_BYPASS_PERMISSIONS=1` before running if you want the
@@ -83,13 +94,13 @@ its dangerous-mode warning.
 ### First run in a new project
 
 The installer is per-machine; each project still needs its own context.
-Start by generating the harness's project instructions, then capture the
-repo's conventions:
+Start by generating the harness's project instructions (`CLAUDE.md`, or
+`AGENTS.md` on Codex), then capture the repo's conventions:
 
 ```text
-/init                         # generate the project's own CLAUDE.md (AGENTS.md on Codex)
-/inherit-legacy-style         # capture its implicit conventions in .ai-style-rules.md
-/copilot-review-instructions  # if on GitHub: teach Copilot's PR review those conventions
+/init                         # create project instructions
+/inherit-legacy-style         # capture conventions in .ai-style-rules.md
+/copilot-review-instructions  # on GitHub, teach Copilot those conventions
 ```
 
 On Codex, invoke the installed skills with `$skill-name` instead of a
@@ -98,38 +109,14 @@ slash, or pick them from `/skills`.
 ## Layout
 
 ```text
-rules/agent-guidelines.md    the short instructions file (constant constraints)
-rules/core-rules.md          one-paragraph digest the hooks re-inject
-skills/plan-and-track/       plan → track → verify workflow (tasks/todo.md)
-skills/capture-lesson/       turn every user correction into a rule (tasks/lessons.md)
-skills/humanizer/            strip AI-writing tells, restore a natural voice (portable)
-skills/rules-distill/        distill cross-cutting skill principles into rules (portable)
-skills/strategic-compact/    when to /compact at logical boundaries (portable)
-skills/context-budget/       audit always-on context cost, flag bloat (portable)
-skills/skill-comply/         measure whether a rule/skill is actually followed (Claude + Codex)
-skills/skill-activation/     routing regression: does the right skill fire? (static: all 3; runtime: Claude)
-skills/gateguard/            fact-forcing gate: investigate before the first edit to a file (portable)
-skills/inherit-legacy-style/ capture legacy conventions as a standing constraint (portable)
-skills/copilot-review-instructions/ generate Copilot PR-review instructions from a project's documented conventions (portable; Copilot-only output)
-skills/efficient-frontier/   routing doctrine: which tiered subagent fits a piece of delegated work (portable)
-skills/read-the-damn-docs/   docs-first grounding before third-party API/version work (portable)
-skills/yeet/                 publish end to end: branch, commit, push, PR, Copilot review to resolution (portable)
-skills/frontend-design/      distinctive visual/UI design direction plus 10 pre-set artifact themes (portable)
-skills/webapp-testing/       drive a local web app in a real browser with Playwright: verify frontend behavior, debug UI, screenshot, read console logs (portable)
-skills/migration-discipline/ disciplines for large migrations/ports: ownership isolation, validation ladder, work-queue batching, durable migration state (portable)
-agents/                      tiered subagents (Claude .md + rendered Codex TOML + rendered Copilot
-                              Markdown): architect-reviewer, security-auditor, fable-advisor (Fable);
-                              planner (Opus); researcher, debugger, executor (Sonnet); mechanic (Haiku)
-hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
-hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
-hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate + plan-gate
-hooks/copilot/                Copilot wiring: throttled digest + gateguard
-hooks/codex/                  Codex wiring: digest + gateguard + delivery-gate + scope/mutation plan gate
-install.sh                    per-tool installer
-docs/skills.md                full skill catalog
-docs/models.md                model defaults, tiered subagents, per-tool notes
-docs/hooks.md                 per-hook behavior, harness scope, wiring contract
-docs/installers.md            install.sh / install.ps1 deploy and idempotency rules
+rules/               portable instruction files and the hook-injected digest
+skills/              task procedures; see docs/skills.md for the full catalog
+agents/              tiered subagent sources rendered for all three harnesses
+hooks/               shared scripts plus Claude, Codex, and Copilot wiring
+docs/                skill, model, hook, and installer references
+install.sh           macOS/Linux installer
+install.ps1          Windows installer
+install-office-*     optional office-skill installers
 ```
 
 ## Customizing
@@ -143,12 +130,12 @@ Two things survive every update:
   `## Python Environment` section you added below the end marker.
 
 To change a shared rule, edit `rules/core-rules.md` and/or
-`rules/agent-guidelines.md` and re-run `./install.sh all`. Digest changes
-are live immediately; restart Copilot/Codex sessions for instruction
-changes. To add a skill, drop it in `skills/<name>/SKILL.md` (the
-`description` field tells the agent *when* to use it) and re-install; add a
-harness-scope exception in both installers only when the skill cannot be
-portable.
+`rules/agent-guidelines.md` and re-run `./install.sh all`. Digest changes are
+live immediately; restart Copilot and Codex sessions for instruction changes.
+
+To add a skill, create `skills/<name>/SKILL.md`. Its `description` tells the
+agent when to use it. Reinstall afterward, and add a harness-scope exception
+to both installers only when the skill cannot be portable.
 
 For per-harness quirks (how each tool loads the digest, restart
 requirements, known caveats), see
