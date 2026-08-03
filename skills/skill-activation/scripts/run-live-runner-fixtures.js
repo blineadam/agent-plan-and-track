@@ -1162,9 +1162,36 @@ async function testBehavioralAssertionsAndSetup(binDir) {
   assert(noRosterRun.code !== 0, 'a dispatch-count assertion ran without an installed roster');
   assert(!fs.existsSync(noRosterMarker), 'a missing roster did not suppress the agent spawn');
 
+  // An unrelated agent is not enough: the preflight names the reviewer-capable
+  // entries the dispatch assertion actually depends on, so a stale or partial
+  // roster must still block rather than buy a billable run that then fails its
+  // assertion for the wrong reason.
   const rosterAgentsDir = path.join(noRosterHome, '.claude', 'agents');
   fs.mkdirSync(rosterAgentsDir, { recursive: true });
   fs.writeFileSync(path.join(rosterAgentsDir, 'planner.md'), '# planner\n');
+  const partialRosterMarker = path.join(rosterRoot, 'partial-roster-spawned');
+  const partialRosterRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(rosterRoot, 'partial-roster-results'), rosterCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      FAKE_SPAWN_MARKER: partialRosterMarker,
+      HOME: noRosterHome,
+      USERPROFILE: noRosterHome,
+    })
+  );
+  assert(
+    partialRosterRun.code !== 0,
+    'a roster missing the reviewer entries did not block the dispatch-count case'
+  );
+  assert(
+    !fs.existsSync(partialRosterMarker),
+    'a roster missing the reviewer entries did not suppress the agent spawn'
+  );
+
+  fs.writeFileSync(path.join(rosterAgentsDir, 'architect-reviewer.md'), '# architect-reviewer\n');
+  fs.writeFileSync(path.join(rosterAgentsDir, 'security-auditor.md'), '# security-auditor\n');
   const withRosterMarker = path.join(rosterRoot, 'with-roster-spawned');
   const withRosterRun = await runNode(
     BEHAVIORAL_RUNNER,
