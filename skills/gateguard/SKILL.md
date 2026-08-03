@@ -1,6 +1,6 @@
 ---
 name: gateguard
-description: Fact-forcing protocol for file edits. Before the first edit to any file in a session, present concrete investigation (importers/callers, affected API, real data schemas, the user's verbatim instruction) instead of guessing. Use when editing unfamiliar files, fixing bugs in an existing codebase, or when AI edits keep breaking callers or mis-assuming data formats. Installs back this with a PreToolUse hook on all three harnesses, a warning reminder by default on Claude and Codex, a blocking gate by default on Copilot.
+description: Use before editing an unfamiliar file, fixing a bug in an existing codebase, or when AI edits keep breaking callers or mis-assuming data formats. Demands concrete facts (importers/callers, blast radius, real data schemas, the user's verbatim instruction) on the first edit to a file each session instead of letting the model guess. A PreToolUse hook backs this on all three harnesses, warning by default on Claude and Codex and blocking by default on Copilot (GATEGUARD_DENY, GATEGUARD_WARN, GATEGUARD_DISABLED env vars tune it). Not for task-tracking files or similar scratch files, which the hook already exempts.
 ---
 
 # GateGuard: Investigate Before You Edit
@@ -87,7 +87,8 @@ Tune via environment variables:
   and Codex; on Copilot this explicitly opts into warn, which there means
   allow plus a stderr note (see below).
 - `GATEGUARD_DENY=1`: use the blocking deny instead. Already the default on
-  Copilot.
+  Copilot. If both `GATEGUARD_DENY=1` and `GATEGUARD_WARN=1` are set, deny
+  wins.
 - `GATEGUARD_EXEMPT_GLOBS`: comma-separated globs to exempt (e.g.
   `**/generated/**,*.snap`). `*` matches within a path segment, `**` across.
 - `GATEGUARD_FULL_DENIALS`: how many firings per session get the full
@@ -96,26 +97,38 @@ Tune via environment variables:
 
 Copilot's PreToolUse contract is fail-closed, so the script's failure path
 emits an explicit allow decision there; Claude Code and Codex share the same
-hook payload shape. All three harnesses also get the
-investigate-before-editing line in the rules digest.
+hook payload shape. All three harnesses also carry the
+investigate-before-editing rule through the always-on instruction file
+(`rules/agent-guidelines.md`), not the rules digest: the digest deliberately
+drops it, leaving this hook and the instruction file as its only delivery
+paths (see AGENTS.md's rule-delivery section).
 
 ### Why the default is warn
 
 The hook used to deny the first edit and mark the file "checked" at the
 moment of denial, so the retry that followed always passed; the gate had no
 way to confirm the demanded facts were actually presented; it could only
-observe a second tool call. Two data points, gathered together: a sample of
-1,282 real firings across 167 local sessions found no case where the demanded
-investigation changed the resulting edit, and a controlled A/B (4 runs per
-arm, one fixture, Sonnet) found the deny-and-retry loop cost about 20% more
-turns and 18% more dollars than warn, for an identical outcome.
+observe a second tool call. Two data points, neither of which is a direct
+warn-versus-deny comparison:
 
-Ceiling caveat: in that A/B the control arm (hook off) never failed either,
-so the result measures the hook's cost and shows no benefit on that task; it
-cannot rule out a benefit on a task hard enough for the control arm to fail.
-One task, one model, not a general verdict on fact-forcing. Copilot keeps
-deny by default because its PreToolUse has no soft-warn channel: a warn
-default there would make the hook silently do nothing.
+- Of 1,282 real firings recorded across 167 local sessions, 12 were actually
+  classified, spread across 8 projects; none of those 12 showed the demanded
+  investigation changing the resulting edit. The remaining firings were never
+  classified, so this is a small spot-check, not a full-corpus finding.
+- A controlled A/B (4 runs per arm, one fixture, Sonnet) compared blocking
+  gateguard against gateguard turned off entirely, not warn against deny.
+  The blocking loop cost about 20% more turns and 18% more dollars than the
+  off arm, and still produced an identical edit in 4 of 4 runs per arm.
+
+Ceiling caveat: the control arm (hook off) never failed either, so the A/B
+measures the blocking loop's cost on a task it could pass without the hook,
+and shows no benefit there; it cannot rule out a benefit on a task hard
+enough for the control arm to fail. It never measured warn mode at all, so it
+doesn't show warn matches deny's accuracy, only that deny's extra cost wasn't
+earned back on this one task. One task, one model, not a general verdict on
+fact-forcing. Copilot keeps deny by default because its PreToolUse has no
+soft-warn channel: a warn default there would make the hook silently do
+nothing.
 
 Deliberately not ported from ECC: the destructive-Bash and routine-Bash gates; Claude Code's own permission system already covers destructive commands,
 and a once-per-session gate on the first Bash call is friction without signal.

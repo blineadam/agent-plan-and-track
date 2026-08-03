@@ -39,9 +39,13 @@
  *
  * DEFAULT POSTURE: warn, not deny, on Claude and Codex (GATEGUARD_DENY=1
  * restores blocking). Copilot defaults to deny instead, because its
- * PreToolUse has no soft-warn channel: emitWarn there degrades to allow plus
- * a stderr note, so a warn default would make the hook a silent no-op on
- * Copilot.
+ * PreToolUse has no soft-warn channel: its documented output only supports
+ * permissionDecision/permissionDecisionReason/modifiedArgs, with no
+ * additionalContext-style field the way postToolUse has (GitHub Copilot
+ * hooks reference, "preToolUse decision control":
+ * https://docs.github.com/en/copilot/reference/hooks-reference). emitWarn
+ * there degrades to allow plus a stderr note, so a warn default would make
+ * the hook a silent no-op on Copilot.
  *
  * Config (env):
  *   GATEGUARD_DISABLED      "1" turns the gate off entirely.
@@ -50,9 +54,11 @@
  *                           has a soft channel; Copilot has none, so warn
  *                           there = allow + stderr note). Already the
  *                           default on Claude/Codex; explicitly selects warn
- *                           on Copilot.
+ *                           on Copilot. Overridden by GATEGUARD_DENY when
+ *                           both are set (see below).
  *   GATEGUARD_DENY          "1" forces the blocking deny behavior on any
- *                           harness. Already the default on Copilot.
+ *                           harness, and wins over GATEGUARD_WARN=1 if both
+ *                           are set. Already the default on Copilot.
  *   GATEGUARD_EXEMPT_GLOBS  comma-separated globs to exempt
  *                           (`*` within a segment, `**` across, `?` one char).
  *   GATEGUARD_FULL_DENIALS  denials per session that get the full fact block
@@ -481,12 +487,15 @@ function main() {
   const ordinal = ordinalBase + 1;
   const fullBudget = intEnv('GATEGUARD_FULL_DENIALS', 3);
 
-  // Default is warn: the marker is claimed at deny time, so a denied-then-
-  // retried edit always passes, meaning deny can never actually verify the
-  // demanded facts were presented. A measured A/B (see skills/gateguard/
-  // SKILL.md) found the deny-and-retry loop cost ~20% more turns for an
-  // identical edit, no accuracy gain. Copilot keeps deny by default because
-  // its warn path has no soft channel (emitWarn degrades to allow + stderr).
+  // Default is warn: the marker was claimed above whenever the hook fires,
+  // in either mode, which is what makes the gate once-per-file and
+  // loop-free regardless of whether this call ends up denying or warning.
+  // Because the marker is claimed either way, the gate can never verify the
+  // demanded facts were actually presented, only that the file was touched
+  // once. A measured A/B (see skills/gateguard/SKILL.md) found the
+  // deny-and-retry loop cost ~20% more turns for an identical edit, no
+  // accuracy gain. Copilot keeps deny by default because its warn path has
+  // no soft channel (emitWarn degrades to allow + stderr).
   const deny =
     process.env.GATEGUARD_DENY === '1' ||
     (dialect === 'copilot' && process.env.GATEGUARD_WARN !== '1');
