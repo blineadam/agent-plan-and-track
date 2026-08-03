@@ -19,9 +19,10 @@ correction into a rule for next time.
   executor; `main` needs a stated reason), and speed-bumps any write that
   would delete an existing `## Migration State` block (deny once, retry
   passes).
-- **`plow-ahead`** (skill) kicks in when you're told to just proceed: "plow
-  ahead," "use your best judgment," "don't stop." Turns ordinary ambiguity
-  into stated assumptions, keeps moving, and only stops for a real blocker.
+- **`plan-and-track`**'s Running autonomously section kicks in when you're
+  told to just proceed: "plow ahead," "use your best judgment," "don't
+  stop." Turns ordinary ambiguity into stated assumptions, keeps moving, and
+  only stops for a real blocker.
   Ends with a recap of what it decided and any residual risk.
 - **gateguard** (skill + enforcing hook, Claude/Codex/Copilot) wants the
   facts first: before the first edit to a file, it wants to know who calls
@@ -69,13 +70,12 @@ testing. Tuning knobs for these hooks live in their script headers under
 
 ## Security
 
-Adapted from [openai/skills](https://github.com/openai/skills), for
-AppSec-grade threat modeling of a repo or path rather than the everyday
-coding workflow above:
-
-| Skill | What it does | Where |
-| --- | --- | --- |
-| **`security-threat-model`** | Enumerates trust boundaries, assets, attacker capabilities, and abuse paths for a repo or path, and writes a concise Markdown threat model. | All 3 |
+Threat modeling lives in the `security-auditor` agent rather than a skill:
+`agents/security-auditor.md` carries a threat-model mode (adapted from
+[openai/skills](https://github.com/openai/skills)) that answers an explicit
+threat-modeling request with an AppSec-grade report of trust boundaries,
+abuse paths, and prioritized mitigations, instead of its usual
+finding-ranked security review.
 
 ## Maintenance skills
 
@@ -121,7 +121,6 @@ coding workflow above:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
-| **`canvas-design`** | Produces original visual art (a poster, piece, or static design) as a PDF or PNG, built from an explicit design philosophy rather than a template. | All 3 |
 | **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults. | All 3 |
 | **`theme-factory`** | Applies one of ten curated color/font themes (or generates a new one) to a slide deck or other artifact for consistent styling. | All 3 |
 | **`webapp-testing`** | Drives a local web app in a real browser with Playwright to verify frontend behavior, debug UI, capture screenshots, and read console logs. | All 3 |
