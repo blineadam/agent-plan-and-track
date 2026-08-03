@@ -40,9 +40,11 @@
  * [min, max]: it only proves HOW MANY Task/Agent tool_use objects the trace
  * carries, not that the dispatched agents were the two independent
  * reviewers a rule names. Any trace_agent_dispatch_count case run via --run
- * needs an installed subagent roster (~/.claude/agents, at least one *.md)
- * first, or the count would measure the sandbox, not the skill; --run dies
- * up front, before spending, when a corpus needs one and none is installed.
+ * needs the reviewer-capable roster entries the dispatch assertion actually
+ * depends on installed (~/.claude/agents/architect-reviewer.md and
+ * ~/.claude/agents/security-auditor.md) first, or the count would measure
+ * the sandbox, not the skill; --run dies up front, before spending, when a
+ * corpus needs the dispatch assertion and either entry is missing.
  * response_regex and file_regex both compile an operator-supplied pattern and
  * run it over trace/file text this runner caps at 64 MB, so a catastrophic
  * pattern can hang the single-threaded scorer while the per-case timeout only
@@ -331,6 +333,59 @@ function allowedToolsIsValid(tools) {
   );
 }
 
+// Per-assertion shape validation, shared by lintCase (corpus lint) and
+// scoreCase (--check/--run scoring), so the two can never drift apart: a
+// restated copy of this condition in scoreCase's own words would leave the
+// exact hole this predicate exists to close. Returns an array of problem
+// descriptions (empty when the assertion is structurally well-formed); an
+// empty array does not vouch for the assertion's semantic outcome, only its
+// shape.
+function assertionShapeProblems(a) {
+  const problems = [];
+  const kind = a && a.kind;
+  if (kind === 'file_regex') {
+    if (!a || typeof a.path !== 'string' || a.path === '') {
+      problems.push('missing path');
+    } else if (!relPathIsContained(a.path)) {
+      problems.push(`unsafe path '${a.path}': must stay inside the case dir`);
+    }
+    if (!a || typeof a.regex !== 'string' || a.regex === '') {
+      problems.push('missing regex');
+    } else {
+      try {
+        new RegExp(a.regex, a.flags);
+      } catch (e) {
+        problems.push(`regex does not compile: ${e.message}`);
+      }
+    }
+  } else if (kind === 'response_regex') {
+    if (!a || typeof a.regex !== 'string' || a.regex === '') {
+      problems.push('missing regex');
+    } else {
+      try {
+        new RegExp(a.regex, a.flags);
+      } catch (e) {
+        problems.push(`regex does not compile: ${e.message}`);
+      }
+    }
+  } else if (kind === 'trace_agent_dispatch_count') {
+    // A min of 0 asserts nothing UNLESS max is also given: {min:0,max:0}
+    // is a real assertion ("no dispatches"), so only a bare min:0 with no
+    // max is the vacuous case.
+    if (!(Number.isInteger(a.min) && a.min >= 0)) {
+      problems.push('min must be an integer >= 0');
+    } else if (a.min === 0 && a.max === undefined) {
+      problems.push('a min of 0 asserts nothing unless max is also given');
+    }
+    if (a.max !== undefined && !(Number.isInteger(a.max) && a.max >= a.min)) {
+      problems.push('max must be an integer >= min');
+    }
+  } else {
+    problems.push('kind must be file_regex, response_regex, or trace_agent_dispatch_count');
+  }
+  return problems;
+}
+
 // Ids appearing more than once in the corpus. Duplicates collide on the same
 // <id>.jsonl / <id>/ paths, so at --run time the later case overwrites the
 // earlier and both would then score against the last writer's artifacts.
@@ -407,48 +462,8 @@ function lintCase(c, fixturesDir) {
     problems.push('missing assertions');
   } else {
     c.assertions.forEach((a, i) => {
-      const kind = a && a.kind;
-      if (kind === 'file_regex') {
-        if (!a || typeof a.path !== 'string' || a.path === '') {
-          problems.push(`assertions[${i}]: missing path`);
-        } else if (!relPathIsContained(a.path)) {
-          problems.push(`assertions[${i}]: unsafe path '${a.path}': must stay inside the case dir`);
-        }
-        if (!a || typeof a.regex !== 'string' || a.regex === '') {
-          problems.push(`assertions[${i}]: missing regex`);
-        } else {
-          try {
-            new RegExp(a.regex, a.flags);
-          } catch (e) {
-            problems.push(`assertions[${i}]: regex does not compile: ${e.message}`);
-          }
-        }
-      } else if (kind === 'response_regex') {
-        if (!a || typeof a.regex !== 'string' || a.regex === '') {
-          problems.push(`assertions[${i}]: missing regex`);
-        } else {
-          try {
-            new RegExp(a.regex, a.flags);
-          } catch (e) {
-            problems.push(`assertions[${i}]: regex does not compile: ${e.message}`);
-          }
-        }
-      } else if (kind === 'trace_agent_dispatch_count') {
-        // A min of 0 asserts nothing UNLESS max is also given: {min:0,max:0}
-        // is a real assertion ("no dispatches"), so only a bare min:0 with no
-        // max is the vacuous case.
-        if (!(Number.isInteger(a.min) && a.min >= 0)) {
-          problems.push(`assertions[${i}]: min must be an integer >= 0`);
-        } else if (a.min === 0 && a.max === undefined) {
-          problems.push(`assertions[${i}]: a min of 0 asserts nothing unless max is also given`);
-        }
-        if (a.max !== undefined && !(Number.isInteger(a.max) && a.max >= a.min)) {
-          problems.push(`assertions[${i}]: max must be an integer >= min`);
-        }
-      } else {
-        problems.push(
-          `assertions[${i}]: kind must be file_regex, response_regex, or trace_agent_dispatch_count`
-        );
+      for (const problem of assertionShapeProblems(a)) {
+        problems.push(`assertions[${i}]: ${problem}`);
       }
     });
   }
@@ -615,6 +630,18 @@ function scoreCase(c, resultsDir, dups, runState) {
 
   const caseDir = path.join(resultsDir, id);
   for (const a of c.assertions) {
+    // Same shape predicate lintCase uses: a malformed assertion (missing
+    // min/max, missing regex, etc.) is scored invalid here, never coerced
+    // into a pass by the comparisons below and never an uncaught throw.
+    const shapeProblems = assertionShapeProblems(a);
+    if (shapeProblems.length > 0) {
+      return {
+        id,
+        status: 'invalid',
+        reason: `malformed assertion (${a && a.kind}): ${shapeProblems.join('; ')}`,
+        activated,
+      };
+    }
     if (a.kind === 'trace_agent_dispatch_count') {
       const count = agentDispatchCount(trace);
       const suffix = a.max !== undefined ? ` max ${a.max}` : '';
@@ -878,17 +905,23 @@ async function runChildCase(index, total, id, command, args, options, timeoutMs)
 // The setup child runs git init/add/commit inside the case dir. If GIT_DIR
 // (or a sibling GIT_* var) happens to be exported in the calling shell, an
 // inherited copy would point those commands at the operator's real
-// repository instead, staging and committing a mass deletion there. Strip
-// them from the child's env rather than trusting the operator's shell.
+// repository instead, staging and committing a mass deletion there. A
+// denylist of individual names must be kept in sync with git's own variable
+// set, which is the wrong shape: git also reads GIT_CONFIG_COUNT plus its
+// GIT_CONFIG_KEY_<n>/GIT_CONFIG_VALUE_<n> pairs and GIT_CONFIG_SYSTEM, either
+// of which can set core.worktree (making `git add -A` read outside the
+// fixture) or core.hooksPath (making `git commit` execute an
+// operator-supplied hook), and a fixed list would miss them. Strip every
+// inherited variable whose name starts with GIT_ instead. The fixture setup
+// scripts under fixtures/behavioral/ set GIT_AUTHOR_DATE/GIT_COMMITTER_DATE
+// themselves on their own git invocations (spread from this child's own
+// process.env, then overridden), so sweeping the INHERITED environment here
+// does not break them.
 function setupChildEnv() {
   const env = { ...process.env };
-  delete env.GIT_DIR;
-  delete env.GIT_WORK_TREE;
-  delete env.GIT_INDEX_FILE;
-  delete env.GIT_OBJECT_DIRECTORY;
-  delete env.GIT_ALTERNATE_OBJECT_DIRECTORIES;
-  delete env.GIT_COMMON_DIR;
-  delete env.GIT_CONFIG_GLOBAL;
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key];
+  }
   return env;
 }
 
@@ -922,7 +955,8 @@ async function modeRun(args) {
   const attempted = new Set();
 
   // A trace_agent_dispatch_count assertion measures how many subagents the
-  // real installed roster dispatches; without a roster the count would only
+  // real installed roster dispatches; without the reviewer-capable agents
+  // the dispatch assertion actually depends on, the count would only
   // measure the sandbox, not the skill. Checked once, up front, so a whole
   // run doesn't spend on a foregone-invalid case count.
   const needsRoster = cases.some(
@@ -930,16 +964,19 @@ async function modeRun(args) {
   );
   if (needsRoster) {
     const agentsDir = path.join(os.homedir(), '.claude', 'agents');
-    let hasAgents = false;
+    const REQUIRED_AGENTS = ['architect-reviewer.md', 'security-auditor.md'];
+    let present = new Set();
     if (isDir(agentsDir)) {
       try {
-        hasAgents = fs.readdirSync(agentsDir).some((entry) => entry.endsWith('.md'));
+        present = new Set(fs.readdirSync(agentsDir));
       } catch {}
     }
-    if (!hasAgents) {
+    const missing = REQUIRED_AGENTS.filter((entry) => !present.has(entry));
+    if (missing.length > 0) {
       die(
-        `error: a trace_agent_dispatch_count assertion needs an installed subagent roster at ${agentsDir} ` +
-          '(fix: PT_BYPASS_PERMISSIONS=1 HOME=<sandbox> ./install.sh claude); without the roster a dispatch ' +
+        `error: a trace_agent_dispatch_count assertion needs the reviewer-capable roster entries ` +
+          `${REQUIRED_AGENTS.join(', ')} installed at ${agentsDir}; missing: ${missing.join(', ')} ` +
+          '(fix: PT_BYPASS_PERMISSIONS=1 HOME=<sandbox> ./install.sh claude); without them a dispatch ' +
           'assertion measures the sandbox, not the skill.'
       );
     }

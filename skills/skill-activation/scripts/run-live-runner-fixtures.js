@@ -1181,6 +1181,76 @@ async function testBehavioralAssertionsAndSetup(binDir) {
     fs.existsSync(withRosterMarker),
     'a seeded roster did not let the dispatch-count case attempt its agent spawn'
   );
+
+  // --- 7: response_regex fail: no risk-line in the prompt, so neither the
+  // assistant text nor the terminal result string carries the pattern. -------
+  const regexFailRoot = path.join(root, 'regex-fail');
+  fs.mkdirSync(regexFailRoot, { recursive: true });
+  const regexFailCorpus = makeBehavioralCorpus(regexFailRoot, [
+    {
+      id: 'response-regex-fail',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'response-regex-fail',
+      assertions: [{ kind: 'response_regex', regex: 'Risk: high' }],
+    },
+  ]);
+  const regexFailResults = path.join(regexFailRoot, 'results');
+  const regexFailRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', regexFailResults, regexFailCorpus],
+    baseEnv(binDir, { ACTIVATION_ALLOW_SPEND: '1', LIVE_CASE_TIMEOUT_MS: '2000' })
+  );
+  const regexFailReport = parseReport(regexFailRun, 'behavioral response_regex fail');
+  assert(regexFailRun.code === 1, 'a non-matching response_regex did not fail the runner');
+  assert(
+    regexFailReport.cases[0].status === 'fail' && regexFailReport.cases[0].reason.includes('Risk: high'),
+    'response_regex fail reason did not name the pattern'
+  );
+
+  // --- 8: response_regex scoping: the target string appears only in a
+  // user/prompt event and a tool result, never in assistant text or the
+  // terminal result string, so a future broadening of assistantText() would
+  // turn this red. --------------------------------------------------------
+  const scopeRoot = path.join(root, 'regex-scope');
+  fs.mkdirSync(scopeRoot, { recursive: true });
+  const scopeCorpus = path.join(scopeRoot, 'behavioral-cases.jsonl');
+  writeJsonl(scopeCorpus, [
+    {
+      id: 'response-regex-scope',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'response-regex-scope',
+      assertions: [{ kind: 'response_regex', regex: 'Risk: high' }],
+    },
+  ]);
+  const scopeResults = path.join(scopeRoot, 'results');
+  fs.mkdirSync(scopeResults, { recursive: true });
+  writeJsonl(path.join(scopeResults, 'response-regex-scope.jsonl'), [
+    { type: 'user', message: { content: [{ type: 'text', text: 'Risk: high (from the prompt echo)' }] } },
+    {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill: 'fixture-skill' } }] },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: 'Risk: high (from a tool result)' }] },
+        ],
+      },
+    },
+    { type: 'result', subtype: 'success', is_error: false, num_turns: 1, total_cost_usd: 0.01, result: 'done' },
+  ]);
+  const scopeCheck = await runNode(BEHAVIORAL_RUNNER, ['--check', scopeResults, scopeCorpus], baseEnv(binDir));
+  const scopeReport = parseReport(scopeCheck, 'behavioral response_regex scoping');
+  assert(scopeCheck.code === 1, 'a response_regex matched text outside assistant scope');
+  assert(
+    scopeReport.cases[0].status === 'fail' && scopeReport.cases[0].reason.includes('Risk: high'),
+    'response_regex scoping fail reason did not name the pattern'
+  );
 }
 
 async function testBehavioralAllowedTools(binDir) {
