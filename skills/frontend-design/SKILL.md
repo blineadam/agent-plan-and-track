@@ -1,12 +1,14 @@
 ---
 name: frontend-design
-description: Use when building new UI or reshaping existing UI and templated visual choices won't do. Guidance for distinctive, intentional aesthetic direction, typography, and layout, and for making choices that don't read as generic defaults.
+description: Use when building new UI or reshaping existing UI and templated visual choices won't do, or when styling an artifact (slides, docs, reports, HTML pages) with a consistent theme. Guidance for distinctive, intentional aesthetic direction, typography, and layout, plus 10 pre-set color/font themes to apply to an already-created artifact, or a new theme generated on the fly.
 ---
 
 <!-- Adapted from the Apache-2.0 licensed original at https://github.com/anthropics/skills.
 Modified: frontmatter trigger clause, section order (reference material front-loaded,
 the numbered Process section moved last), and a few line-level style/grammar edits.
-Full license text: LICENSE.txt in this directory. -->
+The Theming an existing artifact subsection is condensed from the same repo's theme-factory
+skill; themes/ and theme-showcase.pdf are carried over from it unchanged. Full license
+text: LICENSE.txt in this directory. -->
 
 # Frontend Design
 
@@ -57,3 +59,7 @@ Then review that plan against the brief before building: if any part of it reads
 When writing the code, be careful of structuring your CSS selector specificities. It's easy to generate CSS classes that cancel each other out (especially with a type-based selector like .section and an element-based selector like .cta). This can happen often with paddings/margins between sections.
 
 Try to do a lot of this planning and iteration in your thinking, and only show ideas to the user when you have higher confidence it'll delight them.
+
+### Theming an existing artifact
+
+To style an already-created artifact (a slide deck, doc, report, or HTML page) with a consistent theme, use the 10 pre-set themes in `themes/`, each a cohesive color palette with hex codes plus header/body font pairings: Ocean Depths, Sunset Boulevard, Forest Canopy, Modern Minimalist, Golden Hour, Arctic Frost, Desert Rose, Tech Innovation, Botanical Garden, Midnight Galaxy. Show `theme-showcase.pdf` so the user can see them, ask which to apply, and wait for an explicit choice. Then read the chosen file in `themes/` and apply its colors and fonts consistently across the whole artifact, checking contrast and readability and keeping the theme's visual identity uniform throughout. If none fit, generate a new theme in the same format and with a similar descriptive name, show it for review, then apply it the same way.
