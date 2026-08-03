@@ -646,6 +646,27 @@ function Set-CodexFeatures($file) {
   if ($multilineStringDelimiterCount -gt 0) {
     throw "error: $file uses a multiline TOML string; line-based [features] management supports only single-line values"
   }
+  $escapedQuotedHeaderKeyRe = '^\s*\[\[?\s*"[^"]*\\'
+  $escapedQuotedManagedHeaderKeyRe = '^\s*\[\[?\s*(features|"features"|''features'')\s*\.\s*"[^"]*\\'
+  $escapedQuotedAssignmentKeyRe = '^\s*"[^"]*\\'
+  $escapedFeatureKeyCount = 0
+  $inRoot = $true
+  $inFeatures = $false
+  foreach ($line in $lines) {
+    if ($line -match $escapedQuotedHeaderKeyRe -or $line -match $escapedQuotedManagedHeaderKeyRe) {
+      $escapedFeatureKeyCount++
+    }
+    if (($inRoot -or $inFeatures) -and $line -match $escapedQuotedAssignmentKeyRe) {
+      $escapedFeatureKeyCount++
+    }
+    if ($line -match '^\s*\[') {
+      $inFeatures = $line -match $bareFeaturesHeaderRe
+      $inRoot = $false
+    }
+  }
+  if ($escapedFeatureKeyCount -gt 0) {
+    throw "error: $file uses an escaped quoted key in a managed TOML path; line-based [features] management cannot safely decode it"
+  }
   $featureTableCount = @($lines | Where-Object { $_ -match $bareFeaturesHeaderRe }).Count
   if ($featureTableCount -gt 1) {
     throw "error: $file has multiple [features] tables; refusing to rewrite invalid TOML"

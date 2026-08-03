@@ -162,7 +162,7 @@ jobs:
           # The installer writes only bare [features] headers and bare scalar
           # assignments. Every root assignment whose first key segment is
           # features must fail before it can collide with those writes.
-          for fixture_kind in quoted-header quoted-assignment dotted-assignment root-scalar root-inline-table root-dotted-path multiline-string multiline-array spaced-header tabbed-header; do
+          for fixture_kind in quoted-header quoted-assignment dotted-assignment root-scalar root-inline-table root-dotted-path multiline-string multiline-array spaced-header tabbed-header escaped-feature-header escaped-managed-assignment; do
             unsupported_home="$RUNNER_TEMP/scratch-home-codex-unsupported-$fixture_kind"
             mkdir -p "$unsupported_home/.codex"
             case "$fixture_kind" in
@@ -176,6 +176,8 @@ jobs:
               multiline-array) printf '%s\n' '[features]' 'unrelated = [' '  ["one"],' ']' ;;
               spaced-header) printf '%s\n' '[ features ]' 'unrelated = true' ;;
               tabbed-header) printf '%s\n' $'[\tfeatures\t]' 'unrelated = true' ;;
+              escaped-feature-header) printf '%s\n' '["feat\u0075res"]' 'unrelated = true' ;;
+              escaped-managed-assignment) printf '%s\n' '[features]' '"multi_\u0061gent" = false' ;;
             esac > "$unsupported_home/.codex/config.toml"
             cp "$unsupported_home/.codex/config.toml" "$unsupported_home/before.toml"
             unsupported_out="$unsupported_home/install.out"
@@ -186,6 +188,7 @@ jobs:
             case "$fixture_kind" in
               multiline-string) expected_error='uses a multiline TOML string' ;;
               multiline-array) expected_error='uses a non-scalar value in bare [features]' ;;
+              escaped-feature-header|escaped-managed-assignment) expected_error='uses an escaped quoted key in a managed TOML path' ;;
             esac
             grep -qF "$expected_error" "$unsupported_out" \
               || { echo "FAIL: unsupported $fixture_kind fixture did not report a clear error"; cat "$unsupported_out"; exit 1; }
@@ -765,7 +768,7 @@ jobs:
           }
           # Every root assignment whose first key segment is features is
           # unsupported, so it fails before colliding with bare writes.
-          foreach ($fixtureKind in @('quoted-header', 'quoted-assignment', 'dotted-assignment', 'root-scalar', 'root-inline-table', 'root-dotted-path', 'multiline-string', 'multiline-array', 'spaced-header', 'tabbed-header')) {
+          foreach ($fixtureKind in @('quoted-header', 'quoted-assignment', 'dotted-assignment', 'root-scalar', 'root-inline-table', 'root-dotted-path', 'multiline-string', 'multiline-array', 'spaced-header', 'tabbed-header', 'escaped-feature-header', 'escaped-managed-assignment')) {
             $unsupportedHome = "$env:RUNNER_TEMP\scratch-home-codex-unsupported-$fixtureKind"
             New-Item -ItemType Directory -Force -Path "$unsupportedHome\.codex" | Out-Null
             $unsupportedConfig = "$unsupportedHome\.codex\config.toml"
@@ -780,6 +783,8 @@ jobs:
               'multiline-array' { "[features]`nunrelated = [`n  [`"one`"],`n]`n" }
               'spaced-header' { "[ features ]`nunrelated = true`n" }
               'tabbed-header' { "[`tfeatures`t]`nunrelated = true`n" }
+              'escaped-feature-header' { '["feat\u0075res"]' + "`nunrelated = true`n" }
+              'escaped-managed-assignment' { "[features]`n`"multi_\u0061gent`" = false`n" }
             }
             [System.IO.File]::WriteAllText($unsupportedConfig, $fixtureText, [System.Text.UTF8Encoding]::new($false))
             Copy-Item -LiteralPath $unsupportedConfig -Destination "$unsupportedHome\before.toml" -Force
@@ -790,6 +795,8 @@ jobs:
             $expectedError = switch ($fixtureKind) {
               'multiline-string' { 'uses a multiline TOML string' }
               'multiline-array' { 'uses a non-scalar value in bare [features]' }
+              'escaped-feature-header' { 'uses an escaped quoted key in a managed TOML path' }
+              'escaped-managed-assignment' { 'uses an escaped quoted key in a managed TOML path' }
               default { 'uses an unsupported [features] form or root features assignment' }
             }
             if ($unsupportedOut -notmatch [regex]::Escape($expectedError)) { throw "unsupported $fixtureKind fixture did not report a clear error" }

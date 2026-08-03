@@ -518,7 +518,7 @@ upsert_toml_default() {
 # [features] forms, or conflicting tables/assignments for a managed feature
 # key rather than guessing which invalid TOML form a user intended to keep.
 upsert_codex_features() {
-  local file="$1" tmp feature_table_count multiline_string_delimiter_count unsupported_feature_form_count non_scalar_feature_value_count incompatible_feature_table_count
+  local file="$1" tmp feature_table_count multiline_string_delimiter_count escaped_feature_key_count unsupported_feature_form_count non_scalar_feature_value_count incompatible_feature_table_count
   mkdir -p "$(dirname "$file")"
   [ -f "$file" ] || : > "$file"
   multiline_string_delimiter_count="$(awk '
@@ -550,6 +550,32 @@ upsert_codex_features() {
   ' "$file")"
   if [ "$multiline_string_delimiter_count" -gt 0 ]; then
     echo "error: $file uses a multiline TOML string; line-based [features] management supports only single-line values" >&2
+    return 1
+  fi
+  escaped_feature_key_count="$(awk '
+    function bare_features_header(line) {
+      return line ~ /^[[:space:]]*\[features\][[:space:]]*(#.*)?$/
+    }
+    function escaped_quoted_key_in_relevant_header(line) {
+      return line ~ /^[[:space:]]*\[\[?[[:space:]]*"[^"]*\\/ ||
+        line ~ /^[[:space:]]*\[\[?[[:space:]]*(features|"features"|\047features\047)[[:space:]]*\.[[:space:]]*"[^"]*\\/
+    }
+    function escaped_quoted_assignment_key(line) {
+      return line ~ /^[[:space:]]*"[^"]*\\/
+    }
+    BEGIN { in_root = 1 }
+    {
+      if (escaped_quoted_key_in_relevant_header($0)) count++
+      if ((in_root || in_features) && escaped_quoted_assignment_key($0)) count++
+      if (/^[[:space:]]*\[/) {
+        in_features = bare_features_header($0)
+        in_root = 0
+      }
+    }
+    END { print count + 0 }
+  ' "$file")"
+  if [ "$escaped_feature_key_count" -gt 0 ]; then
+    echo "error: $file uses an escaped quoted key in a managed TOML path; line-based [features] management cannot safely decode it" >&2
     return 1
   fi
   feature_table_count="$(awk '/^[[:space:]]*\[features\][[:space:]]*(#.*)?$/ { count++ } END { print count + 0 }' "$file")"
