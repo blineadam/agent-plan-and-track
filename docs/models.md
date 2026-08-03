@@ -66,11 +66,10 @@ the `/agent` picker, or by naming the agent in a prompt.
 
 Current Codex releases delegate after a direct request or applicable
 `AGENTS.md` and skill instructions; `/agent` shows the threads in an
-interactive CLI session. For direct spawn calls in the current local client,
-named profiles applied their model and reasoning effort with
-`fork_turns = "none"` or a partial fork. Full-history forks do not accept
-per-spawn overrides, and the effective sandbox can still be narrower than
-the rendered mode under the parent session's policy.
+interactive CLI session. [OpenAI's subagent reference](https://developers.openai.com/codex/subagents)
+documents that a custom agent's `model` and `model_reasoning_effort` take
+precedence when set. Its effective sandbox can still be narrower than the
+rendered mode because subagents inherit the parent runtime policy.
 
 ## Per-tool notes
 
