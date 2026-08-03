@@ -2,7 +2,7 @@
 name: security-auditor
 description: "Security-focused review, pinned to the roster's strongest-judgment tier. Delegate here to assess authentication/authorization logic, injection risks, secrets handling, and other security-sensitive changes before they ship, including new auth flows, permission checks, and anything touching credentials or a trust boundary with user input. Also the route for an explicit threat-modeling request (enumerate trust boundaries, abuse paths, and mitigations for a repo or path): it returns the full threat-model report. Read-only: reports findings and severity, never patches them. Reach for this specifically when a missed vulnerability is expensive enough to warrant top-tier reasoning over whatever model the session happens to be running, not for routine code review."
 model: fable
-effort: xhigh
+effort: high
 tools: Read, Grep, Glob
 ---
 

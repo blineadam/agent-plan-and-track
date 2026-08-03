@@ -35,7 +35,7 @@ tier for.
   severity. Never patches.
 - **`fable-advisor`** (Fable, read-only) gives an independent gut-check on a
   decision at a commitment boundary, in under 300 words. Never implements.
-- **`planner`** (Fable, read-only) turns a non-trivial task into an ordered
+- **`planner`** (Opus, read-only) turns a non-trivial task into an ordered
   implementation spec naming exact files, steps, and verification. Never
   implements.
 - **`researcher`** (Sonnet, read-only) offloads exploration: mapping code,

@@ -118,8 +118,8 @@ skills/frontend-design/      distinctive visual/UI design direction plus 10 pre-
 skills/webapp-testing/       drive a local web app in a real browser with Playwright: verify frontend behavior, debug UI, screenshot, read console logs (portable)
 skills/migration-discipline/ disciplines for large migrations/ports: ownership isolation, validation ladder, work-queue batching, durable migration state (portable)
 agents/                      tiered subagents (Claude .md + rendered Codex TOML + rendered Copilot
-                              Markdown): architect-reviewer, security-auditor, fable-advisor, planner
-                              (Fable); researcher, debugger, executor (Sonnet); mechanic (Haiku)
+                              Markdown): architect-reviewer, security-auditor, fable-advisor (Fable);
+                              planner (Opus); researcher, debugger, executor (Sonnet); mechanic (Haiku)
 hooks/gateguard.js           universal fact-forcing edit gate (Claude/Codex/Copilot)
 hooks/delivery-gate.js       pre-finish Stop check (Claude/Codex)
 hooks/claude/                Claude wiring: digest + compact suggester + gateguard + delivery-gate + plan-gate

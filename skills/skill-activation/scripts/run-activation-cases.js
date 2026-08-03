@@ -79,7 +79,7 @@ const DESC_CHAR_CEILING = intEnv('DESC_CHAR_CEILING', 500);
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const AGENT_FRONTMATTER_KEYS = ['name', 'description', 'model', 'effort', 'tools'];
 const AGENT_MODEL_EFFORT = new Map([
-  ['fable', 'xhigh'],
+  ['fable', 'high'],
   ['opus', 'xhigh'],
   ['sonnet', 'high'],
   ['haiku', 'medium'],
