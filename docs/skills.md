@@ -70,12 +70,12 @@ testing. Tuning knobs for these hooks live in their script headers under
 
 ## Security
 
-Adapted from [openai/skills](https://github.com/openai/skills), for
-AppSec-grade threat modeling of a repo or path rather than the everyday
-coding workflow above:
-
-| Skill | What it does | Where |
-| --- | --- | --- |
+Threat modeling lives in the `security-auditor` agent rather than a skill:
+`agents/security-auditor.md` carries a threat-model mode (adapted from
+[openai/skills](https://github.com/openai/skills)) that answers an explicit
+threat-modeling request with an AppSec-grade report of trust boundaries,
+abuse paths, and prioritized mitigations, instead of its usual
+finding-ranked security review.
 
 ## Maintenance skills
 

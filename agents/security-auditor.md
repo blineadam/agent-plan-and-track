@@ -94,8 +94,10 @@ model specific to that scope instead of the finding-ranked review above:
   paths/URLs/`title`/`style` lines); assets and security objectives;
   attacker model (capabilities and non-capabilities); entry points and
   attack surfaces with evidence anchors; top abuse paths; a threat table
-  with stable ids (TM-001, ...), prerequisites, threat action, impact,
-  existing controls with evidence, gaps, recommended mitigations,
-  likelihood, impact severity, and priority; focus paths for review. The
-  report is your final message; the caller writes it to a file when one was
-  asked for.
+  with stable ids (TM-001, ...), threat source, prerequisites, threat
+  action, impact, impacted assets, existing controls with evidence, gaps,
+  recommended mitigations, detection ideas, likelihood, impact severity,
+  and priority; criticality calibration (what critical/high/medium/low mean
+  for this repo and its exposure, with examples per level); focus paths for
+  review. The report is your final message; the caller writes it to a file
+  when one was asked for.
