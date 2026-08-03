@@ -600,6 +600,35 @@ function Set-TomlDefault($file, $key, $val) {
   }
 }
 
+# Detect a TOML multiline-string delimiter outside comments and ordinary
+# single/double-quoted strings. The line-based [features] editor cannot safely
+# distinguish a bracket-looking line inside a multiline value from a header.
+function Test-TomlMultilineStringDelimiter([string]$line) {
+  $quote = $null
+  $escaped = $false
+  for ($i = 0; $i -lt $line.Length; $i++) {
+    $char = $line[$i]
+    if ($quote -eq [char]34) {
+      if ($escaped) { $escaped = $false; continue }
+      if ($char -eq [char]92) { $escaped = $true; continue }
+      if ($char -eq [char]34) { $quote = $null }
+      continue
+    }
+    if ($quote -eq [char]39) {
+      if ($char -eq [char]39) { $quote = $null }
+      continue
+    }
+    if ($char -eq [char]35) { return $false }
+    if ($i + 2 -lt $line.Length) {
+      $triple = $line.Substring($i, 3)
+      if ($triple -eq '"""' -or $triple -eq "'''") { return $true }
+    }
+    if ($char -eq [char]34) { $quote = [char]34 }
+    elseif ($char -eq [char]39) { $quote = [char]39 }
+  }
+  return $false
+}
+
 # Re-assert the two Codex multi-agent feature flags inside exactly one bare
 # [features] table. Existing unrelated bare scalars in that table survive
 # untouched; each managed key is replaced once, and a missing table is appended
@@ -613,7 +642,7 @@ function Set-CodexFeatures($file) {
   $bareFeaturesHeaderRe = '^\s*\[features\]\s*(#.*)?$'
   $featureSegment = '(features|"features"|''features'')'
   $managedSegment = '(multi_agent|"multi_agent"|''multi_agent''|multi_agent_v2|"multi_agent_v2"|''multi_agent_v2'')'
-  $multilineStringDelimiterCount = @($lines | Where-Object { $_.Contains('"""') -or $_.Contains("'''") }).Count
+  $multilineStringDelimiterCount = @($lines | Where-Object { Test-TomlMultilineStringDelimiter $_ }).Count
   if ($multilineStringDelimiterCount -gt 0) {
     throw "error: $file uses a multiline TOML string; line-based [features] management supports only single-line values"
   }
@@ -622,6 +651,7 @@ function Set-CodexFeatures($file) {
     throw "error: $file has multiple [features] tables; refusing to rewrite invalid TOML"
   }
   $unsupportedDirectFeaturesHeaderRe = '^\s*\[\[?\s*("features"|''features'')\s*\]\]?\s*(#.*)?$'
+  $noncanonicalBareFeaturesHeaderRe = '^\s*\[\s*features\s*\]\s*(#.*)?$'
   $unsupportedBareFeaturesArrayHeaderRe = '^\s*\[\[\s*features\s*\]\]\s*(#.*)?$'
   $quotedManagedAssignmentRe = '^\s*("multi_agent"|''multi_agent''|"multi_agent_v2"|''multi_agent_v2'')\s*(=|\.)'
   $bareDottedManagedAssignmentRe = '^\s*(multi_agent|multi_agent_v2)\s*\.'
@@ -630,7 +660,8 @@ function Set-CodexFeatures($file) {
   $inRoot = $true
   $inFeatures = $false
   foreach ($line in $lines) {
-    if ($line -match $unsupportedDirectFeaturesHeaderRe -or $line -match $unsupportedBareFeaturesArrayHeaderRe) {
+    if ($line -match $unsupportedDirectFeaturesHeaderRe -or $line -match $unsupportedBareFeaturesArrayHeaderRe -or
+        ($line -match $noncanonicalBareFeaturesHeaderRe -and $line -notmatch $bareFeaturesHeaderRe)) {
       $unsupportedFeatureFormCount++
     }
     if (($inFeatures -and ($line -match $quotedManagedAssignmentRe -or $line -match $bareDottedManagedAssignmentRe)) -or
@@ -644,6 +675,18 @@ function Set-CodexFeatures($file) {
   }
   if ($unsupportedFeatureFormCount -gt 0) {
     throw "error: $file uses an unsupported [features] form or root features assignment; only bare [features] and bare scalar assignments are supported"
+  }
+  $nonScalarFeatureValueRe = '^\s*[^#\s][^=]*=\s*[\[{]'
+  $inFeatures = $false
+  $nonScalarFeatureValueCount = 0
+  foreach ($line in $lines) {
+    if ($inFeatures -and $line -match $nonScalarFeatureValueRe) { $nonScalarFeatureValueCount++ }
+    if ($line -match '^\s*\[') {
+      $inFeatures = $line -match $bareFeaturesHeaderRe
+    }
+  }
+  if ($nonScalarFeatureValueCount -gt 0) {
+    throw "error: $file uses a non-scalar value in bare [features]; line-based [features] management supports only single-line scalar values"
   }
   $managedFeatureTableRe = '^\s*\[\s*' + $featureSegment + '\s*\.\s*' + $managedSegment + '(\s*\.|\s*\])'
   $managedFeatureArrayTableRe = '^\s*\[\[\s*' + $featureSegment + '\s*\.\s*' + $managedSegment + '(\s*\.|\s*\])'

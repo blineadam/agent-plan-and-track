@@ -518,10 +518,36 @@ upsert_toml_default() {
 # [features] forms, or conflicting tables/assignments for a managed feature
 # key rather than guessing which invalid TOML form a user intended to keep.
 upsert_codex_features() {
-  local file="$1" tmp feature_table_count multiline_string_delimiter_count unsupported_feature_form_count incompatible_feature_table_count
+  local file="$1" tmp feature_table_count multiline_string_delimiter_count unsupported_feature_form_count non_scalar_feature_value_count incompatible_feature_table_count
   mkdir -p "$(dirname "$file")"
   [ -f "$file" ] || : > "$file"
-  multiline_string_delimiter_count="$(awk 'index($0, "\"\"\"") || index($0, "\047\047\047") { count++ } END { print count + 0 }' "$file")"
+  multiline_string_delimiter_count="$(awk '
+    function has_multiline_delimiter(line, i, c, triple, quote, escaped) {
+      quote = ""
+      escaped = 0
+      for (i = 1; i <= length(line); i++) {
+        c = substr(line, i, 1)
+        if (quote == "\"") {
+          if (escaped) { escaped = 0; continue }
+          if (c == "\\") { escaped = 1; continue }
+          if (c == "\"") quote = ""
+          continue
+        }
+        if (quote == "\047") {
+          if (c == "\047") quote = ""
+          continue
+        }
+        if (c == "#") return 0
+        triple = substr(line, i, 3)
+        if (triple == "\"\"\"" || triple == "\047\047\047") return 1
+        if (c == "\"") quote = "\""
+        else if (c == "\047") quote = "\047"
+      }
+      return 0
+    }
+    has_multiline_delimiter($0) { count++ }
+    END { print count + 0 }
+  ' "$file")"
   if [ "$multiline_string_delimiter_count" -gt 0 ]; then
     echo "error: $file uses a multiline TOML string; line-based [features] management supports only single-line values" >&2
     return 1
@@ -537,7 +563,8 @@ upsert_codex_features() {
     }
     function unsupported_direct_features_header(line) {
       return line ~ /^[[:space:]]*\[\[?[[:space:]]*("features"|\047features\047)[[:space:]]*\]\]?[[:space:]]*(#.*)?$/ ||
-        line ~ /^[[:space:]]*\[\[[[:space:]]*features[[:space:]]*\]\][[:space:]]*(#.*)?$/
+        line ~ /^[[:space:]]*\[\[[[:space:]]*features[[:space:]]*\]\][[:space:]]*(#.*)?$/ ||
+        (!bare_features_header(line) && line ~ /^[[:space:]]*\[[[:space:]]*features[[:space:]]*\][[:space:]]*(#.*)?$/)
     }
     function unsupported_feature_assignment(line, segment) {
       segment = "(features|\"features\"|\047features\047)"
@@ -558,6 +585,20 @@ upsert_codex_features() {
   ' "$file")"
   if [ "$unsupported_feature_form_count" -gt 0 ]; then
     echo "error: $file uses an unsupported [features] form or root features assignment; only bare [features] and bare scalar assignments are supported" >&2
+    return 1
+  fi
+  non_scalar_feature_value_count="$(awk '
+    function bare_features_header(line) {
+      return line ~ /^[[:space:]]*\[features\][[:space:]]*(#.*)?$/
+    }
+    {
+      if (in_features && $0 ~ /^[[:space:]]*[^#[:space:]][^=]*=[[:space:]]*[\[{]/) count++
+      if (/^[[:space:]]*\[/) in_features = bare_features_header($0)
+    }
+    END { print count + 0 }
+  ' "$file")"
+  if [ "$non_scalar_feature_value_count" -gt 0 ]; then
+    echo "error: $file uses a non-scalar value in bare [features]; line-based [features] management supports only single-line scalar values" >&2
     return 1
   fi
   incompatible_feature_table_count="$(awk '

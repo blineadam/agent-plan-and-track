@@ -134,9 +134,9 @@ jobs:
           # both managed values, and remains byte-identical on the next install.
           feature_home="$RUNNER_TEMP/scratch-home-codex-features"
           mkdir -p "$feature_home/.codex"
-          printf '%s\n' 'existing_root = "preserve"' '' '[features]' 'unrelated_feature = "preserve"' 'multi_agent = false' 'multi_agent_v2 = true' > "$feature_home/.codex/config.toml"
+          printf '%s\n' 'existing_root = "preserve"' '' '[features]' 'unrelated_feature = "preserve"' "note = \"literal '''\"" '# comment containing """' 'multi_agent = false' 'multi_agent_v2 = true' > "$feature_home/.codex/config.toml"
           HOME="$feature_home" ./install.sh codex >/dev/null
-          python3 -c "import sys, tomllib; config=tomllib.load(open(sys.argv[1], 'rb')); assert config == {'existing_root': 'preserve', 'plan_mode_reasoning_effort': 'xhigh', 'features': {'unrelated_feature': 'preserve', 'multi_agent': True, 'multi_agent_v2': False}}, f\"Codex feature preservation failed: {config}\"; print('OK: Codex features preserve unrelated settings')" "$feature_home/.codex/config.toml"
+          python3 -c "import sys, tomllib; config=tomllib.load(open(sys.argv[1], 'rb')); assert config == {'existing_root': 'preserve', 'plan_mode_reasoning_effort': 'xhigh', 'features': {'unrelated_feature': 'preserve', 'note': \"literal '''\", 'multi_agent': True, 'multi_agent_v2': False}}, f\"Codex feature preservation failed: {config}\"; print('OK: Codex features preserve unrelated settings')" "$feature_home/.codex/config.toml"
           cp "$feature_home/.codex/config.toml" "$RUNNER_TEMP/codex-features-before-idempotency.toml"
           HOME="$feature_home" ./install.sh codex >/dev/null
           cmp -s "$RUNNER_TEMP/codex-features-before-idempotency.toml" "$feature_home/.codex/config.toml" \
@@ -162,7 +162,7 @@ jobs:
           # The installer writes only bare [features] headers and bare scalar
           # assignments. Every root assignment whose first key segment is
           # features must fail before it can collide with those writes.
-          for fixture_kind in quoted-header quoted-assignment dotted-assignment root-scalar root-inline-table root-dotted-path multiline-string; do
+          for fixture_kind in quoted-header quoted-assignment dotted-assignment root-scalar root-inline-table root-dotted-path multiline-string multiline-array spaced-header tabbed-header; do
             unsupported_home="$RUNNER_TEMP/scratch-home-codex-unsupported-$fixture_kind"
             mkdir -p "$unsupported_home/.codex"
             case "$fixture_kind" in
@@ -173,6 +173,9 @@ jobs:
               root-inline-table) printf '%s\n' 'features = { unrelated = true }' ;;
               root-dotted-path) printf '%s\n' 'features.other = true' ;;
               multiline-string) printf '%s\n' '[features]' 'unrelated = """' '[other]' '"""' ;;
+              multiline-array) printf '%s\n' '[features]' 'unrelated = [' '  ["one"],' ']' ;;
+              spaced-header) printf '%s\n' '[ features ]' 'unrelated = true' ;;
+              tabbed-header) printf '%s\n' $'[\tfeatures\t]' 'unrelated = true' ;;
             esac > "$unsupported_home/.codex/config.toml"
             cp "$unsupported_home/.codex/config.toml" "$unsupported_home/before.toml"
             unsupported_out="$unsupported_home/install.out"
@@ -180,7 +183,10 @@ jobs:
               echo "FAIL: unsupported $fixture_kind fixture was accepted"; exit 1
             fi
             expected_error='uses an unsupported [features] form or root features assignment'
-            [ "$fixture_kind" = multiline-string ] && expected_error='uses a multiline TOML string'
+            case "$fixture_kind" in
+              multiline-string) expected_error='uses a multiline TOML string' ;;
+              multiline-array) expected_error='uses a non-scalar value in bare [features]' ;;
+            esac
             grep -qF "$expected_error" "$unsupported_out" \
               || { echo "FAIL: unsupported $fixture_kind fixture did not report a clear error"; cat "$unsupported_out"; exit 1; }
             cmp -s "$unsupported_home/before.toml" "$unsupported_home/.codex/config.toml" \
@@ -730,10 +736,10 @@ jobs:
           $featureHome = "$env:RUNNER_TEMP\scratch-home-codex-features"
           New-Item -ItemType Directory -Force -Path "$featureHome\.codex" | Out-Null
           $featureConfig = "$featureHome\.codex\config.toml"
-          [System.IO.File]::WriteAllText($featureConfig, "existing_root = `"preserve`"`n`n[features]`nunrelated_feature = `"preserve`"`nmulti_agent = false`nmulti_agent_v2 = true`n", [System.Text.UTF8Encoding]::new($false))
+          [System.IO.File]::WriteAllText($featureConfig, "existing_root = `"preserve`"`n`n[features]`nunrelated_feature = `"preserve`"`nnote = `"literal '''`"`n# comment containing `"`"`"`nmulti_agent = false`nmulti_agent_v2 = true`n", [System.Text.UTF8Encoding]::new($false))
           $env:USERPROFILE = $featureHome
           .\install.ps1 codex | Out-Null
-          $featurePreservationCheck = 'import sys, tomllib; config=tomllib.load(open(sys.argv[1], "rb")); expected={"existing_root": "preserve", "plan_mode_reasoning_effort": "xhigh", "features": {"unrelated_feature": "preserve", "multi_agent": True, "multi_agent_v2": False}}; assert config == expected, f"Codex feature preservation failed: {config}"; print("OK: Codex features preserve unrelated settings")'
+          $featurePreservationCheck = 'import sys, tomllib; config=tomllib.load(open(sys.argv[1], "rb")); expected={"existing_root": "preserve", "plan_mode_reasoning_effort": "xhigh", "features": {"unrelated_feature": "preserve", "note": "literal " + chr(39)*3, "multi_agent": True, "multi_agent_v2": False}}; assert config == expected, f"Codex feature preservation failed: {config}"; print("OK: Codex features preserve unrelated settings")'
           $featurePreservationCheckPath = Join-Path $env:RUNNER_TEMP 'validate_codex_feature_preservation.py'
           [System.IO.File]::WriteAllText($featurePreservationCheckPath, $featurePreservationCheck, [System.Text.UTF8Encoding]::new($false))
           python $featurePreservationCheckPath $featureConfig
@@ -759,7 +765,7 @@ jobs:
           }
           # Every root assignment whose first key segment is features is
           # unsupported, so it fails before colliding with bare writes.
-          foreach ($fixtureKind in @('quoted-header', 'quoted-assignment', 'dotted-assignment', 'root-scalar', 'root-inline-table', 'root-dotted-path', 'multiline-string')) {
+          foreach ($fixtureKind in @('quoted-header', 'quoted-assignment', 'dotted-assignment', 'root-scalar', 'root-inline-table', 'root-dotted-path', 'multiline-string', 'multiline-array', 'spaced-header', 'tabbed-header')) {
             $unsupportedHome = "$env:RUNNER_TEMP\scratch-home-codex-unsupported-$fixtureKind"
             New-Item -ItemType Directory -Force -Path "$unsupportedHome\.codex" | Out-Null
             $unsupportedConfig = "$unsupportedHome\.codex\config.toml"
@@ -771,6 +777,9 @@ jobs:
               'root-inline-table' { "features = { unrelated = true }`n" }
               'root-dotted-path' { "features.other = true`n" }
               'multiline-string' { "[features]`nunrelated = `"`"`"`n[other]`n`"`"`"`n" }
+              'multiline-array' { "[features]`nunrelated = [`n  [`"one`"],`n]`n" }
+              'spaced-header' { "[ features ]`nunrelated = true`n" }
+              'tabbed-header' { "[`tfeatures`t]`nunrelated = true`n" }
             }
             [System.IO.File]::WriteAllText($unsupportedConfig, $fixtureText, [System.Text.UTF8Encoding]::new($false))
             Copy-Item -LiteralPath $unsupportedConfig -Destination "$unsupportedHome\before.toml" -Force
@@ -778,7 +787,11 @@ jobs:
             $unsupportedFailed = $false; $unsupportedOut = ''
             try { $unsupportedOut = (.\install.ps1 codex 6>&1 | Out-String) } catch { $unsupportedFailed = $true; $unsupportedOut += $_.Exception.Message }
             if (-not $unsupportedFailed) { throw "unsupported $fixtureKind fixture was accepted" }
-            $expectedError = if ($fixtureKind -eq 'multiline-string') { 'uses a multiline TOML string' } else { 'uses an unsupported [features] form or root features assignment' }
+            $expectedError = switch ($fixtureKind) {
+              'multiline-string' { 'uses a multiline TOML string' }
+              'multiline-array' { 'uses a non-scalar value in bare [features]' }
+              default { 'uses an unsupported [features] form or root features assignment' }
+            }
             if ($unsupportedOut -notmatch [regex]::Escape($expectedError)) { throw "unsupported $fixtureKind fixture did not report a clear error" }
             if ((Get-FileHash "$unsupportedHome\before.toml").Hash -ne (Get-FileHash $unsupportedConfig).Hash) { throw "unsupported $fixtureKind fixture changed config.toml" }
           }
