@@ -71,11 +71,23 @@ function writeFakeExecutables(binDir) {
       "const promptIndex = args.indexOf('-p');",
       "const prompt = promptIndex >= 0 ? String(args[promptIndex + 1] || '') : String(args[args.length - 1] || '');",
       "if (process.env.FAKE_SPAWN_MARKER) fs.appendFileSync(process.env.FAKE_SPAWN_MARKER, kind + '\\n');",
+      "if (process.env.FAKE_ARGV_MARKER) fs.writeFileSync(process.env.FAKE_ARGV_MARKER, JSON.stringify(args));",
       "const activityMatch = /activity64=([A-Za-z0-9+/=]+)/.exec(prompt);",
       "const activity = activityMatch ? Buffer.from(activityMatch[1], 'base64').toString('utf8') : '';",
       "const emitClaude = () => {",
-      "  process.stdout.write(JSON.stringify({type:'assistant',message:{content:[{type:'tool_use',name:'Skill',input:{skill:'fixture-skill'}}]}}) + '\\n');",
-      "  process.stdout.write(JSON.stringify({type:'result',subtype:'success',is_error:false,num_turns:1,total_cost_usd:0.01}) + '\\n');",
+      "  const content = [{type:'tool_use',name:'Skill',input:{skill:'fixture-skill'}}];",
+      "  if (prompt.includes('dispatch2')) {",
+      "    content.push({type:'tool_use',id:'d1',name:'Task',input:{}});",
+      "    content.push({type:'tool_use',id:'d1',name:'Task',input:{}});",
+      "    content.push({type:'tool_use',id:'d2',name:'Agent',input:{}});",
+      "  }",
+      "  if (prompt.includes('risk-line')) {",
+      "    content.push({type:'text',text:'Risk: high (concurrency)'});",
+      "  }",
+      "  process.stdout.write(JSON.stringify({type:'assistant',message:{content}}) + '\\n');",
+      "  const resultEvent = {type:'result',subtype:'success',is_error:false,num_turns:1,total_cost_usd:0.01};",
+      "  if (prompt.includes('risk-line')) resultEvent.result = 'final-answer-marker';",
+      "  process.stdout.write(JSON.stringify(resultEvent) + '\\n');",
       "  if (process.env.FAKE_WRITE_ARTIFACT === '1') {",
       "    try { fs.writeFileSync(path.join(process.cwd(), 'artifact.txt'), 'fixture output\\n'); } catch {}",
       "  }",
@@ -932,6 +944,414 @@ async function testBehavioral(binDir) {
   );
 }
 
+async function testBehavioralAssertionsAndSetup(binDir) {
+  const root = path.join(scratchRoot, 'behavioral-assertions');
+  fs.mkdirSync(root, { recursive: true });
+
+  // --- 1: dispatch + response pass, two cases exercising both assistant-text
+  // sources (a `text` block and the terminal result's `result` string). ------
+  const passRoot = path.join(root, 'pass');
+  fs.mkdirSync(passRoot, { recursive: true });
+  const passCorpus = makeBehavioralCorpus(passRoot, [
+    {
+      id: 'dispatch-response-pass',
+      skill: 'fixture-skill',
+      prompt: 'dispatch2 risk-line',
+      max_turns: 2,
+      fixture: 'dispatch-response-pass',
+      assertions: [
+        { kind: 'trace_agent_dispatch_count', min: 2, max: 4 },
+        { kind: 'response_regex', regex: 'Risk: high' },
+      ],
+    },
+    {
+      id: 'result-text-pass',
+      skill: 'fixture-skill',
+      prompt: 'risk-line',
+      max_turns: 2,
+      fixture: 'result-text-pass',
+      assertions: [{ kind: 'response_regex', regex: 'final-answer-marker' }],
+    },
+  ]);
+  const passResults = path.join(passRoot, 'results');
+  const passRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', passResults, passCorpus],
+    baseEnv(binDir, { ACTIVATION_ALLOW_SPEND: '1', LIVE_CASE_TIMEOUT_MS: '2000' })
+  );
+  const passReport = parseReport(passRun, 'behavioral assertion pass');
+  assert(
+    passRun.code === 0 && passReport.passed === 2,
+    'dispatch-count and response-regex assertions did not both pass'
+  );
+
+  // --- 2: dispatch fail: same corpus shape, no dispatch2 in the prompt. ------
+  const failRoot = path.join(root, 'fail');
+  fs.mkdirSync(failRoot, { recursive: true });
+  const failCorpus = makeBehavioralCorpus(failRoot, [
+    {
+      id: 'dispatch-fail',
+      skill: 'fixture-skill',
+      prompt: 'risk-line',
+      max_turns: 2,
+      fixture: 'dispatch-fail',
+      assertions: [{ kind: 'trace_agent_dispatch_count', min: 2, max: 4 }],
+    },
+  ]);
+  const failResults = path.join(failRoot, 'results');
+  const failRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', failResults, failCorpus],
+    baseEnv(binDir, { ACTIVATION_ALLOW_SPEND: '1', LIVE_CASE_TIMEOUT_MS: '2000' })
+  );
+  const failReport = parseReport(failRun, 'behavioral dispatch-count fail');
+  assert(failRun.code === 1, 'a missing dispatch did not fail the runner');
+  assert(
+    failReport.cases[0].status === 'fail' && failReport.cases[0].reason.includes('0 subagent dispatches'),
+    'dispatch-count fail reason did not name the observed count'
+  );
+
+  // --- 3: setup success: setup writes seeded.txt in the case dir before the
+  // agent spawns. --------------------------------------------------------------
+  const setupOkRoot = path.join(root, 'setup-ok');
+  fs.mkdirSync(setupOkRoot, { recursive: true });
+  const setupOkCorpus = makeBehavioralCorpus(setupOkRoot, [
+    {
+      id: 'setup-success',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'setup-success',
+      setup: 'seed-ok.setup.js',
+      assertions: [{ kind: 'file_regex', path: 'seeded.txt', regex: 'seeded-ok' }],
+    },
+  ]);
+  fs.writeFileSync(
+    path.join(setupOkRoot, 'behavioral', 'seed-ok.setup.js'),
+    "'use strict';\nrequire('fs').writeFileSync('seeded.txt', 'seeded-ok\\n');\n"
+  );
+  const setupOkResults = path.join(setupOkRoot, 'results');
+  const setupOkRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', setupOkResults, setupOkCorpus],
+    baseEnv(binDir, { ACTIVATION_ALLOW_SPEND: '1', LIVE_CASE_TIMEOUT_MS: '2000' })
+  );
+  const setupOkReport = parseReport(setupOkRun, 'behavioral setup success');
+  assert(
+    setupOkRun.code === 0 && setupOkReport.passed === 1,
+    'a setup script that seeds a file did not let its case pass'
+  );
+
+  // --- 4: setup failure: setup exits 7, case invalid, no agent spawn. --------
+  const setupFailRoot = path.join(root, 'setup-fail');
+  fs.mkdirSync(setupFailRoot, { recursive: true });
+  const setupFailCorpus = makeBehavioralCorpus(setupFailRoot, [
+    {
+      id: 'setup-failure',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'setup-failure',
+      setup: 'seed-fail.setup.js',
+      assertions: [{ kind: 'file_regex', path: 'seeded.txt', regex: 'seeded-ok' }],
+    },
+  ]);
+  fs.writeFileSync(path.join(setupFailRoot, 'behavioral', 'seed-fail.setup.js'), 'process.exit(7);\n');
+  const setupFailResults = path.join(setupFailRoot, 'results');
+  const setupFailMarker = path.join(setupFailRoot, 'spawned');
+  const setupFailRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', setupFailResults, setupFailCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      FAKE_SPAWN_MARKER: setupFailMarker,
+    })
+  );
+  const setupFailReport = parseReport(setupFailRun, 'behavioral setup failure');
+  assert(setupFailRun.code === 1, 'a failing setup script did not fail the runner');
+  assert(
+    setupFailReport.cases[0].status === 'invalid',
+    'a failing setup script did not invalidate its case'
+  );
+  const setupFailMeta = JSON.parse(
+    fs.readFileSync(path.join(setupFailResults, 'setup-failure.setup.meta.json'), 'utf8')
+  );
+  assert(setupFailMeta.exit_code === 7, 'setup failure metadata did not record exit_code 7');
+  assert(!fs.existsSync(setupFailMarker), 'a broken setup did not suppress the agent spawn');
+
+  // --- 5: setup timeout + orphaned descendant. --------------------------------
+  const setupTimeoutRoot = path.join(root, 'setup-timeout');
+  fs.mkdirSync(setupTimeoutRoot, { recursive: true });
+  const setupTimeoutCorpus = makeBehavioralCorpus(setupTimeoutRoot, [
+    {
+      id: 'setup-timeout',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'setup-timeout',
+      setup: 'hang.setup.js',
+      assertions: [{ kind: 'file_regex', path: 'seeded.txt', regex: 'seeded-ok' }],
+    },
+  ]);
+  fs.writeFileSync(
+    path.join(setupTimeoutRoot, 'behavioral', 'hang.setup.js'),
+    [
+      "'use strict';",
+      "const { spawn } = require('child_process');",
+      "const code = \"const fs=require('fs');const p=process.argv[1];setInterval(()=>fs.appendFileSync(p,'x'),20);\";",
+      "spawn(process.execPath, ['-e', code, 'descendant-activity'], { stdio: 'ignore' });",
+      'setInterval(() => {}, 1000);',
+      '',
+    ].join('\n')
+  );
+  const setupTimeoutResults = path.join(setupTimeoutRoot, 'results');
+  const setupTimeoutMarker = path.join(setupTimeoutRoot, 'spawned');
+  const setupTimeoutRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', setupTimeoutResults, setupTimeoutCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '200',
+      FAKE_SPAWN_MARKER: setupTimeoutMarker,
+    })
+  );
+  const setupTimeoutReport = parseReport(setupTimeoutRun, 'behavioral setup timeout');
+  assert(
+    setupTimeoutRun.code === 1 && setupTimeoutReport.cases[0].status === 'invalid',
+    'a hung setup script did not invalidate its case'
+  );
+  const setupTimeoutMeta = JSON.parse(
+    fs.readFileSync(path.join(setupTimeoutResults, 'setup-timeout.setup.meta.json'), 'utf8')
+  );
+  assert(setupTimeoutMeta.timed_out === true, 'setup timeout metadata did not record timed_out');
+  assert(!fs.existsSync(setupTimeoutMarker), 'a hung setup did not suppress the agent spawn');
+  await assertActivityStopped(
+    path.join(setupTimeoutResults, 'setup-timeout', 'descendant-activity'),
+    'behavioral setup timeout'
+  );
+
+  // --- 6: roster preflight: no .claude/agents blocks up front, then a seeded
+  // roster lets the case be attempted. -----------------------------------------
+  const rosterRoot = path.join(root, 'roster');
+  fs.mkdirSync(rosterRoot, { recursive: true });
+  const rosterCorpus = makeBehavioralCorpus(rosterRoot, [
+    {
+      id: 'roster-case',
+      skill: 'fixture-skill',
+      prompt: 'dispatch2',
+      max_turns: 2,
+      fixture: 'roster-case',
+      assertions: [{ kind: 'trace_agent_dispatch_count', min: 1 }],
+    },
+  ]);
+  const noRosterHome = path.join(rosterRoot, 'home');
+  fs.mkdirSync(noRosterHome, { recursive: true });
+  const noRosterMarker = path.join(rosterRoot, 'no-roster-spawned');
+  const noRosterRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(rosterRoot, 'no-roster-results'), rosterCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      FAKE_SPAWN_MARKER: noRosterMarker,
+      HOME: noRosterHome,
+      USERPROFILE: noRosterHome,
+    })
+  );
+  assert(noRosterRun.code !== 0, 'a dispatch-count assertion ran without an installed roster');
+  assert(!fs.existsSync(noRosterMarker), 'a missing roster did not suppress the agent spawn');
+
+  const rosterAgentsDir = path.join(noRosterHome, '.claude', 'agents');
+  fs.mkdirSync(rosterAgentsDir, { recursive: true });
+  fs.writeFileSync(path.join(rosterAgentsDir, 'planner.md'), '# planner\n');
+  const withRosterMarker = path.join(rosterRoot, 'with-roster-spawned');
+  const withRosterRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(rosterRoot, 'with-roster-results'), rosterCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      FAKE_SPAWN_MARKER: withRosterMarker,
+      HOME: noRosterHome,
+      USERPROFILE: noRosterHome,
+    })
+  );
+  assert(
+    fs.existsSync(withRosterMarker),
+    'a seeded roster did not let the dispatch-count case attempt its agent spawn'
+  );
+}
+
+async function testBehavioralAllowedTools(binDir) {
+  const root = path.join(scratchRoot, 'allowed-tools');
+  fs.mkdirSync(root, { recursive: true });
+
+  // --- 1: allowed_tools present reaches the child argv, in order. -----------
+  const withRoot = path.join(root, 'with');
+  const withCorpus = makeBehavioralCorpus(withRoot, [
+    {
+      id: 'with-allowed-tools',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'with-allowed-tools',
+      allowed_tools: ['Bash', 'Read'],
+      assertions: [],
+    },
+  ]);
+  const withArgvFile = path.join(root, 'with-argv.json');
+  const withRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(withRoot, 'results'), withCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      FAKE_ARGV_MARKER: withArgvFile,
+    })
+  );
+  assert(withRun.code === 0, `allowed_tools case exited ${withRun.code}, expected 0`);
+  const withArgv = JSON.parse(fs.readFileSync(withArgvFile, 'utf8'));
+  const toolsIndex = withArgv.indexOf('--allowedTools');
+  assert(
+    toolsIndex !== -1 && withArgv[toolsIndex + 1] === 'Bash' && withArgv[toolsIndex + 2] === 'Read',
+    `allowed_tools did not reach the child argv in order: ${JSON.stringify(withArgv)}`
+  );
+
+  // --- 2: absent allowed_tools never adds the flag. --------------------------
+  const withoutRoot = path.join(root, 'without');
+  const withoutCorpus = makeBehavioralCorpus(withoutRoot, [
+    {
+      id: 'without-allowed-tools',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'without-allowed-tools',
+      assertions: [],
+    },
+  ]);
+  const withoutArgvFile = path.join(root, 'without-argv.json');
+  const withoutRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(withoutRoot, 'results'), withoutCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      FAKE_ARGV_MARKER: withoutArgvFile,
+    })
+  );
+  assert(withoutRun.code === 0, `no-allowed_tools case exited ${withoutRun.code}, expected 0`);
+  const withoutArgv = JSON.parse(fs.readFileSync(withoutArgvFile, 'utf8'));
+  assert(
+    !withoutArgv.includes('--allowedTools'),
+    `--allowedTools appeared in argv with no allowed_tools set: ${JSON.stringify(withoutArgv)}`
+  );
+
+  // --- 3: the lint rejects a malformed allowed_tools. -------------------------
+  const lintRoot = path.join(root, 'lint');
+  const lintCorpus = makeBehavioralCorpus(lintRoot, [
+    {
+      id: 'bad-allowed-tools',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'bad-allowed-tools',
+      allowed_tools: ['Bash(git diff:*)'],
+      assertions: [],
+    },
+  ]);
+  const lintRun = await runNode(BEHAVIORAL_RUNNER, ['--dry-run', lintCorpus], baseEnv(binDir));
+  const lintReport = parseReport(lintRun, 'behavioral allowed_tools lint');
+  assert(lintRun.code === 1, `malformed allowed_tools dry-run exited ${lintRun.code}, expected 1`);
+  assert(
+    lintReport.cases[0].problems.some((p) => p.includes('allowed_tools')),
+    'malformed allowed_tools was not flagged by --dry-run'
+  );
+}
+
+async function testBehavioralZeroMaxDispatchCount(binDir) {
+  const root = path.join(scratchRoot, 'zero-max-dispatch');
+  fs.mkdirSync(root, { recursive: true });
+
+  // --- pass: {min:0,max:0} against a trace with zero dispatches. ------------
+  const passRoot = path.join(root, 'pass');
+  const passCorpus = makeBehavioralCorpus(passRoot, [
+    {
+      id: 'zero-dispatch-pass',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'zero-dispatch-pass',
+      assertions: [{ kind: 'trace_agent_dispatch_count', min: 0, max: 0 }],
+    },
+  ]);
+  const passRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(passRoot, 'results'), passCorpus],
+    baseEnv(binDir, { ACTIVATION_ALLOW_SPEND: '1', LIVE_CASE_TIMEOUT_MS: '2000' })
+  );
+  const passReport = parseReport(passRun, 'zero-max dispatch pass');
+  assert(passRun.code === 0 && passReport.passed === 1, '{min:0,max:0} did not pass on zero dispatches');
+
+  // --- fail: {min:0,max:0} against a trace with a nonzero dispatch count. ---
+  const failRoot = path.join(root, 'fail');
+  const failCorpus = makeBehavioralCorpus(failRoot, [
+    {
+      id: 'zero-dispatch-fail',
+      skill: 'fixture-skill',
+      prompt: 'dispatch2',
+      max_turns: 2,
+      fixture: 'zero-dispatch-fail',
+      assertions: [{ kind: 'trace_agent_dispatch_count', min: 0, max: 0 }],
+    },
+  ]);
+  const failRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(failRoot, 'results'), failCorpus],
+    baseEnv(binDir, { ACTIVATION_ALLOW_SPEND: '1', LIVE_CASE_TIMEOUT_MS: '2000' })
+  );
+  const failReport = parseReport(failRun, 'zero-max dispatch fail');
+  assert(failRun.code === 1, '{min:0,max:0} did not fail the runner on a nonzero dispatch');
+  assert(
+    failReport.cases[0].status === 'fail' && failReport.cases[0].reason.includes('subagent dispatches'),
+    '{min:0,max:0} fail reason did not name the observed count'
+  );
+}
+
+async function testBehavioralSetupEnvScrub(binDir) {
+  const root = path.join(scratchRoot, 'setup-env-scrub');
+  fs.mkdirSync(root, { recursive: true });
+  const corpus = makeBehavioralCorpus(root, [
+    {
+      id: 'env-scrub-case',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'env-scrub-case',
+      setup: 'record-env.setup.js',
+      assertions: [{ kind: 'file_regex', path: 'env.json', regex: '"GIT_DIR":null' }],
+    },
+  ]);
+  fs.writeFileSync(
+    path.join(root, 'behavioral', 'record-env.setup.js'),
+    "'use strict';\nrequire('fs').writeFileSync('env.json', JSON.stringify({ GIT_DIR: process.env.GIT_DIR || null }));\n"
+  );
+  const results = path.join(root, 'results');
+  const run = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', results, corpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      GIT_DIR: '/nonexistent/should-not-leak',
+    })
+  );
+  const report = parseReport(run, 'setup env scrub');
+  assert(run.code === 0 && report.passed === 1, 'the setup child leaked an inherited GIT_DIR');
+  const env = JSON.parse(fs.readFileSync(path.join(results, 'env-scrub-case', 'env.json'), 'utf8'));
+  assert(env.GIT_DIR === null, `setup child observed GIT_DIR=${JSON.stringify(env.GIT_DIR)}, expected scrubbed`);
+}
+
 async function testCodex(binDir, codexRunner) {
   const root = path.join(scratchRoot, 'codex');
   fs.mkdirSync(root, { recursive: true });
@@ -1302,6 +1722,10 @@ async function main() {
   await testMalformedInstalledToml(binDir);
   await testActivation(binDir);
   await testBehavioral(binDir);
+  await testBehavioralAssertionsAndSetup(binDir);
+  await testBehavioralAllowedTools(binDir);
+  await testBehavioralZeroMaxDispatchCount(binDir);
+  await testBehavioralSetupEnvScrub(binDir);
   await testCodex(binDir, codexRunner);
   await testParentSignal(binDir);
   process.stdout.write('OK: live runner fixtures passed\n');
