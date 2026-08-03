@@ -518,9 +518,14 @@ upsert_toml_default() {
 # [features] forms, or conflicting tables/assignments for a managed feature
 # key rather than guessing which invalid TOML form a user intended to keep.
 upsert_codex_features() {
-  local file="$1" tmp feature_table_count unsupported_feature_form_count incompatible_feature_table_count
+  local file="$1" tmp feature_table_count multiline_string_delimiter_count unsupported_feature_form_count incompatible_feature_table_count
   mkdir -p "$(dirname "$file")"
   [ -f "$file" ] || : > "$file"
+  multiline_string_delimiter_count="$(awk 'index($0, "\"\"\"") || index($0, "\047\047\047") { count++ } END { print count + 0 }' "$file")"
+  if [ "$multiline_string_delimiter_count" -gt 0 ]; then
+    echo "error: $file uses a multiline TOML string; line-based [features] management supports only single-line values" >&2
+    return 1
+  fi
   feature_table_count="$(awk '/^[[:space:]]*\[features\][[:space:]]*(#.*)?$/ { count++ } END { print count + 0 }' "$file")"
   if [ "$feature_table_count" -gt 1 ]; then
     echo "error: $file has multiple [features] tables; refusing to rewrite invalid TOML" >&2

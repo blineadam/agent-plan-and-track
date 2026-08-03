@@ -613,6 +613,10 @@ function Set-CodexFeatures($file) {
   $bareFeaturesHeaderRe = '^\s*\[features\]\s*(#.*)?$'
   $featureSegment = '(features|"features"|''features'')'
   $managedSegment = '(multi_agent|"multi_agent"|''multi_agent''|multi_agent_v2|"multi_agent_v2"|''multi_agent_v2'')'
+  $multilineStringDelimiterCount = @($lines | Where-Object { $_.Contains('"""') -or $_.Contains("'''") }).Count
+  if ($multilineStringDelimiterCount -gt 0) {
+    throw "error: $file uses a multiline TOML string; line-based [features] management supports only single-line values"
+  }
   $featureTableCount = @($lines | Where-Object { $_ -match $bareFeaturesHeaderRe }).Count
   if ($featureTableCount -gt 1) {
     throw "error: $file has multiple [features] tables; refusing to rewrite invalid TOML"

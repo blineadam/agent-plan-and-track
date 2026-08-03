@@ -162,7 +162,7 @@ jobs:
           # The installer writes only bare [features] headers and bare scalar
           # assignments. Every root assignment whose first key segment is
           # features must fail before it can collide with those writes.
-          for fixture_kind in quoted-header quoted-assignment dotted-assignment root-scalar root-inline-table root-dotted-path; do
+          for fixture_kind in quoted-header quoted-assignment dotted-assignment root-scalar root-inline-table root-dotted-path multiline-string; do
             unsupported_home="$RUNNER_TEMP/scratch-home-codex-unsupported-$fixture_kind"
             mkdir -p "$unsupported_home/.codex"
             case "$fixture_kind" in
@@ -172,13 +172,16 @@ jobs:
               root-scalar) printf '%s\n' 'features = false' ;;
               root-inline-table) printf '%s\n' 'features = { unrelated = true }' ;;
               root-dotted-path) printf '%s\n' 'features.other = true' ;;
+              multiline-string) printf '%s\n' '[features]' 'unrelated = """' '[other]' '"""' ;;
             esac > "$unsupported_home/.codex/config.toml"
             cp "$unsupported_home/.codex/config.toml" "$unsupported_home/before.toml"
             unsupported_out="$unsupported_home/install.out"
             if HOME="$unsupported_home" ./install.sh codex > "$unsupported_out" 2>&1; then
               echo "FAIL: unsupported $fixture_kind fixture was accepted"; exit 1
             fi
-            grep -qF 'uses an unsupported [features] form or root features assignment' "$unsupported_out" \
+            expected_error='uses an unsupported [features] form or root features assignment'
+            [ "$fixture_kind" = multiline-string ] && expected_error='uses a multiline TOML string'
+            grep -qF "$expected_error" "$unsupported_out" \
               || { echo "FAIL: unsupported $fixture_kind fixture did not report a clear error"; cat "$unsupported_out"; exit 1; }
             cmp -s "$unsupported_home/before.toml" "$unsupported_home/.codex/config.toml" \
               || { echo "FAIL: unsupported $fixture_kind fixture changed config.toml"; exit 1; }
@@ -756,7 +759,7 @@ jobs:
           }
           # Every root assignment whose first key segment is features is
           # unsupported, so it fails before colliding with bare writes.
-          foreach ($fixtureKind in @('quoted-header', 'quoted-assignment', 'dotted-assignment', 'root-scalar', 'root-inline-table', 'root-dotted-path')) {
+          foreach ($fixtureKind in @('quoted-header', 'quoted-assignment', 'dotted-assignment', 'root-scalar', 'root-inline-table', 'root-dotted-path', 'multiline-string')) {
             $unsupportedHome = "$env:RUNNER_TEMP\scratch-home-codex-unsupported-$fixtureKind"
             New-Item -ItemType Directory -Force -Path "$unsupportedHome\.codex" | Out-Null
             $unsupportedConfig = "$unsupportedHome\.codex\config.toml"
@@ -767,6 +770,7 @@ jobs:
               'root-scalar' { "features = false`n" }
               'root-inline-table' { "features = { unrelated = true }`n" }
               'root-dotted-path' { "features.other = true`n" }
+              'multiline-string' { "[features]`nunrelated = `"`"`"`n[other]`n`"`"`"`n" }
             }
             [System.IO.File]::WriteAllText($unsupportedConfig, $fixtureText, [System.Text.UTF8Encoding]::new($false))
             Copy-Item -LiteralPath $unsupportedConfig -Destination "$unsupportedHome\before.toml" -Force
@@ -774,7 +778,8 @@ jobs:
             $unsupportedFailed = $false; $unsupportedOut = ''
             try { $unsupportedOut = (.\install.ps1 codex 6>&1 | Out-String) } catch { $unsupportedFailed = $true; $unsupportedOut += $_.Exception.Message }
             if (-not $unsupportedFailed) { throw "unsupported $fixtureKind fixture was accepted" }
-            if ($unsupportedOut -notmatch [regex]::Escape('uses an unsupported [features] form or root features assignment')) { throw "unsupported $fixtureKind fixture did not report a clear error" }
+            $expectedError = if ($fixtureKind -eq 'multiline-string') { 'uses a multiline TOML string' } else { 'uses an unsupported [features] form or root features assignment' }
+            if ($unsupportedOut -notmatch [regex]::Escape($expectedError)) { throw "unsupported $fixtureKind fixture did not report a clear error" }
             if ((Get-FileHash "$unsupportedHome\before.toml").Hash -ne (Get-FileHash $unsupportedConfig).Hash) { throw "unsupported $fixtureKind fixture changed config.toml" }
           }
           $env:USERPROFILE = $H
