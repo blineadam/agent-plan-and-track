@@ -50,10 +50,11 @@ tier for.
   kicks anything needing a judgment call back to you.
 
 If your account doesn't have Fable access, agents pinned to it just fall
-back to your normal model. Codex gets the same eight agents, but only the
-effort level and permissions carry over there, not the model tier. Copilot
-also gets the same eight agents, but only tool permissions carry over
-there, not the model tier and not effort.
+back to your normal model. Codex gets the same eight agents through the
+current compatibility mapping: Fable and Opus map to `gpt-5.6-sol`, Sonnet
+to `gpt-5.6-terra`, and Haiku to `gpt-5.6-luna`; effort and permissions carry
+over unchanged. Copilot also gets the same eight agents, but only tool
+permissions carry over there, not the model tier and not effort.
 
 Claude picks the right agent for the job automatically, or you can call
 one by name ("use the researcher agent to..."). Copilot CLI has its own

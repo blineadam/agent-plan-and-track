@@ -361,16 +361,29 @@ function ConvertTo-TomlEscaped($s) {
   return $s.Replace('\', '\\').Replace('"', '\"')
 }
 
-# Render one agents/*.md source into Codex-native TOML agent text. model is
-# left UNSET: Claude model names (fable/opus/sonnet/haiku) don't translate to
-# Codex's own model catalog, so the agent inherits whatever model the parent
-# session is running. developer_instructions uses a TOML literal
-# triple-single-quoted string so the body needs no escaping; same documented
-# tradeoff Set-TomlDefault takes on TOML string handling above, and none of
-# this repo's agent bodies contain a literal ''' to break it.
+# Translate the Claude source-model tiers used by agents/*.md to the pinned
+# Codex model catalog. Unknown tiers fail loudly rather than silently
+# inheriting the parent session's model.
+function ConvertTo-CodexModel($sourceModel) {
+  switch ($sourceModel) {
+    'fable' { return 'gpt-5.6-sol' }
+    'opus' { return 'gpt-5.6-sol' }
+    'sonnet' { return 'gpt-5.6-terra' }
+    'haiku' { return 'gpt-5.6-luna' }
+    default { throw "error: unknown Claude agent model tier '$sourceModel'" }
+  }
+}
+
+# Render one agents/*.md source into Codex-native TOML agent text. model and
+# model_reasoning_effort translate directly from the source agent's model tier
+# and effort. developer_instructions uses a TOML literal triple-single-quoted
+# string so the body needs no escaping; same documented tradeoff
+# Set-TomlDefault takes on TOML string handling above, and none of this repo's
+# agent bodies contain a literal ''' to break it.
 function ConvertTo-CodexAgentToml($src) {
   $name = Get-AgentFrontmatterField $src 'name'
   $description = Get-AgentFrontmatterField $src 'description'
+  $model = ConvertTo-CodexModel (Get-AgentFrontmatterField $src 'model')
   $effort = Get-AgentFrontmatterField $src 'effort'
   $tools = Get-AgentFrontmatterField $src 'tools'
   $sandboxMode = if ($tools -match 'Edit|Write') { 'workspace-write' } else { 'read-only' }
@@ -378,6 +391,7 @@ function ConvertTo-CodexAgentToml($src) {
   $lines = @(
     "name = `"$(ConvertTo-TomlEscaped $name)`"",
     "description = `"$(ConvertTo-TomlEscaped $description)`"",
+    "model = `"$model`"",
     "model_reasoning_effort = `"$effort`"",
     "sandbox_mode = `"$sandboxMode`"",
     "developer_instructions = '''",
@@ -435,11 +449,10 @@ function ConvertTo-CopilotTools($src, $tools) {
 }
 
 # Render one agents/*.md source into a Copilot-native agent file's text, per
-# the GA custom-agents doc's own example frontmatter shape. Like
-# ConvertTo-CodexAgentToml, model is left UNSET (no Claude->Copilot model
-# translation); effort is dropped entirely (Copilot's agent frontmatter has no
-# effort field). tools renders as a YAML flow array of double-quoted aliases
-# via ConvertTo-CopilotTools.
+# the GA custom-agents doc's own example frontmatter shape. Copilot keeps model
+# UNSET (no Claude-to-Copilot model translation), and effort is dropped entirely
+# (Copilot's agent frontmatter has no effort field). tools renders as a YAML
+# flow array of double-quoted aliases via ConvertTo-CopilotTools.
 function ConvertTo-CopilotAgentMd($src) {
   $name = Get-AgentFrontmatterField $src 'name'
   $description = Get-AgentFrontmatterField $src 'description'
@@ -585,6 +598,96 @@ function Set-TomlDefault($file, $key, $val) {
     Write-Back $tmp $file
     Write-Host "  plan-mode effort-> $key = `"$val`" prepended in $base"
   }
+}
+
+# Re-assert the two Codex multi-agent feature flags inside exactly one bare
+# [features] table. Existing unrelated bare scalars in that table survive
+# untouched; each managed key is replaced once, and a missing table is appended
+# once. This line-based TOML edit rejects unsupported direct-table, quoted, and
+# dotted forms that could collide with its deliberately narrow write grammar.
+function Set-CodexFeatures($file) {
+  $dir = Split-Path -Parent $file
+  if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+  if (-not (Test-Path -LiteralPath $file)) { [System.IO.File]::WriteAllText($file, '', $Utf8NoBom) }
+  $lines = @([System.IO.File]::ReadAllLines($file))
+  $bareFeaturesHeaderRe = '^\s*\[features\]\s*(#.*)?$'
+  $featureSegment = '(features|"features"|''features'')'
+  $managedSegment = '(multi_agent|"multi_agent"|''multi_agent''|multi_agent_v2|"multi_agent_v2"|''multi_agent_v2'')'
+  $featureTableCount = @($lines | Where-Object { $_ -match $bareFeaturesHeaderRe }).Count
+  if ($featureTableCount -gt 1) {
+    throw "error: $file has multiple [features] tables; refusing to rewrite invalid TOML"
+  }
+  $unsupportedDirectFeaturesHeaderRe = '^\s*\[\[?\s*("features"|''features'')\s*\]\]?\s*(#.*)?$'
+  $unsupportedBareFeaturesArrayHeaderRe = '^\s*\[\[\s*features\s*\]\]\s*(#.*)?$'
+  $quotedManagedAssignmentRe = '^\s*("multi_agent"|''multi_agent''|"multi_agent_v2"|''multi_agent_v2'')\s*(=|\.)'
+  $bareDottedManagedAssignmentRe = '^\s*(multi_agent|multi_agent_v2)\s*\.'
+  $rootFeatureAssignmentRe = '^\s*' + $featureSegment + '\s*(=|\.)'
+  $unsupportedFeatureFormCount = 0
+  $inRoot = $true
+  $inFeatures = $false
+  foreach ($line in $lines) {
+    if ($line -match $unsupportedDirectFeaturesHeaderRe -or $line -match $unsupportedBareFeaturesArrayHeaderRe) {
+      $unsupportedFeatureFormCount++
+    }
+    if (($inFeatures -and ($line -match $quotedManagedAssignmentRe -or $line -match $bareDottedManagedAssignmentRe)) -or
+        ($inRoot -and $line -match $rootFeatureAssignmentRe)) {
+      $unsupportedFeatureFormCount++
+    }
+    if ($line -match '^\s*\[') {
+      $inFeatures = $line -match $bareFeaturesHeaderRe
+      $inRoot = $false
+    }
+  }
+  if ($unsupportedFeatureFormCount -gt 0) {
+    throw "error: $file uses an unsupported [features] form or root features assignment; only bare [features] and bare scalar assignments are supported"
+  }
+  $managedFeatureTableRe = '^\s*\[\s*' + $featureSegment + '\s*\.\s*' + $managedSegment + '(\s*\.|\s*\])'
+  $managedFeatureArrayTableRe = '^\s*\[\[\s*' + $featureSegment + '\s*\.\s*' + $managedSegment + '(\s*\.|\s*\])'
+  if (@($lines | Where-Object { $_ -match $managedFeatureTableRe -or $_ -match $managedFeatureArrayTableRe }).Count -gt 0) {
+    throw "error: $file defines a table for a managed [features] key (including quoted forms); refusing to set multi_agent or multi_agent_v2 scalars"
+  }
+  $out = New-Object System.Collections.Generic.List[string]
+  $inFeatures = $false
+  $featuresFound = $false
+  $multiAgentSeen = $false
+  $multiAgentV2Seen = $false
+  foreach ($line in $lines) {
+    if ($line -match $bareFeaturesHeaderRe) {
+      $inFeatures = $true
+      $featuresFound = $true
+      $out.Add($line)
+      continue
+    }
+    if ($inFeatures -and $line -match '^\s*\[') {
+      if (-not $multiAgentSeen) { $out.Add('multi_agent = true') }
+      if (-not $multiAgentV2Seen) { $out.Add('multi_agent_v2 = false') }
+      $inFeatures = $false
+    }
+    if ($inFeatures -and $line -match '^\s*multi_agent\s*=') {
+      if (-not $multiAgentSeen) { $out.Add('multi_agent = true') }
+      $multiAgentSeen = $true
+      continue
+    }
+    if ($inFeatures -and $line -match '^\s*multi_agent_v2\s*=') {
+      if (-not $multiAgentV2Seen) { $out.Add('multi_agent_v2 = false') }
+      $multiAgentV2Seen = $true
+      continue
+    }
+    $out.Add($line)
+  }
+  if ($featuresFound -and $inFeatures) {
+    if (-not $multiAgentSeen) { $out.Add('multi_agent = true') }
+    if (-not $multiAgentV2Seen) { $out.Add('multi_agent_v2 = false') }
+  }
+  if (-not $featuresFound) {
+    if ($lines.Count -gt 0) { $out.Add('') }
+    $out.Add('[features]')
+    $out.Add('multi_agent = true')
+    $out.Add('multi_agent_v2 = false')
+  }
+  $tmp = New-TempFileWith (($out -join "`n") + "`n")
+  Write-Back $tmp $file
+  Write-Host "  multi-agent     -> multi_agent=true, multi_agent_v2=false set in $(Split-Path -Leaf $file)"
 }
 
 # Ensure the user's *global* git excludes file ignores the per-project
@@ -864,6 +967,7 @@ function Install-Codex {
   Install-Instructions (Join-Path $codex 'AGENTS.md')
   # Plan-mode default, re-asserted each install: raise reasoning effort in Plan
   # mode only. Not gated by PT_KEEP_MODEL (that opt-out covers model settings).
+  Set-CodexFeatures (Join-Path $codex 'config.toml')
   Set-TomlDefault (Join-Path $codex 'config.toml') 'plan_mode_reasoning_effort' 'xhigh'
 
   $hooks = Join-Path $codex 'hooks.json'

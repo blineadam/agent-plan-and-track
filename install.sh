@@ -278,17 +278,34 @@ toml_escape() {
   printf '%s' "$s"
 }
 
+# Translate the Claude source-model tiers used by agents/*.md to the pinned
+# Codex model catalog. Unknown tiers fail loudly rather than silently
+# inheriting the parent session's model.
+codex_model() {
+  local source_model="$1"
+  case "$source_model" in
+    fable|opus) printf '%s' "gpt-5.6-sol" ;;
+    sonnet)     printf '%s' "gpt-5.6-terra" ;;
+    haiku)      printf '%s' "gpt-5.6-luna" ;;
+    *)
+      echo "error: unknown Claude agent model tier '$source_model'" >&2
+      return 1
+      ;;
+  esac
+}
+
 # Render one agents/*.md source ($1) into a Codex-native TOML agent file at
-# $2. model is left UNSET: Claude model names (fable/opus/sonnet/haiku) don't
-# translate to Codex's own model catalog, so the agent inherits whatever
-# model the parent session is running. developer_instructions uses a TOML
-# literal triple-single-quoted string so the body needs no escaping; same
-# documented tradeoff upsert_toml_default takes on TOML string handling
-# below, and none of this repo's agent bodies contain a literal ''' to break it.
+# $2. model and model_reasoning_effort translate directly from the source
+# agent's model tier and effort. developer_instructions uses a TOML literal
+# triple-single-quoted string so the body needs no escaping; same documented
+# tradeoff upsert_toml_default takes on TOML string handling below, and none
+# of this repo's agent bodies contain a literal ''' to break it.
 render_codex_agent() {
-  local src="$1" dest="$2" name description effort tools sandbox_mode
+  local src="$1" dest="$2" name description source_model model effort tools sandbox_mode
   name="$(frontmatter_field "$src" name)"
   description="$(frontmatter_field "$src" description)"
+  source_model="$(frontmatter_field "$src" model)"
+  model="$(codex_model "$source_model")"
   effort="$(frontmatter_field "$src" effort)"
   tools="$(frontmatter_field "$src" tools)"
   case "$tools" in
@@ -298,6 +315,7 @@ render_codex_agent() {
   {
     printf 'name = "%s"\n' "$(toml_escape "$name")"
     printf 'description = "%s"\n' "$(toml_escape "$description")"
+    printf 'model = "%s"\n' "$model"
     printf 'model_reasoning_effort = "%s"\n' "$effort"
     printf 'sandbox_mode = "%s"\n' "$sandbox_mode"
     printf "developer_instructions = '''\n%s\n'''\n" "$(agent_body "$src")"
@@ -356,11 +374,10 @@ copilot_tools() {
 }
 
 # Render one agents/*.md source ($1) into a Copilot-native agent file at $2,
-# per the GA custom-agents doc's own example frontmatter shape. Like
-# render_codex_agent, model is left UNSET (no Claude->Copilot model
-# translation); effort is dropped entirely (Copilot's agent frontmatter has no
-# effort field). tools renders as a YAML flow array of double-quoted aliases
-# via copilot_tools.
+# per the GA custom-agents doc's own example frontmatter shape. Copilot keeps
+# model UNSET (no Claude-to-Copilot model translation), and effort is dropped
+# entirely (Copilot's agent frontmatter has no effort field). tools renders as
+# a YAML flow array of double-quoted aliases via copilot_tools.
 render_copilot_agent() {
   local src="$1" dest="$2" name description tools raw_tools
   name="$(frontmatter_field "$src" name)"
@@ -491,6 +508,104 @@ upsert_toml_default() {
     { echo "$key = \"$val\""; cat "$file"; } > "$tmp" && write_back "$tmp" "$file"
     echo "  plan-mode effort-> $key = \"$val\" prepended in $(basename "$file")"
   fi
+}
+
+# Re-assert the two Codex multi-agent feature flags inside exactly one
+# [features] table. Existing unrelated keys in that table survive untouched;
+# each managed key is replaced once, and a missing table is appended once.
+# Like upsert_toml_default, this is a line-based TOML edit and intentionally
+# rejects an already-duplicated [features] table, unsupported direct
+# [features] forms, or conflicting tables/assignments for a managed feature
+# key rather than guessing which invalid TOML form a user intended to keep.
+upsert_codex_features() {
+  local file="$1" tmp feature_table_count unsupported_feature_form_count incompatible_feature_table_count
+  mkdir -p "$(dirname "$file")"
+  [ -f "$file" ] || : > "$file"
+  feature_table_count="$(awk '/^[[:space:]]*\[features\][[:space:]]*(#.*)?$/ { count++ } END { print count + 0 }' "$file")"
+  if [ "$feature_table_count" -gt 1 ]; then
+    echo "error: $file has multiple [features] tables; refusing to rewrite invalid TOML" >&2
+    return 1
+  fi
+  unsupported_feature_form_count="$(awk '
+    function bare_features_header(line) {
+      return line ~ /^[[:space:]]*\[features\][[:space:]]*(#.*)?$/
+    }
+    function unsupported_direct_features_header(line) {
+      return line ~ /^[[:space:]]*\[\[?[[:space:]]*("features"|\047features\047)[[:space:]]*\]\]?[[:space:]]*(#.*)?$/ ||
+        line ~ /^[[:space:]]*\[\[[[:space:]]*features[[:space:]]*\]\][[:space:]]*(#.*)?$/
+    }
+    function unsupported_feature_assignment(line, segment) {
+      segment = "(features|\"features\"|\047features\047)"
+      return in_features && (line ~ "^[[:space:]]*(\"multi_agent\"|\047multi_agent\047|\"multi_agent_v2\"|\047multi_agent_v2\047)[[:space:]]*(=|\\.)" ||
+        line ~ "^[[:space:]]*(multi_agent|multi_agent_v2)[[:space:]]*\\.") ||
+        in_root && line ~ "^[[:space:]]*" segment "[[:space:]]*(=|\\.)"
+    }
+    BEGIN { in_root = 1 }
+    {
+      if (unsupported_direct_features_header($0)) unsupported_header_count++
+      if (unsupported_feature_assignment($0)) unsupported_assignment_count++
+      if (/^[[:space:]]*\[/) {
+        in_features = bare_features_header($0)
+        in_root = 0
+      }
+    }
+    END { print unsupported_header_count + unsupported_assignment_count + 0 }
+  ' "$file")"
+  if [ "$unsupported_feature_form_count" -gt 0 ]; then
+    echo "error: $file uses an unsupported [features] form or root features assignment; only bare [features] and bare scalar assignments are supported" >&2
+    return 1
+  fi
+  incompatible_feature_table_count="$(awk '
+    function incompatible_feature_table(line, segment) {
+      segment = "(features|\"features\"|\047features\047)"
+      return line ~ "^[[:space:]]*\\[[[:space:]]*" segment "[[:space:]]*\\.[[:space:]]*(multi_agent|\"multi_agent\"|\047multi_agent\047|multi_agent_v2|\"multi_agent_v2\"|\047multi_agent_v2\047)([[:space:]]*\\.|[[:space:]]*\\])" ||
+        line ~ "^[[:space:]]*\\[\\[[[:space:]]*" segment "[[:space:]]*\\.[[:space:]]*(multi_agent|\"multi_agent\"|\047multi_agent\047|multi_agent_v2|\"multi_agent_v2\"|\047multi_agent_v2\047)([[:space:]]*\\.|[[:space:]]*\\])"
+    }
+    incompatible_feature_table($0) { count++ }
+    END { print count + 0 }
+  ' "$file")"
+  if [ "$incompatible_feature_table_count" -gt 0 ]; then
+    echo "error: $file defines a table for a managed [features] key (including quoted forms); refusing to set multi_agent or multi_agent_v2 scalars" >&2
+    return 1
+  fi
+  tmp="$(mktemp)"
+  awk '
+    function emit_missing() {
+      if (!multi_agent_seen) print "multi_agent = true"
+      if (!multi_agent_v2_seen) print "multi_agent_v2 = false"
+    }
+    /^[[:space:]]*\[features\][[:space:]]*(#.*)?$/ {
+      in_features = 1
+      features_found = 1
+      print
+      next
+    }
+    in_features && /^[[:space:]]*\[/ {
+      emit_missing()
+      in_features = 0
+    }
+    in_features && /^[[:space:]]*multi_agent[[:space:]]*=/ {
+      if (!multi_agent_seen) print "multi_agent = true"
+      multi_agent_seen = 1
+      next
+    }
+    in_features && /^[[:space:]]*multi_agent_v2[[:space:]]*=/ {
+      if (!multi_agent_v2_seen) print "multi_agent_v2 = false"
+      multi_agent_v2_seen = 1
+      next
+    }
+    { print }
+    END {
+      if (features_found && in_features) emit_missing()
+      if (!features_found) {
+        if (NR > 0) print ""
+        print "[features]"
+        print "multi_agent = true"
+        print "multi_agent_v2 = false"
+      }
+    }
+  ' "$file" > "$tmp" && write_back "$tmp" "$file"
+  echo "  multi-agent     -> multi_agent=true, multi_agent_v2=false set in $(basename "$file")"
 }
 
 # Ensure the user's *global* git excludes file ignores the per-project
@@ -755,6 +870,7 @@ install_codex() {
   # Plan mode only, leaving the execution model and effort untouched. Codex has no
   # plan-mode model swap (no opusplan analog), so effort is the only phase-specific
   # lever. Not gated by PT_KEEP_MODEL (that opt-out covers model settings only).
+  upsert_codex_features "$HOME/.codex/config.toml"
   upsert_toml_default "$HOME/.codex/config.toml" "plan_mode_reasoning_effort" "xhigh"
   need_jq
   local hooks="$HOME/.codex/hooks.json" cscripts="$HOME/.codex/scripts" tmp

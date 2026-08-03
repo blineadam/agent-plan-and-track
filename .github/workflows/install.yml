@@ -65,6 +65,7 @@ jobs:
           assert_bare_permission_posture "$HOME"
           [ "$(jq -r .model "$HOME/.copilot/settings.json")" = "auto" ]
           grep -q 'plan_mode_reasoning_effort = "xhigh"' "$HOME/.codex/config.toml"
+          python3 -c "import sys, tomllib; config=tomllib.load(open(sys.argv[1], 'rb')); assert config.get('features') == {'multi_agent': True, 'multi_agent_v2': False}, f\"unexpected Codex feature defaults: {config.get('features')}\"; print('OK: Codex feature defaults are enabled/disabled as expected')" "$HOME/.codex/config.toml"
           grep -q 'agent-plan-and-track:begin' "$HOME/.claude/CLAUDE.md"
           test -f "$HOME/.claude/skills/skill-comply/SKILL.md" \
             || { echo "FAIL: Claude skill-comply missing"; exit 1; }
@@ -126,9 +127,62 @@ jobs:
           [ "$agent_toml_count" = "$agent_md_count" ] \
             || { echo "FAIL: expected $agent_md_count Codex agent TOML files, found $agent_toml_count"; exit 1; }
           # Each rendered TOML must actually parse and carry exactly the expected
-          # keys, with no stray Claude `model` key (existence/count alone doesn't
-          # prove the renderer emitted valid or complete output).
-          python3 -c "import glob, os, sys, tomllib; expected={'name','description','model_reasoning_effort','sandbox_mode','developer_instructions'}; files=sorted(glob.glob(os.path.join(sys.argv[1],'*.toml'))); assert files, 'no Codex agent TOML files found'; bad=[(f, sorted(tomllib.load(open(f,'rb')).keys())) for f in files if set(tomllib.load(open(f,'rb')).keys())!=expected]; assert not bad, f'bad TOML key sets: {bad}'; print(f'OK: validated TOML structure for {len(files)} rendered Codex agents')" "$HOME/.codex/agents"
+          # keys and source-tier-derived model/effort pair (existence/count alone
+          # doesn't prove the renderer emitted valid or complete output).
+          python3 -c "import glob, os, sys, tomllib; expected_keys={'name','description','model','model_reasoning_effort','sandbox_mode','developer_instructions'}; expected_agents={'architect-reviewer':('gpt-5.6-sol','xhigh'),'debugger':('gpt-5.6-terra','high'),'executor':('gpt-5.6-terra','high'),'fable-advisor':('gpt-5.6-sol','xhigh'),'mechanic':('gpt-5.6-luna','medium'),'planner':('gpt-5.6-sol','xhigh'),'researcher':('gpt-5.6-terra','high'),'security-auditor':('gpt-5.6-sol','xhigh')}; files=sorted(glob.glob(os.path.join(sys.argv[1],'*.toml'))); assert files, 'no Codex agent TOML files found'; parsed={os.path.splitext(os.path.basename(f))[0]:tomllib.load(open(f,'rb')) for f in files}; bad_keys=[(name, sorted(agent.keys())) for name, agent in parsed.items() if set(agent.keys()) != expected_keys]; assert not bad_keys, f'bad TOML key sets: {bad_keys}'; rendered={name:(agent['model'], agent['model_reasoning_effort']) for name, agent in parsed.items()}; assert rendered == expected_agents, f'bad Codex model/effort mappings: {rendered}'; print(f'OK: validated model/effort mappings for {len(parsed)} rendered Codex agents')" "$HOME/.codex/agents"
+          # A pre-existing [features] table keeps unrelated settings, re-asserts
+          # both managed values, and remains byte-identical on the next install.
+          feature_home="$RUNNER_TEMP/scratch-home-codex-features"
+          mkdir -p "$feature_home/.codex"
+          printf '%s\n' 'existing_root = "preserve"' '' '[features]' 'unrelated_feature = "preserve"' 'multi_agent = false' 'multi_agent_v2 = true' > "$feature_home/.codex/config.toml"
+          HOME="$feature_home" ./install.sh codex >/dev/null
+          python3 -c "import sys, tomllib; config=tomllib.load(open(sys.argv[1], 'rb')); assert config == {'existing_root': 'preserve', 'plan_mode_reasoning_effort': 'xhigh', 'features': {'unrelated_feature': 'preserve', 'multi_agent': True, 'multi_agent_v2': False}}, f\"Codex feature preservation failed: {config}\"; print('OK: Codex features preserve unrelated settings')" "$feature_home/.codex/config.toml"
+          cp "$feature_home/.codex/config.toml" "$RUNNER_TEMP/codex-features-before-idempotency.toml"
+          HOME="$feature_home" ./install.sh codex >/dev/null
+          cmp -s "$RUNNER_TEMP/codex-features-before-idempotency.toml" "$feature_home/.codex/config.toml" \
+            || { echo "FAIL: Codex feature config changed on a repeated install"; exit 1; }
+          # A table at or below either managed key path conflicts with its scalar.
+          # Reject bare and quoted direct or child forms before changing config.
+          for key in multi_agent multi_agent_v2; do
+            for header in "[features.$key]" "[\"features\".\"$key\"]" "['features'.'$key']" "[features.$key.extra]" "[\"features\".\"$key\".extra]" "['features'.'$key'.extra]"; do
+              subtable_home="$RUNNER_TEMP/scratch-home-codex-subtable-${header//[^[:alnum:]]/_}"
+              mkdir -p "$subtable_home/.codex"
+              printf '%s\n' "$header" 'existing_value = true' > "$subtable_home/.codex/config.toml"
+              cp "$subtable_home/.codex/config.toml" "$subtable_home/before.toml"
+              subtable_out="$subtable_home/install.out"
+              if HOME="$subtable_home" ./install.sh codex > "$subtable_out" 2>&1; then
+                echo "FAIL: conflicting $header table was accepted"; exit 1
+              fi
+              grep -qF 'defines a table for a managed [features] key' "$subtable_out" \
+                || { echo "FAIL: conflicting $header table did not report a clear error"; cat "$subtable_out"; exit 1; }
+              cmp -s "$subtable_home/before.toml" "$subtable_home/.codex/config.toml" \
+                || { echo "FAIL: conflicting $header table changed config.toml"; exit 1; }
+            done
+          done
+          # The installer writes only bare [features] headers and bare scalar
+          # assignments. Every root assignment whose first key segment is
+          # features must fail before it can collide with those writes.
+          for fixture_kind in quoted-header quoted-assignment dotted-assignment root-scalar root-inline-table root-dotted-path; do
+            unsupported_home="$RUNNER_TEMP/scratch-home-codex-unsupported-$fixture_kind"
+            mkdir -p "$unsupported_home/.codex"
+            case "$fixture_kind" in
+              quoted-header) printf '%s\n' '["features"]' 'existing_value = true' ;;
+              quoted-assignment) printf '%s\n' '[features]' '"multi_agent" = false' ;;
+              dotted-assignment) printf '%s\n' 'features.multi_agent_v2 = false' ;;
+              root-scalar) printf '%s\n' 'features = false' ;;
+              root-inline-table) printf '%s\n' 'features = { unrelated = true }' ;;
+              root-dotted-path) printf '%s\n' 'features.other = true' ;;
+            esac > "$unsupported_home/.codex/config.toml"
+            cp "$unsupported_home/.codex/config.toml" "$unsupported_home/before.toml"
+            unsupported_out="$unsupported_home/install.out"
+            if HOME="$unsupported_home" ./install.sh codex > "$unsupported_out" 2>&1; then
+              echo "FAIL: unsupported $fixture_kind fixture was accepted"; exit 1
+            fi
+            grep -qF 'uses an unsupported [features] form or root features assignment' "$unsupported_out" \
+              || { echo "FAIL: unsupported $fixture_kind fixture did not report a clear error"; cat "$unsupported_out"; exit 1; }
+            cmp -s "$unsupported_home/before.toml" "$unsupported_home/.codex/config.toml" \
+              || { echo "FAIL: unsupported $fixture_kind fixture changed config.toml"; exit 1; }
+          done
           # Copilot agents: one rendered file per agents/*.md source.
           copilot_agent_count="$(ls "$HOME/.copilot/agents"/*.agent.md | wc -l | tr -d ' ')"
           [ "$copilot_agent_count" = "$agent_md_count" ] \
@@ -574,6 +628,9 @@ jobs:
           $c = (Get-Content -Raw "$H\.copilot\settings.json" | ConvertFrom-Json).model
           if ($c -ne 'auto') { throw "copilot model != auto" }
           if ((Get-Content -Raw "$H\.codex\config.toml") -notmatch 'plan_mode_reasoning_effort = "xhigh"') { throw "codex effort missing" }
+          $codexFeatureCheck = 'import sys, tomllib; config=tomllib.load(open(sys.argv[1], "rb")); features=config.get("features"); assert features == {"multi_agent": True, "multi_agent_v2": False}, f"unexpected Codex feature defaults: {features}"; print("OK: Codex feature defaults are enabled/disabled as expected")'
+          python -c $codexFeatureCheck "$H\.codex\config.toml"
+          if ($LASTEXITCODE -ne 0) { throw "Codex feature default validation failed" }
           if ((Get-Content -Raw "$H\.claude\CLAUDE.md") -notmatch 'agent-plan-and-track:begin') { throw "managed block missing" }
           if (-not (Test-Path -LiteralPath "$H\.claude\skills\skill-comply\SKILL.md")) { throw "Claude skill-comply missing" }
           if (-not (Test-Path -LiteralPath "$H\.agents\skills\skill-comply\SKILL.md")) { throw "Codex skill-comply missing" }
@@ -644,21 +701,79 @@ jobs:
           $agentTomlCount = (Get-ChildItem "$H\.codex\agents\*.toml").Count
           if ($agentTomlCount -ne $agentMdCount) { throw "expected $agentMdCount Codex agent TOML files, found $agentTomlCount" }
           # Each rendered TOML must actually parse and carry exactly the expected
-          # keys, with no stray Claude `model` key (existence/count alone doesn't
-          # prove the renderer emitted valid or complete output).
+          # keys and source-tier-derived model/effort pair (existence/count alone
+          # doesn't prove the renderer emitted valid or complete output).
           $validatorLines = @(
             'import glob, os, sys, tomllib',
-            'expected = {"name", "description", "model_reasoning_effort", "sandbox_mode", "developer_instructions"}',
+            'expected_keys = {"name", "description", "model", "model_reasoning_effort", "sandbox_mode", "developer_instructions"}',
+            'expected_agents = {"architect-reviewer": ("gpt-5.6-sol", "xhigh"), "debugger": ("gpt-5.6-terra", "high"), "executor": ("gpt-5.6-terra", "high"), "fable-advisor": ("gpt-5.6-sol", "xhigh"), "mechanic": ("gpt-5.6-luna", "medium"), "planner": ("gpt-5.6-sol", "xhigh"), "researcher": ("gpt-5.6-terra", "high"), "security-auditor": ("gpt-5.6-sol", "xhigh")}',
             'files = sorted(glob.glob(os.path.join(sys.argv[1], "*.toml")))',
             'assert files, "no Codex agent TOML files found"',
-            'bad = [(f, sorted(tomllib.load(open(f, "rb")).keys())) for f in files if set(tomllib.load(open(f, "rb")).keys()) != expected]',
-            'assert not bad, f"bad TOML key sets: {bad}"',
-            'print(f"OK: validated TOML structure for {len(files)} rendered Codex agents")'
+            'parsed = {os.path.splitext(os.path.basename(f))[0]: tomllib.load(open(f, "rb")) for f in files}',
+            'bad_keys = [(name, sorted(agent.keys())) for name, agent in parsed.items() if set(agent.keys()) != expected_keys]',
+            'assert not bad_keys, f"bad TOML key sets: {bad_keys}"',
+            'rendered = {name: (agent["model"], agent["model_reasoning_effort"]) for name, agent in parsed.items()}',
+            'assert rendered == expected_agents, f"bad Codex model/effort mappings: {rendered}"',
+            'print(f"OK: validated model/effort mappings for {len(parsed)} rendered Codex agents")'
           )
           $validatorPath = Join-Path $env:RUNNER_TEMP 'validate_codex_toml.py'
           Set-Content -Path $validatorPath -Value $validatorLines -Encoding utf8
           python $validatorPath "$H\.codex\agents"
           if ($LASTEXITCODE -ne 0) { throw "Codex TOML validation failed" }
+          # A pre-existing bare [features] table keeps unrelated settings,
+          # re-asserts both managed values, and stays byte-identical on rerun.
+          $featureHome = "$env:RUNNER_TEMP\scratch-home-codex-features"
+          New-Item -ItemType Directory -Force -Path "$featureHome\.codex" | Out-Null
+          $featureConfig = "$featureHome\.codex\config.toml"
+          [System.IO.File]::WriteAllText($featureConfig, "existing_root = `"preserve`"`n`n[features]`nunrelated_feature = `"preserve`"`nmulti_agent = false`nmulti_agent_v2 = true`n", [System.Text.UTF8Encoding]::new($false))
+          $env:USERPROFILE = $featureHome
+          .\install.ps1 codex | Out-Null
+          $featurePreservationCheck = 'import sys, tomllib; config=tomllib.load(open(sys.argv[1], "rb")); expected={"existing_root": "preserve", "plan_mode_reasoning_effort": "xhigh", "features": {"unrelated_feature": "preserve", "multi_agent": True, "multi_agent_v2": False}}; assert config == expected, f"Codex feature preservation failed: {config}"; print("OK: Codex features preserve unrelated settings")'
+          python -c $featurePreservationCheck $featureConfig
+          if ($LASTEXITCODE -ne 0) { throw "Codex feature preservation validation failed" }
+          Copy-Item -LiteralPath $featureConfig -Destination "$env:RUNNER_TEMP\codex-features-before-idempotency.toml" -Force
+          .\install.ps1 codex | Out-Null
+          if ((Get-FileHash "$env:RUNNER_TEMP\codex-features-before-idempotency.toml").Hash -ne (Get-FileHash $featureConfig).Hash) { throw "Codex feature config changed on a repeated install" }
+          # Tables at or below either managed key path conflict with the scalars.
+          foreach ($key in @('multi_agent', 'multi_agent_v2')) {
+            foreach ($header in @("[features.$key]", "[`"features`".`"$key`"]", "['features'.'$key']", "[features.$key.extra]", "[`"features`".`"$key`".extra]", "['features'.'$key'.extra]")) {
+              $subtableHome = "$env:RUNNER_TEMP\scratch-home-codex-subtable-$($header -replace '[^a-zA-Z0-9]', '_')"
+              New-Item -ItemType Directory -Force -Path "$subtableHome\.codex" | Out-Null
+              $subtableConfig = "$subtableHome\.codex\config.toml"
+              [System.IO.File]::WriteAllText($subtableConfig, "$header`nexisting_value = true`n", [System.Text.UTF8Encoding]::new($false))
+              Copy-Item -LiteralPath $subtableConfig -Destination "$subtableHome\before.toml" -Force
+              $env:USERPROFILE = $subtableHome
+              $subtableFailed = $false; $subtableOut = ''
+              try { $subtableOut = (.\install.ps1 codex 6>&1 | Out-String) } catch { $subtableFailed = $true; $subtableOut += $_.Exception.Message }
+              if (-not $subtableFailed) { throw "conflicting $header table was accepted" }
+              if ($subtableOut -notmatch [regex]::Escape('defines a table for a managed [features] key')) { throw "conflicting $header table did not report a clear error" }
+              if ((Get-FileHash "$subtableHome\before.toml").Hash -ne (Get-FileHash $subtableConfig).Hash) { throw "conflicting $header table changed config.toml" }
+            }
+          }
+          # Every root assignment whose first key segment is features is
+          # unsupported, so it fails before colliding with bare writes.
+          foreach ($fixtureKind in @('quoted-header', 'quoted-assignment', 'dotted-assignment', 'root-scalar', 'root-inline-table', 'root-dotted-path')) {
+            $unsupportedHome = "$env:RUNNER_TEMP\scratch-home-codex-unsupported-$fixtureKind"
+            New-Item -ItemType Directory -Force -Path "$unsupportedHome\.codex" | Out-Null
+            $unsupportedConfig = "$unsupportedHome\.codex\config.toml"
+            $fixtureText = switch ($fixtureKind) {
+              'quoted-header' { "[`"features`"]`nexisting_value = true`n" }
+              'quoted-assignment' { "[features]`n`"multi_agent`" = false`n" }
+              'dotted-assignment' { "features.multi_agent_v2 = false`n" }
+              'root-scalar' { "features = false`n" }
+              'root-inline-table' { "features = { unrelated = true }`n" }
+              'root-dotted-path' { "features.other = true`n" }
+            }
+            [System.IO.File]::WriteAllText($unsupportedConfig, $fixtureText, [System.Text.UTF8Encoding]::new($false))
+            Copy-Item -LiteralPath $unsupportedConfig -Destination "$unsupportedHome\before.toml" -Force
+            $env:USERPROFILE = $unsupportedHome
+            $unsupportedFailed = $false; $unsupportedOut = ''
+            try { $unsupportedOut = (.\install.ps1 codex 6>&1 | Out-String) } catch { $unsupportedFailed = $true; $unsupportedOut += $_.Exception.Message }
+            if (-not $unsupportedFailed) { throw "unsupported $fixtureKind fixture was accepted" }
+            if ($unsupportedOut -notmatch [regex]::Escape('uses an unsupported [features] form or root features assignment')) { throw "unsupported $fixtureKind fixture did not report a clear error" }
+            if ((Get-FileHash "$unsupportedHome\before.toml").Hash -ne (Get-FileHash $unsupportedConfig).Hash) { throw "unsupported $fixtureKind fixture changed config.toml" }
+          }
+          $env:USERPROFILE = $H
           # Copilot agents: one rendered file per agents/*.md source.
           $copilotAgentCount = (Get-ChildItem "$H\.copilot\agents\*.agent.md").Count
           if ($copilotAgentCount -ne $agentMdCount) { throw "expected $agentMdCount Copilot agent files, found $copilotAgentCount" }
