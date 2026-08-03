@@ -32,12 +32,17 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `session_id`), which stay snake_case to match the payload.
 - `require` ordering: alphabetical, Node core modules only, no external npm
   dependencies.
-- A `PreToolUse` hook denies once and marks the file checked so a retry
-  passes (`gateguard.js`'s pattern), unless it intentionally gates on an
-  external unlock event outside its own control, in which case repeated
-  denial is by design and must say so explicitly in the hook's own header
-  comment (`plan-gate.js`, unlocked only by a `plan-and-track` Skill
-  invocation). Flag a hook that denies repeatedly with no stated rationale.
+- A `PreToolUse` hook fires once per gated file per session and marks it
+  checked at that moment regardless of whether the firing blocks or only
+  warns, so a later edit of the same file is never gated again
+  (`gateguard.js`'s pattern: warn by default on Claude/Codex, deny by default
+  on Copilot, since Copilot's `PreToolUse` has no soft-warn channel). The
+  exception is a hook that intentionally gates on an external unlock event
+  outside its own control, in which case repeated denial is by design and
+  must say so explicitly in the hook's own header comment (`plan-gate.js`,
+  unlocked only by a `plan-and-track` Skill invocation). Flag a hook that
+  denies repeatedly with no stated rationale, or a mode-dependent hook whose
+  message text doesn't match the mode that actually fired.
 - A hook maintaining a counter or other state across concurrent
   invocations (multiple `PreToolUse` calls can fire back to back in the
   same session) must guard the read-check-write sequence with a lock, not
