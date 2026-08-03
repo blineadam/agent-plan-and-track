@@ -192,17 +192,15 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   all (an unapproved bash verb like `upsert` must be replaced, e.g.
   `upsert_toml_default` → `Set-TomlDefault`, not `Upsert-TomlDefault`).
 - Rendering a Codex agent's TOML (`render_codex_agent` /
-  `ConvertTo-CodexAgentToml`) or a Copilot agent's Markdown
-  (`render_copilot_agent` / `ConvertTo-CopilotAgentMd`) must leave `model`
-  unset rather than translating it: Claude's model tiers
-  (`fable`/`opus`/`sonnet`/`haiku`) have no Codex or Copilot equivalent, so
-  an unset key lets the harness inherit the session's own model. Codex
-  still translates `effort` → `model_reasoning_effort` and `tools` →
-  `sandbox_mode`; Copilot drops `effort` entirely (no matching frontmatter
-  field) and translates only `tools`, through a closed alias table
-  (`Read`→`read`, `Grep`/`Glob`→`search`, `Edit`/`Write`/`MultiEdit`→`edit`,
-  `Bash`→`execute`, `WebFetch`/`WebSearch`→`web`). Flag a PR that adds a
-  model-tier translation table to either renderer.
+  `ConvertTo-CodexAgentToml`) must use the current compatibility mapping:
+  `fable`/`opus` → `gpt-5.6-sol`, `sonnet` → `gpt-5.6-terra`, and `haiku` →
+  `gpt-5.6-luna`, while preserving `effort` as `model_reasoning_effort` and
+  the existing `tools` → `sandbox_mode` mapping. Copilot's Markdown renderer
+  (`render_copilot_agent` / `ConvertTo-CopilotAgentMd`) still leaves `model`
+  unset and drops `effort`, since its frontmatter has no matching fields; it
+  translates only `tools` through the closed alias table (`Read`→`read`,
+  `Grep`/`Glob`→`search`, `Edit`/`Write`/`MultiEdit`→`edit`, `Bash`→`execute`,
+  `WebFetch`/`WebSearch`→`web`). Flag a PR that changes either contract.
 - `frontmatter_field` (bash) and `Get-AgentFrontmatterField` (PowerShell)
   decode a quoted frontmatter value's escapes: single-quoted `''` is a plain
   global replace (safe, since a doubled single-quote has no adjacency

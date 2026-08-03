@@ -84,6 +84,12 @@ const AGENT_MODEL_EFFORT = new Map([
   ['sonnet', 'high'],
   ['haiku', 'medium'],
 ]);
+const AGENT_CODEX_MODEL = new Map([
+  ['fable', 'gpt-5.6-sol'],
+  ['opus', 'gpt-5.6-sol'],
+  ['sonnet', 'gpt-5.6-terra'],
+  ['haiku', 'gpt-5.6-luna'],
+]);
 const AGENT_TOOL_NAMES = new Set([
   'Read',
   'Grep',
@@ -318,6 +324,16 @@ function modePrecheckAgents(args) {
         installedTomlDescription(
           path.join(installedHome, '.codex', 'agents', `${expectedName}.toml`)
         ) === description;
+      result.codex_model_matches =
+        installedTomlString(
+          path.join(installedHome, '.codex', 'agents', `${expectedName}.toml`),
+          'model'
+        ) === AGENT_CODEX_MODEL.get(model);
+      result.codex_effort_matches =
+        installedTomlString(
+          path.join(installedHome, '.codex', 'agents', `${expectedName}.toml`),
+          'model_reasoning_effort'
+        ) === effort;
       result.copilot_description_matches =
         installedFrontmatterDescription(
           path.join(installedHome, '.copilot', 'agents', `${expectedName}.agent.md`)
@@ -338,6 +354,8 @@ function modePrecheckAgents(args) {
       (installedHome &&
         (!agent.claude_description_matches ||
           !agent.codex_description_matches ||
+          !agent.codex_model_matches ||
+          !agent.codex_effort_matches ||
           !agent.copilot_description_matches))
   ).length;
   printJson({ agents, schema_issue_count: schemaIssueCount });
@@ -350,10 +368,14 @@ function installedFrontmatterDescription(file) {
 }
 
 function installedTomlDescription(file) {
+  return installedTomlString(file, 'description');
+}
+
+function installedTomlString(file, key) {
   if (!isFile(file)) return null;
   for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
     const separator = line.indexOf('=');
-    if (separator < 0 || line.slice(0, separator).trim() !== 'description') continue;
+    if (separator < 0 || line.slice(0, separator).trim() !== key) continue;
     try {
       const decoded = JSON.parse(line.slice(separator + 1).trim());
       return typeof decoded === 'string' ? decoded : null;

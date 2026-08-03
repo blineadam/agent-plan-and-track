@@ -50,10 +50,12 @@ tier for.
   kicks anything needing a judgment call back to you.
 
 If your account doesn't have Fable access, agents pinned to it just fall
-back to your normal model. Codex gets the same eight agents, but only the
-effort level and permissions carry over there, not the model tier. Copilot
-also gets the same eight agents, but only tool permissions carry over
-there, not the model tier and not effort.
+back to your normal model. Codex gets the same eight agents through the
+current compatibility mapping: Fable and Opus map to `gpt-5.6-sol`, Sonnet
+to `gpt-5.6-terra`, and Haiku to `gpt-5.6-luna`; the rendered profile carries
+the assigned reasoning effort and sandbox mode. Copilot also gets the same
+eight agents, but only tool permissions carry over there, not the model tier
+and not effort.
 
 Claude picks the right agent for the job automatically, or you can call
 one by name ("use the researcher agent to..."). Copilot CLI has its own
@@ -62,10 +64,12 @@ there too, rendered as native custom agents at
 `~/.copilot/agents/*.agent.md`; invoke one via `copilot --agent=<name>`,
 the `/agent` picker, or by naming the agent in a prompt.
 
-Current Codex releases expose subagent workflows in the desktop app, CLI,
-and IDE extension. Ask it to delegate to a named role, or let applicable
-`AGENTS.md` and skill instructions request delegation; `/agent` shows the
-threads in an interactive CLI session.
+Current Codex releases delegate after a direct request or applicable
+`AGENTS.md` and skill instructions; `/agent` shows the threads in an
+interactive CLI session. [OpenAI's subagent reference](https://developers.openai.com/codex/subagents)
+documents that a custom agent's `model` and `model_reasoning_effort` take
+precedence when set. Its effective sandbox can still be narrower than the
+rendered mode because subagents inherit the parent runtime policy.
 
 ## Per-tool notes
 

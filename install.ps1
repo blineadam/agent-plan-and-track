@@ -361,16 +361,29 @@ function ConvertTo-TomlEscaped($s) {
   return $s.Replace('\', '\\').Replace('"', '\"')
 }
 
-# Render one agents/*.md source into Codex-native TOML agent text. model is
-# left UNSET: Claude model names (fable/opus/sonnet/haiku) don't translate to
-# Codex's own model catalog, so the agent inherits whatever model the parent
-# session is running. developer_instructions uses a TOML literal
-# triple-single-quoted string so the body needs no escaping; same documented
-# tradeoff Set-TomlDefault takes on TOML string handling above, and none of
-# this repo's agent bodies contain a literal ''' to break it.
+# Translate the Claude source-model tiers used by agents/*.md to the pinned
+# Codex model catalog. Unknown tiers fail loudly rather than silently
+# inheriting the parent session's model.
+function ConvertTo-CodexModel($sourceModel) {
+  switch ($sourceModel) {
+    'fable' { return 'gpt-5.6-sol' }
+    'opus' { return 'gpt-5.6-sol' }
+    'sonnet' { return 'gpt-5.6-terra' }
+    'haiku' { return 'gpt-5.6-luna' }
+    default { throw "error: unknown Claude agent model tier '$sourceModel'" }
+  }
+}
+
+# Render one agents/*.md source into Codex-native TOML agent text. model and
+# model_reasoning_effort translate directly from the source agent's model tier
+# and effort. developer_instructions uses a TOML literal triple-single-quoted
+# string so the body needs no escaping; same documented tradeoff
+# Set-TomlDefault takes on TOML string handling above, and none of this repo's
+# agent bodies contain a literal ''' to break it.
 function ConvertTo-CodexAgentToml($src) {
   $name = Get-AgentFrontmatterField $src 'name'
   $description = Get-AgentFrontmatterField $src 'description'
+  $model = ConvertTo-CodexModel (Get-AgentFrontmatterField $src 'model')
   $effort = Get-AgentFrontmatterField $src 'effort'
   $tools = Get-AgentFrontmatterField $src 'tools'
   $sandboxMode = if ($tools -match 'Edit|Write') { 'workspace-write' } else { 'read-only' }
@@ -378,6 +391,7 @@ function ConvertTo-CodexAgentToml($src) {
   $lines = @(
     "name = `"$(ConvertTo-TomlEscaped $name)`"",
     "description = `"$(ConvertTo-TomlEscaped $description)`"",
+    "model = `"$model`"",
     "model_reasoning_effort = `"$effort`"",
     "sandbox_mode = `"$sandboxMode`"",
     "developer_instructions = '''",
@@ -435,11 +449,10 @@ function ConvertTo-CopilotTools($src, $tools) {
 }
 
 # Render one agents/*.md source into a Copilot-native agent file's text, per
-# the GA custom-agents doc's own example frontmatter shape. Like
-# ConvertTo-CodexAgentToml, model is left UNSET (no Claude->Copilot model
-# translation); effort is dropped entirely (Copilot's agent frontmatter has no
-# effort field). tools renders as a YAML flow array of double-quoted aliases
-# via ConvertTo-CopilotTools.
+# the GA custom-agents doc's own example frontmatter shape. Copilot keeps model
+# UNSET (no Claude-to-Copilot model translation), and effort is dropped entirely
+# (Copilot's agent frontmatter has no effort field). tools renders as a YAML
+# flow array of double-quoted aliases via ConvertTo-CopilotTools.
 function ConvertTo-CopilotAgentMd($src) {
   $name = Get-AgentFrontmatterField $src 'name'
   $description = Get-AgentFrontmatterField $src 'description'

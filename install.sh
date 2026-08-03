@@ -278,17 +278,34 @@ toml_escape() {
   printf '%s' "$s"
 }
 
+# Translate the Claude source-model tiers used by agents/*.md to the pinned
+# Codex model catalog. Unknown tiers fail loudly rather than silently
+# inheriting the parent session's model.
+codex_model() {
+  local source_model="$1"
+  case "$source_model" in
+    fable|opus) printf '%s' "gpt-5.6-sol" ;;
+    sonnet)     printf '%s' "gpt-5.6-terra" ;;
+    haiku)      printf '%s' "gpt-5.6-luna" ;;
+    *)
+      echo "error: unknown Claude agent model tier '$source_model'" >&2
+      return 1
+      ;;
+  esac
+}
+
 # Render one agents/*.md source ($1) into a Codex-native TOML agent file at
-# $2. model is left UNSET: Claude model names (fable/opus/sonnet/haiku) don't
-# translate to Codex's own model catalog, so the agent inherits whatever
-# model the parent session is running. developer_instructions uses a TOML
-# literal triple-single-quoted string so the body needs no escaping; same
-# documented tradeoff upsert_toml_default takes on TOML string handling
-# below, and none of this repo's agent bodies contain a literal ''' to break it.
+# $2. model and model_reasoning_effort translate directly from the source
+# agent's model tier and effort. developer_instructions uses a TOML literal
+# triple-single-quoted string so the body needs no escaping; same documented
+# tradeoff upsert_toml_default takes on TOML string handling below, and none
+# of this repo's agent bodies contain a literal ''' to break it.
 render_codex_agent() {
-  local src="$1" dest="$2" name description effort tools sandbox_mode
+  local src="$1" dest="$2" name description source_model model effort tools sandbox_mode
   name="$(frontmatter_field "$src" name)"
   description="$(frontmatter_field "$src" description)"
+  source_model="$(frontmatter_field "$src" model)"
+  model="$(codex_model "$source_model")"
   effort="$(frontmatter_field "$src" effort)"
   tools="$(frontmatter_field "$src" tools)"
   case "$tools" in
@@ -298,6 +315,7 @@ render_codex_agent() {
   {
     printf 'name = "%s"\n' "$(toml_escape "$name")"
     printf 'description = "%s"\n' "$(toml_escape "$description")"
+    printf 'model = "%s"\n' "$model"
     printf 'model_reasoning_effort = "%s"\n' "$effort"
     printf 'sandbox_mode = "%s"\n' "$sandbox_mode"
     printf "developer_instructions = '''\n%s\n'''\n" "$(agent_body "$src")"
@@ -356,11 +374,10 @@ copilot_tools() {
 }
 
 # Render one agents/*.md source ($1) into a Copilot-native agent file at $2,
-# per the GA custom-agents doc's own example frontmatter shape. Like
-# render_codex_agent, model is left UNSET (no Claude->Copilot model
-# translation); effort is dropped entirely (Copilot's agent frontmatter has no
-# effort field). tools renders as a YAML flow array of double-quoted aliases
-# via copilot_tools.
+# per the GA custom-agents doc's own example frontmatter shape. Copilot keeps
+# model UNSET (no Claude-to-Copilot model translation), and effort is dropped
+# entirely (Copilot's agent frontmatter has no effort field). tools renders as
+# a YAML flow array of double-quoted aliases via copilot_tools.
 render_copilot_agent() {
   local src="$1" dest="$2" name description tools raw_tools
   name="$(frontmatter_field "$src" name)"
