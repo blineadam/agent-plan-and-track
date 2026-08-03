@@ -114,8 +114,7 @@ skills/copilot-review-instructions/ generate Copilot PR-review instructions from
 skills/efficient-frontier/   routing doctrine: which tiered subagent fits a piece of delegated work (portable)
 skills/read-the-damn-docs/   docs-first grounding before third-party API/version work (portable)
 skills/yeet/                 publish end to end: branch, commit, push, PR, Copilot review to resolution (portable)
-skills/frontend-design/      distinctive visual/UI design direction, not templated defaults (portable)
-skills/theme-factory/        apply or generate a cohesive color/font theme for a deck or artifact (portable)
+skills/frontend-design/      distinctive visual/UI design direction plus 10 pre-set artifact themes (portable)
 skills/webapp-testing/       drive a local web app in a real browser with Playwright: verify frontend behavior, debug UI, screenshot, read console logs (portable)
 skills/migration-discipline/ disciplines for large migrations/ports: ownership isolation, validation ladder, work-queue batching, durable migration state (portable)
 agents/                      tiered subagents (Claude .md + rendered Codex TOML + rendered Copilot

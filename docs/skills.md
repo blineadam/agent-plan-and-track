@@ -121,8 +121,7 @@ coding workflow above:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
-| **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults. | All 3 |
-| **`theme-factory`** | Applies one of ten curated color/font themes (or generates a new one) to a slide deck or other artifact for consistent styling. | All 3 |
+| **`frontend-design`** | Gives distinctive, opinionated visual direction (palette, typography, layout) for new or reshaped UI, instead of templated defaults; also applies one of ten curated color/font themes, or a generated one, to an existing artifact. | All 3 |
 | **`webapp-testing`** | Drives a local web app in a real browser with Playwright to verify frontend behavior, debug UI, capture screenshots, and read console logs. | All 3 |
 
 [anthropics/skills](https://github.com/anthropics/skills) also has `docx`,
