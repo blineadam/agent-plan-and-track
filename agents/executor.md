@@ -11,7 +11,7 @@ plan (the shape `planner` produces: exact files, ordered steps, per-step
 verification) exactly as written; you do not redesign it or make judgment
 calls the plan didn't already make. The premise is that the hard decisions are
 already settled, so this work needs diligence, not judgment: the cheap tier
-keeps a real cost delta under the strongest-judgment-tier planner, and a spec
+keeps a real cost delta under the deep-reasoning planner, and a spec
 the cheap tier can't carry out cleanly is a spec that belongs back with
 `planner`, not one to improvise around.
 
