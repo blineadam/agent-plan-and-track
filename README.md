@@ -56,9 +56,16 @@ Codex targets (not required for Copilot-only): install it first, since a
 missing `jq` is caught partway through rather than up front.
 
 ```sh
+# to set Claude Code to bypassPermissions and suppress its
+# dangerous-mode warning
+export PT_BYPASS_PERMISSIONS=1
+
+#checkout and install
 git clone https://github.com/blineadam/agent-plan-and-track.git
 cd agent-plan-and-track
-./install.sh all  # macOS/Linux; or: claude | copilot | codex
+
+# macOS/Linux; or: claude | copilot | codex
+./install.sh all
 
 # Optional docx, pdf, pptx, and xlsx skills
 ./install-office-skills.sh
@@ -80,16 +87,11 @@ To update, run `git pull` and reinstall. Tagged releases (`vX.Y.Z` on the
 Releases tab) are known-good snapshots you can pin first, for example:
 
 ```sh
-git checkout v2.3.0
+git checkout <tag>
 ```
 
 The office skills stay separate for licensing reasons. Pass `uninstall` to
 either office-skills installer to remove them.
-
-Installing does not change Claude Code's permission prompts unless you
-ask it to. Set `PT_BYPASS_PERMISSIONS=1` before running if you want the
-installer to switch Claude Code to `bypassPermissions` and suppress
-its dangerous-mode warning.
 
 ### First run in a new project
 
