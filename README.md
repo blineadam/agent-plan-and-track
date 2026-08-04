@@ -90,8 +90,7 @@ Releases tab) are known-good snapshots you can pin first, for example:
 git checkout <tag>
 ```
 
-The office skills stay separate for licensing reasons. Pass `uninstall` to
-either office-skills installer to remove them.
+The office skills stay separate for licensing reasons.
 
 ### First run in a new project
 
