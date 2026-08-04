@@ -63,16 +63,17 @@ usage() {
 }
 
 # Package-manager command that would install jq on this machine, or empty when
-# no known manager is present. Probed with `command -v` in priority order, the
-# same way get.docker.com and nvm do it, rather than by parsing /etc/os-release,
-# which varies too much across distro forks. brew is probed first and never
-# sudo-prefixed: it installs user-scoped and refuses to run under sudo (this
-# also covers Linuxbrew). Every other manager writes system-wide, so it gets a
-# sudo prefix unless we're already root; a non-root user with no sudo has no way
-# to elevate and gets no offer at all.
+# no known manager is present. Probed with `command -v` in priority order
+# rather than by parsing /etc/os-release, which varies too much across distro
+# forks. brew is probed first (but skipped entirely for root: it refuses to
+# run as root and offering it there would both fail and block the fallback to
+# a working manager) and never sudo-prefixed, since it installs user-scoped
+# (this also covers Linuxbrew). Every other manager writes system-wide, so it
+# gets a sudo prefix unless we're already root; a non-root user with no sudo
+# has no way to elevate and gets no offer at all.
 jq_install_cmd() {
   local sudo_prefix=""
-  if command -v brew >/dev/null 2>&1; then
+  if [ "$(id -u)" != 0 ] && command -v brew >/dev/null 2>&1; then
     echo "brew install jq"
     return 0
   fi
