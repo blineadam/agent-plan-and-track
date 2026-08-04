@@ -191,11 +191,10 @@ The same session state counts allowed mutation kinds from the closed set
 `git push`, `gh pr create`, and `gh pr merge`. The second distinct kind is
 denied before execution until the session is stamped. Native `apply_patch`
 events stamp from their disk delta. At startup or resume, a `SessionStart` hook
-records first-line hashes of the unchecked plan items already on disk, unless
-that session already has a baseline. If a wrapper hides later patch events,
+records hashes of the unchecked plan items already on disk, ignoring only the
+Markdown list prefix on each first line. If a wrapper hides later patch events,
 the Bash gate accepts only a valid unchecked item absent from that baseline,
-using the same item identity, `verify:`, and owner-tag validation as the native
-path.
+using the same identity, `verify:`, and owner-tag validation as the native path.
 
 Denied kinds are not recorded, so a bare retry is denied again.
 
@@ -204,8 +203,8 @@ Denied kinds are not recorded, so a bare retry is denied again.
 It rejects symlinked and outside-cwd paths, while accepting relative or
 absolute paths whose canonical parent stays inside the cwd. It retains text
 only for `tasks/todo.md`, stores other paths and the SessionStart plan inventory
-as hashes, and stops retaining source paths once it warns. Pruning skips the
-active session-and-cwd scope so a long-lived session keeps its baseline.
+as hashes, and stops retaining source paths once it warns. Session-and-cwd
+scopes are retained so another session cannot prune a live baseline.
 
-Missing or malformed state fails open. Completed transaction state is
-removed, and stale state is bounded by pruning.
+Missing or malformed state fails open. Completed transaction state is removed,
+and stale transaction state is bounded by pruning.

@@ -159,6 +159,23 @@ async function stale() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+async function nativeStalePlanMarkerReflow() {
+  const variants = [
+    '* [ ] Stale native call; verify: node check.js (executor)',
+    ' - [ ] Stale native call; verify: node check.js (executor)',
+  ];
+  for (const [index, item] of variants.entries()) {
+    const f = fixture();
+    source(f.root, 'tasks/todo.md', '## Plan\n- [ ] Stale native call; verify: node check.js (executor)\n');
+    const input = event(f.root, 'tasks/todo.md', `native-marker-reflow-${index}`);
+    assert.strictEqual(run('--pre', input, f.env), '');
+    source(f.root, 'tasks/todo.md', `## Plan\n${item}\n`);
+    assert.strictEqual(run('--post', input, f.env), '');
+    assert.strictEqual(scope(f.root, input).stamped, false);
+    fs.rmSync(f.root, { recursive: true, force: true });
+  }
+}
+
 async function malformed() {
   const f = fixture();
   assert.strictEqual(run('--pre', '{bad', f.env), '');
@@ -332,20 +349,22 @@ async function scopeWarningOnce() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
-async function expiredScopePrune() {
+async function expiredTransactionPrune() {
   const f = fixture();
   const expired = event(f.root, 'old.js', 'expired-session');
-  fs.mkdirSync(path.dirname(scopeFile(f.root, expired)), { recursive: true });
-  fs.writeFileSync(scopeFile(f.root, expired), JSON.stringify({ paths: ['old.js'], stamped: false, warned: false }), 'utf8');
+  const stateFile = transaction(f.root, expired);
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  fs.writeFileSync(stateFile, '{}', 'utf8');
   const staleTime = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-  fs.utimesSync(scopeFile(f.root, expired), staleTime, staleTime);
-  fs.writeFileSync(scopeFile(f.root, expired) + '.lock', '', 'utf8');
-  fs.utimesSync(scopeFile(f.root, expired) + '.lock', staleTime, staleTime);
+  fs.utimesSync(stateFile, staleTime, staleTime);
+  const claimFile = stateFile.replace(/\.json$/, '.claim');
+  fs.writeFileSync(claimFile, '', 'utf8');
+  fs.utimesSync(claimFile, staleTime, staleTime);
   source(f.root, 'new.js', 'old\n');
   const input = event(f.root, 'new.js');
   run('--pre', input, f.env);
-  assert.strictEqual(fs.existsSync(scopeFile(f.root, expired)), false);
-  assert.strictEqual(fs.existsSync(scopeFile(f.root, expired) + '.lock'), false);
+  assert.strictEqual(fs.existsSync(stateFile), false);
+  assert.strictEqual(fs.existsSync(claimFile), false);
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
@@ -411,6 +430,23 @@ async function mutationOldScopeCompatibility() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+async function mutationLegacyBaselineCompatibility() {
+  const f = fixture();
+  const session = 'legacy-baseline';
+  const plan = validPlan('Legacy baseline');
+  source(f.root, 'tasks/todo.md', plan);
+  const mutation = bashEvent(f.root, 'gh pr create --fill', session, 'legacy-create');
+  fs.mkdirSync(path.dirname(scopeFile(f.root, mutation)), { recursive: true });
+  const firstLine = plan.split('\n').find((line) => line.startsWith('- [ ]'));
+  fs.writeFileSync(scopeFile(f.root, mutation), JSON.stringify({ mutations: ['git-push'], paths: [], stamped: false, warned: false, planBaseline: [hash(firstLine)] }), 'utf8');
+  assert.match(denial(run('--pre', mutation, f.env)), /2 distinct outward git\/gh mutations/);
+  assert.strictEqual(scope(f.root, mutation).stamped, false);
+  assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
+  assert.match(denial(run('--pre', mutation, f.env)), /2 distinct outward git\/gh mutations/);
+  assert.strictEqual(Array.isArray(scope(f.root, mutation).planBaselineV2), true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 async function mutationConcurrent() {
   const f = fixture();
   const session = 'mutation-concurrent';
@@ -446,6 +482,8 @@ async function mutationWrapperCurrentPlan() {
   const session = 'wrapper-current-plan';
   source(f.root, 'tasks/todo.md', '# Start\n');
   assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
+  assert.deepStrictEqual(scope(f.root, sessionStartEvent(f.root, session)).planBaselineV2, []);
+  assert.strictEqual(scope(f.root, sessionStartEvent(f.root, session)).planBaseline, undefined);
   source(f.root, 'tasks/todo.md', validPlan('Wrapped call'));
   assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
   const first = bashEvent(f.root, 'git push origin main', session, 'wrapper-push');
@@ -483,6 +521,25 @@ async function mutationStalePlanReflow() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+async function mutationStalePlanMarkerReflow() {
+  const variants = [
+    '* [ ] Stale wrapped call; verify: node check.js (executor)',
+    ' - [ ] Stale wrapped call; verify: node check.js (executor)',
+  ];
+  for (const [index, item] of variants.entries()) {
+    const f = fixture();
+    const env = { ...f.env, PLANGATE_MUTATION_THRESHOLD: '1' };
+    const session = `stale-plan-marker-reflow-${index}`;
+    source(f.root, 'tasks/todo.md', '## Plan\n- [ ] Stale wrapped call; verify: node check.js (executor)\n');
+    assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), env), '');
+    source(f.root, 'tasks/todo.md', `## Plan\n${item}\n`);
+    const mutation = bashEvent(f.root, 'git push origin main', session, `marker-reflow-${index}`);
+    assert.match(denial(run('--pre', mutation, env)), /1 distinct outward git\/gh mutation/);
+    assert.strictEqual(scope(f.root, mutation).stamped, false);
+    fs.rmSync(f.root, { recursive: true, force: true });
+  }
+}
+
 async function mutationAgedSessionBaseline() {
   const f = fixture();
   const env = { ...f.env, PLANGATE_MUTATION_THRESHOLD: '1' };
@@ -497,6 +554,29 @@ async function mutationAgedSessionBaseline() {
   const mutation = bashEvent(f.root, 'git push origin main', session, 'aged-push');
   assert.strictEqual(run('--pre', mutation, env), '');
   assert.strictEqual(scope(f.root, mutation).stamped, true);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function mutationCrossSessionPrune() {
+  const f = fixture();
+  const session = 'cross-session-prune-a';
+  source(f.root, 'tasks/todo.md', '# Start\n');
+  assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
+  const first = bashEvent(f.root, 'git push origin main', session, 'cross-session-push');
+  assert.strictEqual(run('--pre', first, f.env), '');
+  const plan = event(f.root, 'tasks/todo.md', session, { tool_use_id: 'cross-session-plan' });
+  run('--pre', plan, f.env);
+  source(f.root, 'tasks/todo.md', validPlan('Cross-session retention'));
+  assert.strictEqual(run('--post', plan, f.env), '');
+  const expected = scope(f.root, first);
+  assert.deepStrictEqual(expected.mutations, ['git-push']);
+  assert.strictEqual(expected.stamped, true);
+  const stateFile = scopeFile(f.root, first);
+  const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+  fs.utimesSync(stateFile, old, old);
+  source(f.root, 'b.js', 'old\n');
+  run('--pre', event(f.root, 'b.js', 'cross-session-prune-b'), f.env);
+  assert.deepStrictEqual(scope(f.root, first), expected);
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
@@ -774,11 +854,11 @@ async function attributionUnreadableStateFailOpen() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
-const HANDLERS = { fresh, 'new-todo-plan': newTodoPlan, stale, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-scope-prune': expiredScopePrune, 'mutation-classifier': mutationClassifier, 'mutation-distinct-denial-retry': mutationDistinctDenialRetry, 'mutation-single-call-union': mutationSingleCallUnion, 'mutation-old-scope-compatibility': mutationOldScopeCompatibility, 'mutation-concurrent': mutationConcurrent, 'mutation-plan-unlock': mutationPlanUnlock, 'mutation-wrapper-current-plan': mutationWrapperCurrentPlan, 'mutation-stale-current-plan': mutationStaleCurrentPlan, 'mutation-stale-plan-reflow': mutationStalePlanReflow, 'mutation-aged-session-baseline': mutationAgedSessionBaseline, 'mutation-missing-session-start': mutationMissingSessionStart, 'absolute-todo-path': absoluteTodoPath, 'absolute-outside-cwd': absoluteOutsideCwd, 'mutation-invalid-current-plan': mutationInvalidCurrentPlan, 'mutation-wrapper-concurrent-threshold': mutationWrapperConcurrentThreshold, 'mutation-threshold-validation': mutationThresholdValidation, 'attribution-denial-before-mutation': attributionDenialBeforeMutation, 'attribution-environment-id': attributionEnvironmentId, 'attribution-aged-retry': attributionAgedRetry, 'attribution-concurrent-first-calls': attributionConcurrentFirstCalls, 'attribution-legitimate-main-reason': attributionLegitimateMainReason, 'attribution-non-main-tag': attributionNonMainTag, 'attribution-lint-disabled': attributionLintDisabled, 'attribution-continuation-line': attributionContinuationLine, 'attribution-ambiguous-context-fail-open': attributionAmbiguousContextFailOpen, 'attribution-fuzzy-context-fail-open': attributionFuzzyContextFailOpen, 'attribution-unsupported-syntax-fail-open': attributionUnsupportedSyntaxFailOpen, 'attribution-multi-file-fail-open': attributionMultiFileFailOpen, 'attribution-unreadable-state-fail-open': attributionUnreadableStateFailOpen };
+const HANDLERS = { fresh, 'new-todo-plan': newTodoPlan, stale, 'native-stale-plan-marker-reflow': nativeStalePlanMarkerReflow, malformed, 'no-op': noOp, 'non-todo-snapshot-redacted': nonTodoSnapshotRedacted, 'plan-plus-source': planPlusSource, 'concurrent-post': concurrentPost, subagents, migration, 'deleted-migration': deletedMigration, 'symlink-escape': symlinkEscape, 'parent-symlink-swap': parentSymlinkSwap, 'corrupt-duplicate-missing': corruptDuplicateMissing, 'concurrent-unrelated-todo': concurrentUnrelatedTodo, 'scope-warning-once': scopeWarningOnce, 'expired-transaction-prune': expiredTransactionPrune, 'mutation-classifier': mutationClassifier, 'mutation-distinct-denial-retry': mutationDistinctDenialRetry, 'mutation-single-call-union': mutationSingleCallUnion, 'mutation-old-scope-compatibility': mutationOldScopeCompatibility, 'mutation-legacy-baseline-compatibility': mutationLegacyBaselineCompatibility, 'mutation-concurrent': mutationConcurrent, 'mutation-plan-unlock': mutationPlanUnlock, 'mutation-wrapper-current-plan': mutationWrapperCurrentPlan, 'mutation-stale-current-plan': mutationStaleCurrentPlan, 'mutation-stale-plan-reflow': mutationStalePlanReflow, 'mutation-stale-plan-marker-reflow': mutationStalePlanMarkerReflow, 'mutation-aged-session-baseline': mutationAgedSessionBaseline, 'mutation-cross-session-prune': mutationCrossSessionPrune, 'mutation-missing-session-start': mutationMissingSessionStart, 'absolute-todo-path': absoluteTodoPath, 'absolute-outside-cwd': absoluteOutsideCwd, 'mutation-invalid-current-plan': mutationInvalidCurrentPlan, 'mutation-wrapper-concurrent-threshold': mutationWrapperConcurrentThreshold, 'mutation-threshold-validation': mutationThresholdValidation, 'attribution-denial-before-mutation': attributionDenialBeforeMutation, 'attribution-environment-id': attributionEnvironmentId, 'attribution-aged-retry': attributionAgedRetry, 'attribution-concurrent-first-calls': attributionConcurrentFirstCalls, 'attribution-legitimate-main-reason': attributionLegitimateMainReason, 'attribution-non-main-tag': attributionNonMainTag, 'attribution-lint-disabled': attributionLintDisabled, 'attribution-continuation-line': attributionContinuationLine, 'attribution-ambiguous-context-fail-open': attributionAmbiguousContextFailOpen, 'attribution-fuzzy-context-fail-open': attributionFuzzyContextFailOpen, 'attribution-unsupported-syntax-fail-open': attributionUnsupportedSyntaxFailOpen, 'attribution-multi-file-fail-open': attributionMultiFileFailOpen, 'attribution-unreadable-state-fail-open': attributionUnreadableStateFailOpen };
 
 async function main() {
   const fixtureCases = JSON.parse(fs.readFileSync(CASES, 'utf8')).cases;
-  assert.strictEqual(fixtureCases.length, 46, 'expected the complete forty-six-case matrix');
+  assert.strictEqual(fixtureCases.length, 50, 'expected the complete fifty-case matrix');
   for (const fixtureCase of fixtureCases) {
     assert.strictEqual(typeof HANDLERS[fixtureCase.id], 'function', `no handler for ${fixtureCase.id}`);
     await HANDLERS[fixtureCase.id]();

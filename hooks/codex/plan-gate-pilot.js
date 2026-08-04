@@ -102,25 +102,21 @@ function scopeLockPath(c) {
   return scopePath(c) + '.lock';
 }
 
-function pruneState(c) {
+function pruneState() {
   const cutoff = Date.now() - PRUNE_AGE_MS;
-  const activeScope = c ? scopePath(c) : '';
-  for (const directory of ['transactions', 'scopes']) {
-    try {
-      const stateDir = path.join(STATE_DIR, directory);
-      const names = fs.readdirSync(stateDir).filter((name) => directory === 'transactions' ? /\.(?:json|claim)$/.test(name) : /\.json(?:\.lock)?$/.test(name));
-      let removed = 0;
-      for (const name of names) {
-        if (removed >= PRUNE_LIMIT) break;
-        const target = path.join(stateDir, name);
-        if (target === activeScope) continue;
-        if (fs.statSync(target).mtimeMs >= cutoff) continue;
-        fs.unlinkSync(target);
-        removed += 1;
-      }
-    } catch {
-      /* state pruning is best effort and never affects a hook verdict */
+  try {
+    const stateDir = path.join(STATE_DIR, 'transactions');
+    const names = fs.readdirSync(stateDir).filter((name) => /\.(?:json|claim)$/.test(name));
+    let removed = 0;
+    for (const name of names) {
+      if (removed >= PRUNE_LIMIT) break;
+      const target = path.join(stateDir, name);
+      if (fs.statSync(target).mtimeMs >= cutoff) continue;
+      fs.unlinkSync(target);
+      removed += 1;
     }
+  } catch {
+    /* transaction pruning is best effort and never affects a hook verdict */
   }
 }
 
@@ -240,10 +236,12 @@ function loadScope(c) {
   const mutations = parsed && parsed.mutations === undefined ? [] : parsed && parsed.mutations;
   const mainAttributionAt = parsed && parsed.mainAttributionAt;
   const planBaseline = parsed && parsed.planBaseline;
-  if (!parsed || !Array.isArray(parsed.paths) || !Array.isArray(mutations) || typeof parsed.stamped !== 'boolean' || typeof parsed.warned !== 'boolean' || !parsed.paths.every((p) => typeof p === 'string') || !mutations.every((kind) => MUTATION_KINDS.has(kind)) || (mainAttributionAt !== undefined && (!Number.isFinite(mainAttributionAt) || mainAttributionAt < 0)) || (planBaseline !== undefined && (!Array.isArray(planBaseline) || !planBaseline.every((item) => typeof item === 'string' && /^[a-f0-9]{64}$/.test(item))))) throw new Error('invalid scope');
+  const planBaselineV2 = parsed && parsed.planBaselineV2;
+  if (!parsed || !Array.isArray(parsed.paths) || !Array.isArray(mutations) || typeof parsed.stamped !== 'boolean' || typeof parsed.warned !== 'boolean' || !parsed.paths.every((p) => typeof p === 'string') || !mutations.every((kind) => MUTATION_KINDS.has(kind)) || (mainAttributionAt !== undefined && (!Number.isFinite(mainAttributionAt) || mainAttributionAt < 0)) || (planBaseline !== undefined && (!Array.isArray(planBaseline) || !planBaseline.every((item) => typeof item === 'string' && /^[a-f0-9]{64}$/.test(item)))) || (planBaselineV2 !== undefined && (!Array.isArray(planBaselineV2) || !planBaselineV2.every((item) => typeof item === 'string' && /^[a-f0-9]{64}$/.test(item))))) throw new Error('invalid scope');
   const state = { mutations: [...new Set(mutations)], paths: [...new Set(parsed.paths)], stamped: parsed.stamped, warned: parsed.warned };
   if (mainAttributionAt !== undefined) state.mainAttributionAt = mainAttributionAt;
   if (planBaseline !== undefined) state.planBaseline = [...planBaseline];
+  if (planBaselineV2 !== undefined) state.planBaselineV2 = [...planBaselineV2];
   return state;
 }
 
@@ -367,12 +365,16 @@ function attributionFinding(baseline, result) {
 
 function collectNewUncheckedPlanItems(baseline, result) {
   const counts = new Map();
-  for (const line of baseline.split('\n').map((line) => line.replace(/\s+$/, ''))) counts.set(line, (counts.get(line) || 0) + 1);
+  for (const item of extractUncheckedPlanItems(baseline)) {
+    const identity = planItemIdentity(item.firstLine);
+    counts.set(identity, (counts.get(identity) || 0) + 1);
+  }
   const items = [];
   for (const item of extractUncheckedPlanItems(result)) {
-    const prior = counts.get(item.firstLine) || 0;
+    const identity = planItemIdentity(item.firstLine);
+    const prior = counts.get(identity) || 0;
     if (prior) {
-      counts.set(item.firstLine, prior - 1);
+      counts.set(identity, prior - 1);
       continue;
     }
     items.push(item.joined);
@@ -395,14 +397,18 @@ function currentPlanItems(c) {
   return snapshot.exists ? extractUncheckedPlanItems(decode(snapshot)) : [];
 }
 
+function planItemIdentity(firstLine) {
+  return firstLine.replace(/^\s*[-*]\s+\[ \]\s+/, '');
+}
+
 function hasSessionPlan(c, scope) {
-  if (!Array.isArray(scope.planBaseline)) return false;
+  if (!Array.isArray(scope.planBaselineV2)) return false;
   const items = currentPlanItems(c);
   if (!items) return false;
   const baseline = new Map();
-  for (const item of scope.planBaseline) baseline.set(item, (baseline.get(item) || 0) + 1);
+  for (const item of scope.planBaselineV2) baseline.set(item, (baseline.get(item) || 0) + 1);
   for (const item of items) {
-    const itemHash = sha256(item.firstLine);
+    const itemHash = sha256(planItemIdentity(item.firstLine));
     const prior = baseline.get(itemHash) || 0;
     if (prior) baseline.set(itemHash, prior - 1);
     else if (validPlanItem(item.joined)) return true;
@@ -411,13 +417,13 @@ function hasSessionPlan(c, scope) {
 }
 
 function sessionStart(input, c) {
-  pruneState(c);
+  pruneState();
   withScopeLock(c, () => {
     const scope = loadScope(c);
-    if (scope.planBaseline !== undefined) return;
+    if (scope.planBaselineV2 !== undefined) return;
     const items = currentPlanItems(c);
     if (!items) return;
-    scope.planBaseline = items.map((item) => sha256(item.firstLine));
+    scope.planBaselineV2 = items.map((item) => sha256(planItemIdentity(item.firstLine)));
     saveScope(c, scope);
     recordEvent('SessionStart', input, c);
   });
@@ -680,7 +686,7 @@ function mutationPre(input, c) {
   if (!input.tool_input || typeof input.tool_input.command !== 'string') return;
   const kinds = detectOutwardMutations(input.tool_input.command);
   if (!kinds.size) return;
-  pruneState(c);
+  pruneState();
   const outcome = withScopeLock(c, () => {
     const scope = loadScope(c);
     if (scope.stamped) return null;
@@ -709,7 +715,7 @@ function pre(input, c) {
     return;
   }
   if (input.tool_name !== 'apply_patch' || !input.tool_input || typeof input.tool_input.command !== 'string') return;
-  pruneState(c);
+  pruneState();
   const declared = parsePaths(input.tool_input.command);
   if (!declared.length) return;
   const files = [];
