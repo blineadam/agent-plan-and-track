@@ -142,8 +142,9 @@ Hooks with multiple wiring entries are checked and repaired one entry at a
 time:
 
 - Claude's `plan-gate.js` has two `PreToolUse` entries.
-- Codex's `plan-gate-pilot.js` has an `apply_patch` `PreToolUse` entry, a Bash
-  `PreToolUse` entry, and an `apply_patch` `PostToolUse` entry.
+- Codex's `plan-gate-pilot.js` has a startup-or-resume `SessionStart` entry, an
+  `apply_patch` `PreToolUse` entry, a Bash `PreToolUse` entry, and an
+  `apply_patch` `PostToolUse` entry.
 
 If one entry is missing, the installer appends only that entry. It never
 duplicates the entries still present.

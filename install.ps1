@@ -46,11 +46,12 @@
   rendering, and the Copilot .agent.md rendering), the core-rules digest, the
   instructions managed block, hook wiring + __SCRIPTS__ substitution
   (including plan-gate's two additive Claude PreToolUse entries and the Codex
-  plan gate's apply_patch PreToolUse, Bash PreToolUse, and apply_patch
-  PostToolUse entries, each with its own matcher + command idempotency check),
-  model/effort defaults, the TOML upsert, the global gitignore entries, the
-  manifest-based stale prune keyed by .plan-and-track-manifest) must be
-  mirrored in both. See install.sh for the same note.
+  plan gate's SessionStart, apply_patch PreToolUse, Bash PreToolUse, and
+  apply_patch PostToolUse entries, each with its own matcher + command
+  idempotency check), model/effort defaults, the TOML upsert, the global
+  gitignore entries, the manifest-based stale prune keyed by
+  .plan-and-track-manifest) must be mirrored in both. See install.sh for the
+  same note.
 #>
 param([string]$Target)
 
@@ -916,13 +917,21 @@ function Install-Codex {
   $hookSettings = [System.IO.File]::ReadAllText($hooks) | ConvertFrom-Json
   $planPreCommand = "node `"$scriptsFwd/plan-gate.js`" --pre"
   $planPostCommand = "node `"$scriptsFwd/plan-gate.js`" --post"
+  $planSessionCommand = "node `"$scriptsFwd/plan-gate.js`" --session-start"
+  $hasPlanSessionStart = @($hookSettings.hooks.SessionStart | Where-Object { $_.matcher -eq 'startup|resume' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planSessionCommand }).Count -gt 0
   $hasPlanApplyPre = @($hookSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'apply_patch' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPreCommand }).Count -gt 0
   $hasPlanBashPre = @($hookSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPreCommand }).Count -gt 0
   $hasPlanApplyPost = @($hookSettings.hooks.PostToolUse | Where-Object { $_.matcher -eq 'apply_patch' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $planPostCommand }).Count -gt 0
-  if ($hasPlanApplyPre -and $hasPlanBashPre -and $hasPlanApplyPost) {
+  if ($hasPlanSessionStart -and $hasPlanApplyPre -and $hasPlanBashPre -and $hasPlanApplyPost) {
     Write-Host "  plan-gate hook  -- already present in hooks.json"
   } else {
     $template = Get-RenderedHook (Join-Path $RepoDir 'hooks/codex/plan-gate-pilot-hooks.json') $scriptsFwd | ConvertFrom-Json
+    if (-not $hasPlanSessionStart) {
+      if (-not ($hookSettings.hooks.PSObject.Properties.Name -contains 'SessionStart')) {
+        $hookSettings.hooks | Add-Member -NotePropertyName 'SessionStart' -NotePropertyValue @() -Force
+      }
+      $hookSettings.hooks.SessionStart = @(@($hookSettings.hooks.SessionStart) + @($template.hooks.SessionStart))
+    }
     if (-not $hasPlanApplyPre) {
       $entry = @($template.hooks.PreToolUse | Where-Object { $_.matcher -eq 'apply_patch' })
       if (-not ($hookSettings.hooks.PSObject.Properties.Name -contains 'PreToolUse')) {
@@ -944,7 +953,7 @@ function Install-Codex {
       $hookSettings.hooks.PostToolUse = @(@($hookSettings.hooks.PostToolUse) + @($template.hooks.PostToolUse))
     }
     [System.IO.File]::WriteAllText($hooks, ($hookSettings | ConvertTo-Json -Depth 16), $Utf8NoBom)
-    Write-Host "  plan-gate hook  -> repaired in hooks.json (apply_patch PreToolUse/PostToolUse + Bash PreToolUse; mutation gate blocks at PLANGATE_MUTATION_THRESHOLD)"
+    Write-Host "  plan-gate hook  -> repaired in hooks.json (SessionStart baseline + apply_patch PreToolUse/PostToolUse + Bash PreToolUse; mutation gate blocks at PLANGATE_MUTATION_THRESHOLD)"
   }
   Write-Host "  done. Hooks need node at runtime. Start a new codex session to load."
 }

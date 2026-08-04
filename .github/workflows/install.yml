@@ -83,17 +83,19 @@ jobs:
           n="$(jq '[.. | .command? // empty | select(test("core-rules-digest"))] | length' "$HOME/.claude/settings.json")"
           [ "$n" = "1" ] || { echo "FAIL: expected 1 digest hook, found $n"; exit 1; }
           assert_codex_plan_gate() {
-            local apply_pre bash_pre apply_post total
+            local session_start apply_pre bash_pre apply_post total
+            session_start="$(jq '[.hooks.SessionStart[]? | select(.matcher=="startup|resume") | .hooks[]? | select(.command|test("plan-gate\\.js.*--session-start"))] | length' "$HOME/.codex/hooks.json")"
             apply_pre="$(jq '[.hooks.PreToolUse[]? | select(.matcher=="apply_patch") | .hooks[]? | select(.command|test("plan-gate\\.js.*--pre"))] | length' "$HOME/.codex/hooks.json")"
             bash_pre="$(jq '[.hooks.PreToolUse[]? | select(.matcher=="Bash") | .hooks[]? | select(.command|test("plan-gate\\.js.*--pre"))] | length' "$HOME/.codex/hooks.json")"
             apply_post="$(jq '[.hooks.PostToolUse[]? | select(.matcher=="apply_patch") | .hooks[]? | select(.command|test("plan-gate\\.js.*--post"))] | length' "$HOME/.codex/hooks.json")"
             total="$(jq '[.. | .command? // empty | select(test("plan-gate\\.js"))] | length' "$HOME/.codex/hooks.json")"
-            [ "$apply_pre" = "1" ] && [ "$bash_pre" = "1" ] && [ "$apply_post" = "1" ] && [ "$total" = "3" ] \
-              || { echo "FAIL: Codex plan-gate entries apply-pre=$apply_pre bash-pre=$bash_pre apply-post=$apply_post total=$total"; exit 1; }
+            [ "$session_start" = "1" ] && [ "$apply_pre" = "1" ] && [ "$bash_pre" = "1" ] && [ "$apply_post" = "1" ] && [ "$total" = "4" ] \
+              || { echo "FAIL: Codex plan-gate entries session-start=$session_start apply-pre=$apply_pre bash-pre=$bash_pre apply-post=$apply_post total=$total"; exit 1; }
           }
           assert_codex_plan_gate
-          for missing in apply-pre bash-pre apply-post; do
+          for missing in session-start apply-pre bash-pre apply-post; do
             case "$missing" in
+              session-start) filter='.hooks.SessionStart |= map(select(.matcher != "startup|resume" or ([.hooks[]? | select(.command | test("plan-gate\\.js.*--session-start"))] | length == 0)))' ;;
               apply-pre) filter='.hooks.PreToolUse |= map(select(.matcher != "apply_patch" or ([.hooks[]? | select(.command | test("plan-gate\\.js.*--pre"))] | length == 0)))' ;;
               bash-pre) filter='.hooks.PreToolUse |= map(select(.matcher != "Bash" or ([.hooks[]? | select(.command | test("plan-gate\\.js.*--pre"))] | length == 0)))' ;;
               apply-post) filter='.hooks.PostToolUse |= map(select(.matcher != "apply_patch" or ([.hooks[]? | select(.command | test("plan-gate\\.js.*--post"))] | length == 0)))' ;;
@@ -610,18 +612,23 @@ jobs:
           function Assert-CodexPlanGate {
             $codexRaw = Get-Content -Raw "$H\.codex\hooks.json"
             $codexHooks = $codexRaw | ConvertFrom-Json
+            $sessionStart = @($codexHooks.hooks.SessionStart | Where-Object { $_.matcher -eq 'startup|resume' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js.*--session-start' }).Count
             $applyPre = @($codexHooks.hooks.PreToolUse | Where-Object { $_.matcher -eq 'apply_patch' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js.*--pre' }).Count
             $bashPre = @($codexHooks.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js.*--pre' }).Count
             $applyPost = @($codexHooks.hooks.PostToolUse | Where-Object { $_.matcher -eq 'apply_patch' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js.*--post' }).Count
             $total = ([regex]::Matches($codexRaw, 'plan-gate\.js')).Count
-            if ($applyPre -ne 1 -or $bashPre -ne 1 -or $applyPost -ne 1 -or $total -ne 3) {
-              throw "Codex plan-gate entries apply-pre=$applyPre bash-pre=$bashPre apply-post=$applyPost total=$total"
+            if ($sessionStart -ne 1 -or $applyPre -ne 1 -or $bashPre -ne 1 -or $applyPost -ne 1 -or $total -ne 4) {
+              throw "Codex plan-gate entries session-start=$sessionStart apply-pre=$applyPre bash-pre=$bashPre apply-post=$applyPost total=$total"
             }
           }
           Assert-CodexPlanGate
-          foreach ($missing in @('apply-pre', 'bash-pre', 'apply-post')) {
+          foreach ($missing in @('session-start', 'apply-pre', 'bash-pre', 'apply-post')) {
             $codexHooks = Get-Content -Raw "$H\.codex\hooks.json" | ConvertFrom-Json
-            if ($missing -eq 'apply-post') {
+            if ($missing -eq 'session-start') {
+              $codexHooks.hooks.SessionStart = @($codexHooks.hooks.SessionStart | Where-Object {
+                -not ($_.matcher -eq 'startup|resume' -and @($_.hooks | Where-Object { $_.command -match 'plan-gate\.js.*--session-start' }).Count -gt 0)
+              })
+            } elseif ($missing -eq 'apply-post') {
               $codexHooks.hooks.PostToolUse = @($codexHooks.hooks.PostToolUse | Where-Object {
                 -not ($_.matcher -eq 'apply_patch' -and @($_.hooks | Where-Object { $_.command -match 'plan-gate\.js.*--post' }).Count -gt 0)
               })

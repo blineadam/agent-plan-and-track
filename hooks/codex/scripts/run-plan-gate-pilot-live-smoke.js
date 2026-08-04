@@ -4,8 +4,8 @@
  *
  * Default mode is free and prints the exact command shape. --run is billable,
  * guarded by PLANGATE_PILOT_ALLOW_SPEND=1. Every live case is invalid unless
- * its JSONL trace shows completed file-change events, a SessionStart sentinel
- * proves the isolated hook layer loaded, and the hook log captures matching
+ * its JSONL trace shows completed file-change events, the plan gate records
+ * its own SessionStart baseline, and the hook log captures matching
  * PreToolUse/PostToolUse correlation triples. Failed runs preserve their
  * trace, stderr, hook config, event log, and workspace for diagnosis. The
  * mutation case uses only a scratch local Git remote and a stub gh executable,
@@ -58,7 +58,9 @@ function warningEvidence(eventFile, message) {
 }
 
 function sessionStartEvidence(eventFile) {
-  return readJsonLines(eventFile).some((event) => event.phase === 'SessionStart');
+  return readJsonLines(eventFile).some(
+    (event) => event.phase === 'SessionStart' && typeof event.session_id === 'string' && typeof event.cwd === 'string',
+  );
 }
 
 function traceEvidence(trace) {
@@ -116,7 +118,7 @@ function runCase(root, codexHome, name, prompt) {
   const evidence = traceEvidence(trace);
   if (!evidence.fileChanges) fail(`${name} trace had no completed file_change event; completed item types: ${JSON.stringify(evidence.types)}`);
   if (!fs.existsSync(eventFile)) fail(`${name} captured no hook events; completed trace item types: ${JSON.stringify(evidence.types)}`);
-  if (!sessionStartEvidence(eventFile)) fail(`${name} did not capture the SessionStart sentinel`);
+  if (!sessionStartEvidence(eventFile)) fail(`${name} did not capture the plan gate's SessionStart baseline`);
   if (!rawHookEvidence(rawFile, 'apply_patch')) fail(`${name} did not capture raw apply_patch PreToolUse/PostToolUse correlation`);
   if (!correlationEvidence(eventFile)) fail(`${name} did not capture both hook events and a full correlation triple`);
   return { eventFile, trace, workspace };
@@ -167,7 +169,7 @@ function runMutationCase(root, codexHome) {
   const evidence = traceEvidence(trace);
   if (!evidence.fileChanges) fail(`${name} trace had no completed plan file_change event; completed item types: ${JSON.stringify(evidence.types)}`);
   if (!fs.existsSync(eventFile)) fail(`${name} captured no hook events; completed trace item types: ${JSON.stringify(evidence.types)}`);
-  if (!sessionStartEvidence(eventFile)) fail(`${name} did not capture the SessionStart sentinel`);
+  if (!sessionStartEvidence(eventFile)) fail(`${name} did not capture the plan gate's SessionStart baseline`);
   if (!rawHookEvidence(rawFile, 'apply_patch')) fail(`${name} did not capture raw apply_patch PreToolUse/PostToolUse correlation`);
   if (!mutationEvidence(eventFile)) fail(`${name} did not capture ordered allow, deny, stamp, and retry-allow hook evidence`);
   if (!fs.existsSync(stubLog)) fail(`${name} never reached the gh stub after the stamp`);
@@ -191,7 +193,7 @@ function setup(root) {
   fs.copyFileSync(RUNTIME, path.join(scripts, 'plan-gate.js'));
   fs.writeFileSync(
     sentinel,
-    "'use strict';\nconst fs = require('fs');\nconst path = require('path');\nconst input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');\nconst file = input.hook_event_name === 'SessionStart' ? process.env.PLANGATE_PILOT_EVENT_LOG : process.env.PLANGATE_PILOT_RAW_LOG;\nif (file) {\n  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });\n  fs.appendFileSync(file, JSON.stringify(input.hook_event_name === 'SessionStart' ? { phase: 'SessionStart' } : input) + '\\n', { mode: 0o600 });\n}\n",
+    "'use strict';\nconst fs = require('fs');\nconst path = require('path');\nconst input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');\nconst file = input.hook_event_name === 'SessionStart' ? process.env.PLANGATE_PILOT_EVENT_LOG : process.env.PLANGATE_PILOT_RAW_LOG;\nif (file) {\n  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });\n  fs.appendFileSync(file, JSON.stringify(input.hook_event_name === 'SessionStart' ? { phase: 'SessionStartSentinel' } : input) + '\\n', { mode: 0o600 });\n}\n",
     { mode: 0o700 }
   );
   const hooks = JSON.parse(fs.readFileSync(TEMPLATE, 'utf8').replaceAll('__SCRIPTS__', scripts.replace(/\\/g, '/')));
@@ -200,12 +202,12 @@ function setup(root) {
       entry.hooks.push({ type: 'command', command: `node "${sentinel.replace(/\\/g, '/')}"`, timeout: 10 });
     }
   }
-  hooks.hooks.SessionStart = [
+  hooks.hooks.SessionStart.push(
     {
       matcher: 'startup',
       hooks: [{ type: 'command', command: `node "${sentinel.replace(/\\/g, '/')}"`, timeout: 10 }],
     },
-  ];
+  );
   fs.writeFileSync(path.join(codexHome, 'hooks.json'), JSON.stringify(hooks, null, 2) + '\n', { mode: 0o600 });
   return codexHome;
 }
