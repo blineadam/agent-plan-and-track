@@ -47,6 +47,9 @@ in third-party projects this repo credits/adapts from (see `README.md`).
 ## Dependencies
 
 The hook scripts under `hooks/` use only Node.js built-in modules, no npm
-dependencies. `install.sh` needs `jq`; `install.ps1` needs nothing beyond
-PowerShell 5.1. `.github/dependabot.yml` covers the GitHub Actions used in
-`.github/workflows/`.
+dependencies. `install.sh` needs `jq` for Claude and Codex targets;
+`install.ps1` needs nothing beyond PowerShell 5.1. When `jq` is missing,
+`install.sh` can invoke the platform's package manager under sudo to install
+it, but only with explicit user confirmation in an interactive run or with the
+opt-in flag `PT_INSTALL_JQ=1` in a non-interactive context. `.github/dependabot.yml`
+covers the GitHub Actions used in `.github/workflows/`.

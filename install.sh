@@ -4,6 +4,11 @@
 #
 # Usage: ./install.sh {claude|copilot|codex|all}
 #
+# Needs node, plus jq for the Claude and Codex targets (not Copilot); both are
+# checked before anything is written. A missing jq gets an offer to install it
+# through the platform's package manager: an interactive run asks first, a
+# non-interactive one needs PT_INSTALL_JQ=1 to authorize it. See need_jq below.
+#
 # Idempotent. Re-runs re-assert the repo's intended state; your own content is kept:
 #   - skills are copied (this repo is the source of truth)
 #   - the core-rules digest is copied; a differing existing file is backed up to *.bak;
@@ -57,8 +62,73 @@ usage() {
   exit 1
 }
 
+# Package-manager command that would install jq on this machine, or empty when
+# no known manager is present. Probed with `command -v` in priority order
+# rather than by parsing /etc/os-release, which varies too much across distro
+# forks. brew is probed first (but skipped entirely for root: it refuses to
+# run as root and offering it there would both fail and block the fallback to
+# a working manager) and never sudo-prefixed, since it installs user-scoped
+# (this also covers Linuxbrew). Every other manager writes system-wide, so it
+# gets a sudo prefix unless we're already root; a non-root user with no sudo
+# has no way to elevate and gets no offer at all.
+jq_install_cmd() {
+  local sudo_prefix=""
+  if [ "$(id -u)" != 0 ] && command -v brew >/dev/null 2>&1; then
+    echo "brew install jq"
+    return 0
+  fi
+  if [ "$(id -u)" != 0 ]; then
+    command -v sudo >/dev/null 2>&1 || return 0
+    sudo_prefix="sudo "
+  fi
+  if   command -v apt-get >/dev/null 2>&1; then echo "${sudo_prefix}apt-get update && ${sudo_prefix}apt-get install -y jq"
+  elif command -v dnf     >/dev/null 2>&1; then echo "${sudo_prefix}dnf install -y jq"
+  elif command -v yum     >/dev/null 2>&1; then echo "${sudo_prefix}yum install -y jq"
+  elif command -v pacman  >/dev/null 2>&1; then echo "${sudo_prefix}pacman -S --noconfirm jq"
+  elif command -v zypper  >/dev/null 2>&1; then echo "${sudo_prefix}zypper --non-interactive install jq"
+  elif command -v apk     >/dev/null 2>&1; then echo "${sudo_prefix}apk add --no-cache jq"
+  fi
+}
+
+# jq is required for the Claude and Codex targets' JSON merges (Copilot's one
+# jq-dependent step warns and skips instead). When it's missing, OFFER to
+# install it rather than only printing an instruction. Installing a system
+# package is outside this repo's own scope, so it is never silent: an
+# interactive run asks first, and a non-interactive run (CI, a piped shell)
+# neither prompts nor elevates on its own unless PT_INSTALL_JQ=1 authorizes it
+# up front. Every unresolved path still exits 1, exactly like the old gate.
 need_jq() {
-  command -v jq >/dev/null 2>&1 || { echo "error: jq is required (brew install jq)" >&2; exit 1; }
+  command -v jq >/dev/null 2>&1 && return 0
+  local cmd reply
+  cmd="$(jq_install_cmd)"
+  if [ -z "$cmd" ]; then
+    echo "error: jq is required, and no way to install it automatically was found" >&2
+    echo "       (no supported package manager on PATH, or no sudo to use one)." >&2
+    echo "       install jq by hand (https://jqlang.github.io/jq/download/) and re-run." >&2
+    exit 1
+  fi
+  if [ "${PT_INSTALL_JQ:-}" = "1" ]; then
+    echo "jq is missing; PT_INSTALL_JQ=1, running: $cmd"
+  elif [ -t 0 ]; then
+    # Prompt on stderr so it is still visible when stdout is captured.
+    printf 'jq is required but not installed. Install it now with:\n  %s\nProceed? [y/N] ' "$cmd" >&2
+    IFS= read -r reply || reply=""
+    case "$reply" in
+      y|Y|yes|Yes|YES) ;;
+      *) echo "error: jq is required; install it and re-run." >&2; exit 1 ;;
+    esac
+  else
+    echo "error: jq is required (install with: $cmd)" >&2
+    echo "       not installing it automatically: this shell isn't interactive." >&2
+    echo "       re-run with PT_INSTALL_JQ=1 to authorize the install." >&2
+    exit 1
+  fi
+  # The string comes from the closed table above with no user-controlled input,
+  # and the same string is both printed and run, so the offer can never describe
+  # one command and execute another. eval keeps it in this shell rather than a
+  # sub-shell whose semantics differ from set -euo pipefail's.
+  eval "$cmd" || { echo "error: '$cmd' failed; install jq by hand and re-run." >&2; exit 1; }
+  command -v jq >/dev/null 2>&1 || { echo "error: jq still not on PATH after '$cmd'." >&2; exit 1; }
 }
 
 # All three harnesses wire hooks that shell out to `node <script>.js` at
@@ -849,6 +919,12 @@ case "$1" in
 esac
 
 need_node
+# Ahead of install_global_gitignore and any target, so a declined or
+# unresolvable jq offer leaves the machine byte-for-byte untouched instead of
+# aborting mid-Claude-install. Copilot is excluded: it needs no jq. The
+# per-target need_jq calls inside install_claude/install_codex stay as the
+# real gate; this one only moves the failure forward.
+case "$1" in claude|codex|all) need_jq ;; esac
 install_global_gitignore
 echo
 

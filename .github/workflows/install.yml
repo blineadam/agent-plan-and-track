@@ -233,6 +233,114 @@ jobs:
             exit 1
           fi
           echo "OK: the bare-posture assertion rejects a settings file carrying the bypass keys"
+      - name: jq missing offers to install (stubbed apt-get, no network)
+        run: |
+          set -euo pipefail
+          # Hide every already-installed jq (and brew, if present) from PATH
+          # without disturbing anything else that shares their directory:
+          # recreate every other executable those directories provide under a
+          # shadow dir, then drop the directories themselves from PATH. This
+          # job's own "Tooling versions" step proves jq already resolves here,
+          # so a plain stub-dir prepend (the Office skills installer step's
+          # own approach) would leave the real jq reachable further down PATH
+          # and never exercise the new offer logic. Scanning every PATH entry
+          # directly, rather than trusting command -v's first match, matters
+          # too: some platforms carry more than one jq on PATH at once.
+          hide_dirs=""
+          old_ifs="$IFS"; IFS=':'
+          for d in $PATH; do
+            [ -n "$d" ] || continue
+            if [ -x "$d/jq" ] || [ -x "$d/brew" ]; then
+              case ":$hide_dirs:" in *":$d:"*) ;; *) hide_dirs="$hide_dirs:$d" ;; esac
+            fi
+          done
+          IFS="$old_ifs"
+          hide_dirs="${hide_dirs#:}"
+          shadow_dir="$RUNNER_TEMP/jq-shadow-bin"
+          mkdir -p "$shadow_dir"
+          if [ -n "$hide_dirs" ]; then
+            old_ifs="$IFS"; IFS=':'
+            for d in $hide_dirs; do
+              for f in "$d"/*; do
+                base="$(basename "$f")"
+                case "$base" in jq|brew) continue ;; esac
+                [ -e "$shadow_dir/$base" ] && continue
+                ln -sf "$f" "$shadow_dir/$base" 2>/dev/null || true
+              done
+            done
+            IFS="$old_ifs"
+          fi
+          filtered=""
+          IFS=':' read -ra parts <<< "$PATH"
+          for p in "${parts[@]}"; do
+            case ":$hide_dirs:" in *":$p:"*) continue ;; esac
+            filtered="$filtered:$p"
+          done
+          filtered="${filtered#:}"
+
+          # Fake sudo AND apt-get (real sudo's secure_path ignores PATH
+          # overrides for the wrapped command, so faking only apt-get would
+          # let a sudo-prefixed call escape the stub straight to the real
+          # package manager). The fake sudo just execs its argv unprivileged;
+          # the fake apt-get logs every call and, on `install`, symlinks the
+          # real jq (captured before it was hidden) into a directory that
+          # only now joins PATH, so a completed offer ends with a genuinely
+          # working jq rather than a dummy stub, matching what install_claude's
+          # own JSON merges need afterward.
+          real_jq="$(command -v jq 2>/dev/null || true)"
+          stub_bin="$RUNNER_TEMP/jq-stub-bin"; mkdir -p "$stub_bin"
+          installed_dir="$RUNNER_TEMP/jq-installed-bin"; mkdir -p "$installed_dir"
+          apt_log="$RUNNER_TEMP/jq-apt-log.txt"; rm -f "$apt_log"
+          export REAL_JQ="$real_jq" INSTALLED_DIR="$installed_dir" APT_LOG="$apt_log"
+          cat > "$stub_bin/apt-get" <<'STUB'
+          #!/usr/bin/env bash
+          echo "$*" >> "$APT_LOG"
+          if [ "$1" = "install" ] && [ -n "${REAL_JQ:-}" ]; then
+            mkdir -p "$INSTALLED_DIR"
+            ln -sf "$REAL_JQ" "$INSTALLED_DIR/jq"
+          fi
+          exit 0
+          STUB
+          chmod +x "$stub_bin/apt-get"
+          cat > "$stub_bin/sudo" <<'STUB'
+          #!/usr/bin/env bash
+          exec "$@"
+          STUB
+          chmod +x "$stub_bin/sudo"
+
+          export PATH="$stub_bin:$shadow_dir:$installed_dir:$filtered"
+          command -v jq >/dev/null 2>&1 \
+            && { echo "FAIL: jq is still resolvable after hiding it (found: $(command -v jq))"; exit 1; }
+
+          # (a) non-interactive, no PT_INSTALL_JQ: refuses fast, names the
+          # install command and the PT_INSTALL_JQ=1 opt-in in stderr, never
+          # invokes the stub package manager, writes no files.
+          export HOME="$RUNNER_TEMP/scratch-home-jq-refuse"; mkdir -p "$HOME"
+          set +e
+          err="$(./install.sh claude 2>&1 1>/dev/null < /dev/null)"
+          code=$?
+          set -e
+          [ "$code" -eq 1 ] || { echo "FAIL: refusal exit code was $code, not 1"; exit 1; }
+          echo "$err" | grep -qF 'error: jq is required (install with: sudo apt-get update && sudo apt-get install -y jq)' \
+            || { echo "FAIL: refusal did not name the install command"; echo "$err"; exit 1; }
+          echo "$err" | grep -qF 'PT_INSTALL_JQ=1 to authorize the install' \
+            || { echo "FAIL: refusal did not mention the PT_INSTALL_JQ=1 opt-in"; echo "$err"; exit 1; }
+          [ ! -s "$apt_log" ] || { echo "FAIL: apt-get was invoked during a refused install"; cat "$apt_log"; exit 1; }
+          [ -z "$(find "$HOME" -mindepth 1 2>/dev/null)" ] \
+            || { echo "FAIL: refused install wrote files under HOME"; find "$HOME"; exit 1; }
+
+          # (b) Copilot needs no jq at all.
+          export HOME="$RUNNER_TEMP/scratch-home-jq-copilot"; mkdir -p "$HOME"
+          ./install.sh copilot >/dev/null
+
+          # (c) PT_INSTALL_JQ=1 drives the stubbed apt-get end-to-end and
+          # completes the install.
+          export HOME="$RUNNER_TEMP/scratch-home-jq-install"; mkdir -p "$HOME"
+          PT_INSTALL_JQ=1 ./install.sh claude >/dev/null
+          grep -qF 'install -y jq' "$apt_log" \
+            || { echo "FAIL: PT_INSTALL_JQ=1 never invoked the stubbed apt-get install"; exit 1; }
+          test -f "$HOME/.claude/settings.json" \
+            || { echo "FAIL: PT_INSTALL_JQ=1 install did not complete"; exit 1; }
       - name: Shared Node scripts run
         run: |
           set -euo pipefail

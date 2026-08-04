@@ -22,6 +22,32 @@ A parity note in both file headers lists the managed surface that must be
 mirrored. Change one installer, change the other. Idempotent re-runs re-assert
 the repo's intended state without clobbering user content, as described below.
 
+## Dependencies
+
+`install.sh` requires Node.js (checked before any files are written) and `jq`
+for the Claude and Codex targets; Copilot has no jq dependency. `install.ps1`
+requires only PowerShell 5.1, with no jq dependency to mirror.
+
+When `jq` is missing, `install.sh` offers to install it through the platform's
+package manager, probed in this order:
+
+| Manager | Command | Sudo-gated |
+| --- | --- | --- |
+| `brew` | `brew install jq` | No (user-scoped) |
+| `apt-get` | `apt-get update && apt-get install -y jq` | Yes, unless root |
+| `dnf` | `dnf install -y jq` | Yes, unless root |
+| `yum` | `yum install -y jq` | Yes, unless root |
+| `pacman` | `pacman -S --noconfirm jq` | Yes, unless root |
+| `zypper` | `zypper --non-interactive install jq` | Yes, unless root |
+| `apk` | `apk add --no-cache jq` | Yes, unless root |
+
+An interactive run (connected to a TTY) prompts the user for confirmation
+before installing. A non-interactive run (piped shell or CI) requires
+`PT_INSTALL_JQ=1` to authorize the install; without it, the script exits with
+an error and no changes made to the system. If no supported package manager is
+found, the installer also exits with an error, leaving the user to install `jq`
+by hand.
+
 ## Skills
 
 Skills are repo-owned and copied with `cp -R` into the existing destination.

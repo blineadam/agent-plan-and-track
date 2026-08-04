@@ -51,9 +51,12 @@ defaults, tiered subagents, and per-tool notes.
 ## Install
 
 The hooks run on Node.js; the installer checks for it before touching
-anything. The macOS/Linux installer also needs `jq` for the Claude and
-Codex targets (not required for Copilot-only): install it first, since a
-missing `jq` is caught partway through rather than up front.
+anything. The macOS/Linux installer also needs `jq` for the Claude and Codex
+targets (not required for Copilot-only). If `jq` is missing, the installer
+offers to install it through your platform's package manager: an interactive run
+prompts for confirmation, while a non-interactive run requires `PT_INSTALL_JQ=1`
+to authorize it. See [docs/installers.md#dependencies](docs/installers.md) for
+the full probe order and behavior.
 
 ```sh
 # to set Claude Code to bypassPermissions and suppress its
