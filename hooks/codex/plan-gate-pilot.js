@@ -7,10 +7,12 @@
  * bases every verdict on the disk delta, never on tool_response. A separate
  * Bash PreToolUse path blocks the second distinct unplanned outward mutation
  * among git push, gh pr create, and gh pr merge. A valid new plan item written
- * through apply_patch stamps the shared session state and unlocks that gate. An
- * apply_patch PreToolUse guard also denies once when an exact in-memory
- * simulation finds a new or changed unchecked Plan step whose `(main: ...)`
- * reason attributes an action or preference to the user.
+ * through apply_patch stamps the shared session state; at the mutation
+ * threshold, a valid plan item added after SessionStart also stamps it when a
+ * wrapper hides the patch lifecycle. An apply_patch PreToolUse guard also
+ * denies once when an exact in-memory simulation finds a new or changed
+ * unchecked Plan step whose `(main: ...)` reason attributes an action or
+ * preference to the user.
  * The installer copies this source to plan-gate.js.
  *
  * State is keyed by sha256([session_id, canonical cwd, tool_use_id]). A
@@ -70,11 +72,18 @@ function canonicalCwd(input) {
 }
 
 function correlation(input) {
-  const sessionId = input && typeof input.session_id === 'string' ? input.session_id.trim() : '';
+  const scope = scopeCorrelation(input);
+  if (!scope) return null;
   const toolUseId = input && typeof input.tool_use_id === 'string' ? input.tool_use_id.trim() : '';
+  if (!toolUseId) return null;
+  return { ...scope, toolUseId };
+}
+
+function scopeCorrelation(input) {
+  const sessionId = input && typeof input.session_id === 'string' ? input.session_id.trim() : '';
   const cwd = canonicalCwd(input);
-  if (!sessionId || !toolUseId || !cwd) return null;
-  return { cwd, sessionId, toolUseId };
+  if (!sessionId || !cwd) return null;
+  return { cwd, sessionId };
 }
 
 function transactionPath(key) {
@@ -95,21 +104,19 @@ function scopeLockPath(c) {
 
 function pruneState() {
   const cutoff = Date.now() - PRUNE_AGE_MS;
-  for (const directory of ['transactions', 'scopes']) {
-    try {
-      const stateDir = path.join(STATE_DIR, directory);
-      const names = fs.readdirSync(stateDir).filter((name) => directory === 'transactions' ? /\.(?:json|claim)$/.test(name) : /\.json(?:\.lock)?$/.test(name));
-      let removed = 0;
-      for (const name of names) {
-        if (removed >= PRUNE_LIMIT) break;
-        const target = path.join(stateDir, name);
-        if (fs.statSync(target).mtimeMs >= cutoff) continue;
-        fs.unlinkSync(target);
-        removed += 1;
-      }
-    } catch {
-      /* state pruning is best effort and never affects a hook verdict */
+  try {
+    const stateDir = path.join(STATE_DIR, 'transactions');
+    const names = fs.readdirSync(stateDir).filter((name) => /\.(?:json|claim)$/.test(name));
+    let removed = 0;
+    for (const name of names) {
+      if (removed >= PRUNE_LIMIT) break;
+      const target = path.join(stateDir, name);
+      if (fs.statSync(target).mtimeMs >= cutoff) continue;
+      fs.unlinkSync(target);
+      removed += 1;
     }
+  } catch {
+    /* transaction pruning is best effort and never affects a hook verdict */
   }
 }
 
@@ -124,18 +131,17 @@ function parsePaths(command) {
 }
 
 function absolutePath(cwd, filePath) {
-  if (typeof filePath !== 'string' || !filePath || path.isAbsolute(filePath)) return null;
-  const resolved = path.resolve(cwd, filePath);
-  const relative = path.relative(cwd, resolved);
-  if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return null;
+  if (typeof filePath !== 'string' || !filePath) return null;
+  const requested = path.resolve(cwd, filePath);
   let canonicalParent;
   try {
-    canonicalParent = fs.realpathSync(path.dirname(resolved));
+    canonicalParent = fs.realpathSync(path.dirname(requested));
   } catch {
     return null;
   }
-  const parentRelative = path.relative(cwd, canonicalParent);
-  if (parentRelative === '..' || parentRelative.startsWith('..' + path.sep) || path.isAbsolute(parentRelative)) return null;
+  const resolved = path.join(canonicalParent, path.basename(requested));
+  const relative = path.relative(cwd, resolved);
+  if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return null;
   return { absolute: resolved, relative: relative.replace(/\\/g, '/') };
 }
 
@@ -229,9 +235,13 @@ function loadScope(c) {
   const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   const mutations = parsed && parsed.mutations === undefined ? [] : parsed && parsed.mutations;
   const mainAttributionAt = parsed && parsed.mainAttributionAt;
-  if (!parsed || !Array.isArray(parsed.paths) || !Array.isArray(mutations) || typeof parsed.stamped !== 'boolean' || typeof parsed.warned !== 'boolean' || !parsed.paths.every((p) => typeof p === 'string') || !mutations.every((kind) => MUTATION_KINDS.has(kind)) || (mainAttributionAt !== undefined && (!Number.isFinite(mainAttributionAt) || mainAttributionAt < 0))) throw new Error('invalid scope');
+  const planBaseline = parsed && parsed.planBaseline;
+  const planBaselineV2 = parsed && parsed.planBaselineV2;
+  if (!parsed || !Array.isArray(parsed.paths) || !Array.isArray(mutations) || typeof parsed.stamped !== 'boolean' || typeof parsed.warned !== 'boolean' || !parsed.paths.every((p) => typeof p === 'string') || !mutations.every((kind) => MUTATION_KINDS.has(kind)) || (mainAttributionAt !== undefined && (!Number.isFinite(mainAttributionAt) || mainAttributionAt < 0)) || (planBaseline !== undefined && (!Array.isArray(planBaseline) || !planBaseline.every((item) => typeof item === 'string' && /^[a-f0-9]{64}$/.test(item)))) || (planBaselineV2 !== undefined && (!Array.isArray(planBaselineV2) || !planBaselineV2.every((item) => typeof item === 'string' && /^[a-f0-9]{64}$/.test(item))))) throw new Error('invalid scope');
   const state = { mutations: [...new Set(mutations)], paths: [...new Set(parsed.paths)], stamped: parsed.stamped, warned: parsed.warned };
   if (mainAttributionAt !== undefined) state.mainAttributionAt = mainAttributionAt;
+  if (planBaseline !== undefined) state.planBaseline = [...planBaseline];
+  if (planBaselineV2 !== undefined) state.planBaselineV2 = [...planBaselineV2];
   return state;
 }
 
@@ -355,12 +365,16 @@ function attributionFinding(baseline, result) {
 
 function collectNewUncheckedPlanItems(baseline, result) {
   const counts = new Map();
-  for (const line of baseline.split('\n').map((line) => line.replace(/\s+$/, ''))) counts.set(line, (counts.get(line) || 0) + 1);
+  for (const item of extractUncheckedPlanItems(baseline)) {
+    const identity = planItemIdentity(item.firstLine);
+    counts.set(identity, (counts.get(identity) || 0) + 1);
+  }
   const items = [];
   for (const item of extractUncheckedPlanItems(result)) {
-    const prior = counts.get(item.firstLine) || 0;
+    const identity = planItemIdentity(item.firstLine);
+    const prior = counts.get(identity) || 0;
     if (prior) {
-      counts.set(item.firstLine, prior - 1);
+      counts.set(identity, prior - 1);
       continue;
     }
     items.push(item.joined);
@@ -373,6 +387,53 @@ function validPlanItem(item) {
   if (MAIN_OK_RE.test(item)) return true;
   if (MAIN_ANY_RE.test(item)) return false;
   return TIER_TAG_RE.test(item);
+}
+
+function currentPlanItems(c) {
+  const todo = absolutePath(c.cwd, 'tasks/todo.md');
+  if (!todo) {
+    try {
+      fs.lstatSync(path.join(c.cwd, 'tasks'));
+    } catch (err) {
+      if (err && err.code === 'ENOENT') return [];
+    }
+    return null;
+  }
+  const snapshot = snapshotFile(todo);
+  if (!snapshot) return null;
+  return snapshot.exists ? extractUncheckedPlanItems(decode(snapshot)) : [];
+}
+
+function planItemIdentity(firstLine) {
+  return firstLine.replace(/^\s*[-*]\s+\[ \]\s+/, '');
+}
+
+function hasSessionPlan(c, scope) {
+  if (!Array.isArray(scope.planBaselineV2)) return false;
+  const items = currentPlanItems(c);
+  if (!items) return false;
+  const baseline = new Map();
+  for (const item of scope.planBaselineV2) baseline.set(item, (baseline.get(item) || 0) + 1);
+  for (const item of items) {
+    const itemHash = sha256(planItemIdentity(item.firstLine));
+    const prior = baseline.get(itemHash) || 0;
+    if (prior) baseline.set(itemHash, prior - 1);
+    else if (validPlanItem(item.joined)) return true;
+  }
+  return false;
+}
+
+function sessionStart(input, c) {
+  pruneState();
+  withScopeLock(c, () => {
+    const scope = loadScope(c);
+    if (scope.planBaselineV2 !== undefined) return;
+    const items = currentPlanItems(c);
+    if (!items) return;
+    scope.planBaselineV2 = items.map((item) => sha256(planItemIdentity(item.firstLine)));
+    saveScope(c, scope);
+    recordEvent('SessionStart', input, c);
+  });
 }
 
 // Quote-aware split of a Bash command into command-position segments, with
@@ -639,7 +700,14 @@ function mutationPre(input, c) {
     const newKinds = [...kinds].filter((kind) => !scope.mutations.includes(kind));
     const threshold = mutationThreshold();
     const prospective = scope.mutations.length + newKinds.length;
-    if (prospective >= threshold) return { prospective, threshold };
+    if (prospective >= threshold) {
+      if (hasSessionPlan(c, scope)) {
+        scope.stamped = true;
+        saveScope(c, scope);
+        return null;
+      }
+      return { prospective, threshold };
+    }
     scope.mutations.push(...newKinds);
     saveScope(c, scope);
     return null;
@@ -777,6 +845,11 @@ function main() {
   try {
     input = JSON.parse(readStdin() || '{}');
   } catch {
+    return;
+  }
+  if (phase === '--session-start') {
+    const c = scopeCorrelation(input);
+    if (c) sessionStart(input, c);
     return;
   }
   if (phase !== '--pre' && phase !== '--post') return;

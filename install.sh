@@ -40,10 +40,10 @@
 # Claude .md copies, the Codex TOML rendering, and the Copilot .agent.md
 # rendering), the core-rules digest, the instructions managed block, hook
 # wiring + __SCRIPTS__ substitution (including plan-gate's two additive Claude
-# PreToolUse entries and the Codex plan gate's apply_patch PreToolUse, Bash
-# PreToolUse, and apply_patch PostToolUse entries, each with its own matcher +
-# command idempotency check), model/effort defaults, the TOML upsert, the global
-# gitignore entries, the manifest-based stale prune keyed by
+# PreToolUse entries and the Codex plan gate's SessionStart, apply_patch
+# PreToolUse, Bash PreToolUse, and apply_patch PostToolUse entries, each with
+# its own matcher + command idempotency check), model/effort defaults, the TOML
+# upsert, the global gitignore entries, the manifest-based stale prune keyed by
 # .plan-and-track-manifest) must be mirrored there.
 set -euo pipefail
 
@@ -817,11 +817,13 @@ install_codex() {
   fi
   local plan_pre_cmd="node \"$cscripts/plan-gate.js\" --pre"
   local plan_post_cmd="node \"$cscripts/plan-gate.js\" --post"
-  local plan_apply_pre plan_bash_pre plan_apply_post
+  local plan_session_cmd="node \"$cscripts/plan-gate.js\" --session-start"
+  local plan_session_start plan_apply_pre plan_bash_pre plan_apply_post
+  plan_session_start="$(jq --arg matcher 'startup|resume' --arg command "$plan_session_cmd" '[.hooks.SessionStart[]? | select(.matcher == $matcher) | .hooks[]? | select(.command == $command)] | length > 0' "$hooks")"
   plan_apply_pre="$(jq --arg matcher 'apply_patch' --arg command "$plan_pre_cmd" '[.hooks.PreToolUse[]? | select(.matcher == $matcher) | .hooks[]? | select(.command == $command)] | length > 0' "$hooks")"
   plan_bash_pre="$(jq --arg matcher 'Bash' --arg command "$plan_pre_cmd" '[.hooks.PreToolUse[]? | select(.matcher == $matcher) | .hooks[]? | select(.command == $command)] | length > 0' "$hooks")"
   plan_apply_post="$(jq --arg matcher 'apply_patch' --arg command "$plan_post_cmd" '[.hooks.PostToolUse[]? | select(.matcher == $matcher) | .hooks[]? | select(.command == $command)] | length > 0' "$hooks")"
-  if [ "$plan_apply_pre" = true ] && [ "$plan_bash_pre" = true ] && [ "$plan_apply_post" = true ]; then
+  if [ "$plan_session_start" = true ] && [ "$plan_apply_pre" = true ] && [ "$plan_bash_pre" = true ] && [ "$plan_apply_post" = true ]; then
     echo "  plan-gate hook  -- already present in hooks.json"
   else
     tmp="$(mktemp)"
@@ -829,11 +831,13 @@ install_codex() {
       --argjson add_apply_pre "$([ "$plan_apply_pre" = true ] && echo false || echo true)" \
       --argjson add_bash_pre "$([ "$plan_bash_pre" = true ] && echo false || echo true)" \
       --argjson add_apply_post "$([ "$plan_apply_post" = true ] && echo false || echo true)" \
-      'if $add_apply_pre then .hooks.PreToolUse = ((.hooks.PreToolUse // []) + [$h[0].hooks.PreToolUse[] | select(.matcher == "apply_patch")]) else . end
+      --argjson add_session_start "$([ "$plan_session_start" = true ] && echo false || echo true)" \
+      'if $add_session_start then .hooks.SessionStart = ((.hooks.SessionStart // []) + $h[0].hooks.SessionStart) else . end
+       | if $add_apply_pre then .hooks.PreToolUse = ((.hooks.PreToolUse // []) + [$h[0].hooks.PreToolUse[] | select(.matcher == "apply_patch")]) else . end
        | if $add_bash_pre then .hooks.PreToolUse = ((.hooks.PreToolUse // []) + [$h[0].hooks.PreToolUse[] | select(.matcher == "Bash")]) else . end
        | if $add_apply_post then .hooks.PostToolUse = ((.hooks.PostToolUse // []) + $h[0].hooks.PostToolUse) else . end' \
       "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
-    echo "  plan-gate hook  -> repaired in $hooks (apply_patch PreToolUse/PostToolUse + Bash PreToolUse; mutation gate blocks at PLANGATE_MUTATION_THRESHOLD)"
+    echo "  plan-gate hook  -> repaired in $hooks (SessionStart baseline + apply_patch PreToolUse/PostToolUse + Bash PreToolUse; mutation gate blocks at PLANGATE_MUTATION_THRESHOLD)"
   fi
   echo "  done. Hooks need node at runtime. Start a new codex session to load."
 }
