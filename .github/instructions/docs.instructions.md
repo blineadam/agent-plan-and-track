@@ -163,6 +163,28 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   either way, flag it for the author to confirm provenance rather than
   treating the absence as settled.
 
+## Reference-doc structure
+
+- `docs/*.md` and `README.md` use short paragraphs under H2/H3 section
+  headers: one H2 per component or topic, one H3 per independent
+  sub-behavior within it (e.g. `hooks/claude/plan-gate.js`'s stamp, scope,
+  mutation, content-lint, migration-guard, and attribution-guard gates each
+  get their own H3 in `docs/hooks.md`). Flag a new or edited doc section
+  that folds several independent sub-behaviors into one run-on paragraph
+  instead of splitting them into H3s.
+- A cross-cutting note not tied to one file gets its own top-level section
+  before the per-item sections (e.g. `docs/hooks.md`'s
+  `## Shared script architecture`). Flag cross-cutting content folded into
+  the first per-item section instead of its own section.
+- A closed mapping or per-harness variance (a model-compatibility table, a
+  tool-alias table) renders as a markdown table, one row per pairing, not a
+  prose sentence per pairing. Flag a new mapping written as prose when a
+  table would fit.
+- `.ai-style-rules.md` itself is exempt from this rule: its own dense prose
+  reflects how the `inherit-legacy-style` skill records diffs, not a style
+  target for `docs/*.md` or `README.md`. Don't flag `.ai-style-rules.md`'s
+  own paragraph density.
+
 ## Skimmable docs
 
 - Match the surrounding density: don't inflate a section with exhaustive
