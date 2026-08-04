@@ -26,6 +26,7 @@
     { "id": "mutation-concurrent", "expect": "one-allow-one-deny" },
     { "id": "mutation-plan-unlock", "expect": "valid-apply-patch-stamp-allows-retry" },
     { "id": "mutation-wrapper-current-plan", "expect": "session-new-valid-plan-allows-wrapper-retry" },
+    { "id": "mutation-missing-tasks-startup", "expect": "missing-tasks-starts-with-empty-baseline" },
     { "id": "mutation-stale-current-plan", "expect": "session-baseline-valid-plan-stays-denied" },
     { "id": "mutation-stale-plan-reflow", "expect": "continuation-only-reflow-stays-denied" },
     { "id": "mutation-stale-plan-marker-reflow", "expect": "marker-or-prefix-reflow-stays-denied" },

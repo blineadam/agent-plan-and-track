@@ -391,7 +391,14 @@ function validPlanItem(item) {
 
 function currentPlanItems(c) {
   const todo = absolutePath(c.cwd, 'tasks/todo.md');
-  if (!todo) return null;
+  if (!todo) {
+    try {
+      fs.lstatSync(path.join(c.cwd, 'tasks'));
+    } catch (err) {
+      if (err && err.code === 'ENOENT') return [];
+    }
+    return null;
+  }
   const snapshot = snapshotFile(todo);
   if (!snapshot) return null;
   return snapshot.exists ? extractUncheckedPlanItems(decode(snapshot)) : [];
