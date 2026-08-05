@@ -28,9 +28,10 @@ Confirm both, in one line each, before writing anything:
 
 1. At least one real source of conventions exists: `.ai-style-rules.md`, a
    project instructions file (`CLAUDE.md` / `AGENTS.md` /
-   `.github/copilot-instructions.md`), `README.md`, `CONTRIBUTING.md`, or a
-   `docs/` directory. If none exist, run [[inherit-legacy-style]] first for the
-   implicit-convention layer, then stop here.
+   `.github/copilot-instructions.md`), `README.md`, `CONTRIBUTING.md`, a
+   `docs/` directory, or a nested `**/README.md`. If none exist, run
+   [[inherit-legacy-style]] first for the implicit-convention layer, then stop
+   here.
 2. The project uses (or plans to use) GitHub Copilot's PR code review. If
    unclear, ask: don't generate Copilot-specific files for a project that
    doesn't use Copilot.
@@ -47,11 +48,13 @@ which rules each one carries:
    files: explicit standing rules (writing voice, git/PR hygiene, scope
    discipline, verification). These are prime review-directive material and
    usually live nowhere near `.ai-style-rules.md`.
-3. **`README.md`, `CONTRIBUTING.md`, `docs/`**: human-written guidance already
-   in the repo (layout conventions, contribution rules). For a large
-   documentation tree, apply the same scale-tiered sampling as the source scan
-   below: index first, read fully only within the tier's budget, so this step
-   can't blow the context budget on a large repo.
+3. **`README.md`, `CONTRIBUTING.md`, `docs/`, and any nested `**/README.md`**:
+   human-written guidance already in the repo (layout conventions,
+   contribution rules), including a subdirectory's own README explaining that
+   folder's conventions, not just the repo root's. For a large documentation
+   tree (root docs plus many nested READMEs), apply the same scale-tiered
+   sampling as the source scan below: index first, read fully only within the
+   tier's budget, so this step can't blow the context budget on a large repo.
 4. **A bounded scan of source itself**, scaled to repo size the way
    [[inherit-legacy-style]] tiers its sampling, to ground the documented rules
    in real examples and to derive the actual directory/extension globs Step 2
