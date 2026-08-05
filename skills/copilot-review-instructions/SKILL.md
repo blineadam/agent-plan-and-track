@@ -28,9 +28,10 @@ Confirm both, in one line each, before writing anything:
 
 1. At least one real source of conventions exists: `.ai-style-rules.md`, a
    project instructions file (`CLAUDE.md` / `AGENTS.md` /
-   `.github/copilot-instructions.md`), `README.md`, `CONTRIBUTING.md`, or a
-   `docs/` directory. If none exist, run [[inherit-legacy-style]] first for the
-   implicit-convention layer, then stop here.
+   `.github/copilot-instructions.md`), `README.md`, `CONTRIBUTING.md`, a
+   `docs/` directory, or a nested `**/README.md`. If none exist, run
+   [[inherit-legacy-style]] first for the implicit-convention layer, then stop
+   here.
 2. The project uses (or plans to use) GitHub Copilot's PR code review. If
    unclear, ask: don't generate Copilot-specific files for a project that
    doesn't use Copilot.
