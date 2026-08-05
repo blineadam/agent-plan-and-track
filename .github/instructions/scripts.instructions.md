@@ -113,15 +113,23 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 ## Shell scripts
 
 - Start with `set -euo pipefail`.
-- Gate nonstandard or optional external CLI dependencies before use, e.g.
-  `command -v jq >/dev/null 2>&1 || { echo "error: ..." >&2; exit 1; }`
-  (keep the `>/dev/null 2>&1`: without it, a successful `command -v` prints
-  the executable's path to stdout, corrupting a script whose stdout is a
-  JSON contract). Exit 1 when the dependency is required for the script to
-  function; when a single step is optional (e.g. `install.sh`'s Copilot
+- Gate nonstandard or optional external CLI dependencies before use with
+  `command -v <tool> >/dev/null 2>&1` (keep the `>/dev/null 2>&1`: without
+  it, a successful `command -v` prints the executable's path to stdout,
+  corrupting a script whose stdout is a JSON contract). Exit 1 when the
+  dependency is required for the script to function and can't be
+  remediated; when a single step is optional (e.g. `install.sh`'s Copilot
   model default), warn and skip that step instead of exiting. Don't flag
   POSIX core utilities (`wc`, `tr`, `awk`, `sort`, `find`, `grep`, `sed`,
   ...) for a gate: those are assumed always present.
+- A gate may offer to auto-remediate a missing dependency instead of only
+  erroring (`install.sh`'s `need_jq()` probes a closed, priority-ordered
+  package-manager table and offers to install `jq`), but a system-mutating
+  install must never run silently: gate it on an interactive confirm or an
+  explicit non-interactive opt-in env var, and never let the command shown
+  to the user differ from the one actually executed. Flag a new
+  auto-remediation that installs without confirmation or an opt-in, or that
+  displays one command while running another.
 - Use `mktemp -d` for scratch space with a matching `trap ... EXIT` cleanup.
 - Build JSON via `jq -n --arg` / `--argjson`, not string concatenation.
 - When a script shells out to a third-party CLI via `npx`, pin its exact
