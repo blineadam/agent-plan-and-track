@@ -5,8 +5,10 @@ description: "Use when resolving an in-progress merge, rebase, or cherry-pick co
 
 # Resolving Merge Conflicts
 
+## Steps
+
 1. **Assess the state before touching anything.** Determine whether this is a merge, a rebase, or a cherry-pick, since the finishing move differs. Identify every conflicted path.
-2. **Research the intent behind both sides.** Read the commit messages, the PR discussion, and any linked issue for each side before choosing. A conflict is two intentions colliding, and you cannot preserve an intention you have not read.
+2. **Research the intent behind both sides.** A conflict is two intentions colliding, and you cannot preserve an intention you have not read. The commit messages and the diffs on each side are always available and are the floor; a PR discussion or a linked issue often is not, so reach for those when they exist rather than treating them as a precondition. A purely local merge with terse commit messages leaves the diffs as the only evidence, which is enough to proceed.
 3. **Resolve hunk by hunk, preserving both intentions where they are compatible.** Where they genuinely conflict, take the side that serves the merge's purpose and record why. The hard rule: never invent new behavior that was in neither side, since a conflict resolution is not the place to slip in a third design.
 4. **Check for semantic conflicts with no textual marker.** A rename or a changed contract on one side that the other side still calls produces no conflict marker at all; git has nothing to report there. After the textual conflicts are resolved, check the callers of anything either side changed.
 5. **Run the project's own checks afterward.** A conflict resolution can produce code that merges cleanly and compiles while behaving like neither side. Typecheck, tests, and linters are the oracle.
