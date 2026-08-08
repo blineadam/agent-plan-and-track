@@ -36,7 +36,8 @@
  * named set of destructive git forms rather than gating Bash generally. The
  * earlier reasoning here ("each harness's own permission system already
  * covers destructive commands") was wrong for Claude Code specifically:
- * Anthropic's own Claude Code hooks documentation states that PreToolUse
+ * Anthropic's own Claude Code hooks documentation
+ * (https://code.claude.com/docs/en/hooks-guide) states that PreToolUse
  * hooks fire before any permission-mode check, in every permission mode, and
  * that a hook returning permissionDecision: "deny" blocks the tool even in
  * bypassPermissions mode or with --dangerously-skip-permissions; a blocking

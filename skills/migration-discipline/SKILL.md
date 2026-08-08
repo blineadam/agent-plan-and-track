@@ -61,7 +61,7 @@ Batching and behavior preservation both assume a change can be sliced into batch
 
 The overlap during the migrate phase is the mechanism, not an untidy side effect to clean up early: keeping both forms live is what buys per-batch validation. Collapsing expand and contract back into a single edit reintroduces the all-at-once break the three phases exist to avoid. Where even one migrate batch genuinely cannot stay green on its own, keep the three-phase sequence but land the migrate batches on a shared integration branch and validate at the integration point.
 
-Which phase the effort is currently in is a resume-critical fact, so record it on the `## Migration State` block's existing Queue line alongside the open and done batch ids, rather than leaving it to whoever remembers.
+Which phase the effort is currently in is a resume-critical fact, so record it on the `## Migration State` block's existing Queue line alongside the open and done batch ids, rather than leaving it to whoever remembers. The values are `expand`, `migrate`, and `contract`, or `n/a` for a migration that needed no expand-contract sequencing at all.
 
 ## Semantic-Error Review Brief
 
@@ -111,7 +111,7 @@ Maintained per the migration-discipline skill. Re-read before each batch; update
 - Ladder: highest rung passed: <N (rung name)>, as of batch <M>
 - Ownership: <stream -> files/components, worktree/branch; one line per stream>
 - Conventions: <doc path or plan section>, last revised at batch <M>
-- Queue: open: <batch ids>; done: <ids>; source: <where the captured output lives>
+- Queue: phase: <expand | migrate | contract | n/a>; open: <batch ids>; done: <ids>; source: <where the captured output lives>
 - Updated: batch <M>, <date>
 ```
 

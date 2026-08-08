@@ -95,15 +95,31 @@ already uses for its own unverifiable claim.
 ### Blocked set
 
 - `reset-hard`: `git reset --hard`.
-- `clean-force`: `git clean` with a force flag, excluding `-n`/`--dry-run`.
-- `force-push`: `git push` with `--force`, `-f`, `--force-with-lease`, or
-  `--force-if-includes`.
-- `discard-worktree`: `git checkout .`, `git checkout -- <path>`, and
-  `git restore` targeting the worktree.
+- `clean-force`: `git clean` with a force flag: `-f`, `--force`, or `-f`
+  inside a combined short cluster (`-fd`, `-fdx`, `-xdf`), excluding
+  `-n`/`--dry-run` (including `-n` inside a combined short cluster like
+  `-fdn`).
+- `force-push`: `git push` with `--force`, `-f`, `--force-with-lease`,
+  `--force-if-includes`, or `--mirror` (bare, `=value` form, or `-f` inside a
+  combined short cluster like `-uf`), or a leading `+` on a refspec argument
+  (`git push origin +main`). `--mirror` force-updates every remote ref and
+  propagates deletions, a forced rewrite of remote history.
+- `discard-worktree`: `git checkout .`, `git checkout -- <path>`,
+  `git checkout -f`/`--force` (bare or with a branch), `git switch -f` /
+  `--discard-changes`, and `git restore <path>` unless `--staged`/`-S` is
+  present without `--worktree`/`-W` (a staged-only restore unstages but never
+  touches the worktree).
+
+`--help`/`-h` on any of the above suppresses the match for that git
+invocation. The `git` executable token itself is matched case-insensitively
+with an optional `.exe` suffix (`Git`, `GIT`, `git.exe` all match), since this
+hook also gates Copilot's `powershell` tool, where those spellings are valid.
 
 ### Deliberate exclusions
 
 - Plain `git push`: not destructive, and `yeet` needs it.
+- `git push --delete`: removes a named ref rather than rewriting history, so
+  it sits outside the closed set this hook's standing rule enumerates.
 - `git stash`, `stash pop`, `stash drop`, and `stash clear`: the standing rule
   scopes these by "over work you don't own," which no hook can observe;
   approximating it would risk blocking a session's own stash.
@@ -111,9 +127,30 @@ already uses for its own unverifiable claim.
   which is also unobservable from the command text, and routine locally.
 - `git branch -D`: in upstream's blocked list but not in our rule, and
   reflog-recoverable.
+- `git restore --staged <path>` (unstages only, worktree untouched) and a
+  bare `git checkout <branchname>` / `git checkout -b <name>` (branch
+  checkout, not a worktree discard; branch-vs-path ambiguity from the command
+  text alone makes this an accepted false negative).
 - Indirection such as `bash -c`, `/usr/bin/git`, `env git`, aliases, and
   command substitution: accepted false negatives, matching `plan-gate.js`'s
   documented conservative posture.
+- Quote-wrapped flags (`git reset '--hard'`): the tokenizer keeps the quote
+  characters as part of the token, so a quoted flag never equals the bare
+  token the classifier matches on.
+- An environment-assignment prefix whose value is itself quoted and contains
+  a space (`GIT_AUTHOR_NAME="John Doe" git reset --hard`): whitespace token
+  splitting breaks the assignment into two tokens before the leading-
+  assignment strip runs, so `git` is never seen as the first token.
+- The two-token form of an unrecognized git global option
+  (`git --git-dir .git reset --hard`, value in a separate token): resolving
+  this needs a full global-option table this classifier doesn't carry; the
+  self-contained forms (`--git-dir=...`, `--no-pager`, `-C.`) are still
+  caught.
+- PowerShell-specific syntax: this hook also gates Copilot's `powershell`
+  tool but tokenizes every dialect with bash quoting/separator rules, so a
+  PowerShell backtick line continuation splits wrong and can let a
+  multi-line command escape the gate. The common single-line case is still
+  gated correctly.
 
 ### Configuration (git-guard.js)
 

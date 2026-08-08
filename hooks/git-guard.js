@@ -17,7 +17,8 @@
  * --hard`, or, on Claude Code specifically, under autonomous/headless modes:
  * Anthropic's own hooks documentation states PreToolUse hooks fire before
  * any permission-mode check, in every permission mode, so no permission
- * prompt ever fires there while PreToolUse hooks still run. The same is NOT
+ * prompt ever fires there while PreToolUse hooks still run
+ * (https://code.claude.com/docs/en/hooks-guide). The same is NOT
  * documented for Codex: its hooks and approvals documentation does not state
  * whether PreToolUse hooks fire under its bypass or full-auto modes, so
  * treat that side as unverified rather than assumed to match Claude (same
@@ -48,10 +49,14 @@
  *                        `-f` inside a combined short cluster (`-fd`,
  *                        `-fdx`, `-xdf`).
  *   - force-push        `git push` with `--force`, `-f`,
- *                        `--force-with-lease`, or `--force-if-includes`
- *                        (bare, `=value` form, or `-f` inside a combined
- *                        short cluster like `-uf`), or a leading `+` on a
- *                        refspec argument (`git push origin +main`).
+ *                        `--force-with-lease`, `--force-if-includes`, or
+ *                        `--mirror` (bare, `=value` form, or `-f` inside a
+ *                        combined short cluster like `-uf`), or a leading
+ *                        `+` on a refspec argument (`git push origin
+ *                        +main`). `--mirror` force-updates every remote ref
+ *                        and propagates deletions, a forced rewrite of
+ *                        remote history by any reading, fully observable
+ *                        from the command text.
  *   - discard-worktree   `git checkout .`, `git checkout -- <path>`,
  *                        `git checkout -f`/`--force` (bare or with a
  *                        branch), `git switch -f`/`--discard-changes`, and
@@ -67,6 +72,9 @@
  * DELIBERATE EXCLUSIONS (accepted false negatives, not chased):
  *   - Plain `git push` (no force flag): not destructive, and this repo's
  *     `yeet` skill pushes as a routine step.
+ *   - `git push --delete`: removes a named ref rather than rewriting
+ *     history, so it sits outside the closed set this hook's standing rule
+ *     enumerates.
  *   - `git stash` / `stash pop` / `stash drop` / `stash clear`: the standing
  *     rule scopes stash by "over work you don't own", which no hook can
  *     observe from the command text; approximating it (e.g. blocking all
@@ -395,6 +403,19 @@ function hasForceRefspec(rest) {
   return rest.some((t) => t.length > 1 && t[0] === '+');
 }
 
+// The executable token is matched case-insensitively and with an optional
+// `.exe` suffix (also case-insensitive), since this hook is wired to
+// Copilot's `powershell` tool, where `Git`, `GIT`, and `git.exe` are all
+// valid spellings that would otherwise bypass the gate. A full path such as
+// `/usr/bin/git` still does not match, same accepted false negative the
+// header documents: this is about the bare executable name's spelling, not
+// about resolving paths.
+function isGitExecutable(token) {
+  return /^git(\.exe)?$/i.test(token);
+}
+
+// `--mirror` force-updates every remote ref and propagates deletions, a
+// forced rewrite of remote history by any reading (see header).
 function hasPushForce(rest) {
   return (
     rest.some(
@@ -403,6 +424,7 @@ function hasPushForce(rest) {
         t === '-f' ||
         t === '--force-with-lease' ||
         t === '--force-if-includes' ||
+        t === '--mirror' ||
         /^--force-with-lease=/.test(t) ||
         /^--force-if-includes=/.test(t)
     ) ||
@@ -432,7 +454,7 @@ function detectDestructiveGit(command) {
     while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) tokens.shift();
     if (tokens[0] === 'command') tokens.shift();
     if (!tokens.length) continue;
-    if (tokens[0] !== 'git') continue;
+    if (!isGitExecutable(tokens[0])) continue;
 
     let i = 1;
     while (i < tokens.length) {

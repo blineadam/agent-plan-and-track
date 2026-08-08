@@ -181,9 +181,39 @@
       "steps": [{ "dialect": "snake", "command": "command git clean -fd", "expect": "deny", "expectContains": ["clean-force"] }]
     },
     {
+      "id": "push-mirror-denies",
+      "description": "git push --mirror force-updates every remote ref and propagates deletions, a forced rewrite of remote history by any reading; denies as force-push.",
+      "steps": [{ "dialect": "snake", "command": "git push --mirror", "expect": "deny", "expectContains": ["force-push"] }]
+    },
+    {
+      "id": "git-executable-capitalized-denies",
+      "description": "Git reset --hard (capitalized executable, valid on Copilot's powershell tool) is recognized case-insensitively and denies the same as lowercase.",
+      "steps": [{ "dialect": "snake", "command": "Git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }]
+    },
+    {
+      "id": "git-executable-all-caps-denies",
+      "description": "GIT reset --hard (all-caps executable) is recognized case-insensitively and denies the same as lowercase.",
+      "steps": [{ "dialect": "snake", "command": "GIT reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }]
+    },
+    {
+      "id": "git-executable-exe-suffix-denies",
+      "description": "git.exe reset --hard (the Windows executable spelling) is recognized and denies the same as bare git.",
+      "steps": [{ "dialect": "snake", "command": "git.exe reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }]
+    },
+    {
+      "id": "git-executable-full-path-still-allows",
+      "description": "/usr/bin/git reset --hard still allows: the case-insensitive/`.exe` fix is about the bare executable name's spelling, not about resolving paths, so a full path stays an accepted false negative (see header).",
+      "steps": [{ "dialect": "snake", "command": "/usr/bin/git reset --hard", "expect": "allow" }]
+    },
+    {
       "id": "plain-push-allowed",
       "description": "Plain git push with no force flag is not destructive; yeet needs it.",
       "steps": [{ "dialect": "snake", "command": "git push", "expect": "allow" }]
+    },
+    {
+      "id": "push-delete-allowed",
+      "description": "git push --delete origin foo removes a named ref rather than rewriting history, so it sits outside the closed set this hook's standing rule enumerates (see header's accepted-exclusions list).",
+      "steps": [{ "dialect": "snake", "command": "git push --delete origin foo", "expect": "allow" }]
     },
     {
       "id": "clean-no-force-allowed",
@@ -329,7 +359,7 @@
     },
     {
       "id": "same-kind-twice-fast-both-deny",
-      "description": "Two same-kind occurrences land well inside the racing-loser window (this runner's own back-to-back subprocess spawns take single-digit milliseconds, far under the 2000ms threshold ported from plan-gate.js), so both deny: a fast retry is indistinguishable from a same-turn race and is treated the same way. A retry a model turn later (2000ms+) instead passes; that side can only be demonstrated with real elapsed time or marker backdating, neither available to this declarative, no-sleep fixture runner, so it is proven by hand-piped verification instead.",
+      "description": "Two same-kind occurrences land well inside the racing-loser window (this runner's own back-to-back subprocess spawns take single-digit milliseconds, far under the 2000ms threshold ported from plan-gate.js), so both deny: a fast retry is indistinguishable from a same-turn race and is treated the same way. The companion case immediately below (same-kind-twice-backdated-second-allows) back-dates the marker past RACE_MS to prove the other side: a genuine model-turn-later retry passes.",
       "steps": [
         { "dialect": "snake", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] },
         { "dialect": "snake", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }
