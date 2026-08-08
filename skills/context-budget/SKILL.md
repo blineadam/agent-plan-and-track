@@ -96,6 +96,18 @@ Guidance:
   there pay back the most. Cross-check against `rules-distill`: a rule that
   duplicates a skill can often move out of the always-on digest.
 - **Don't optimize blindly**: a hard behavioral constraint stays even if long.
+- **Apply the no-op test**: ask whether an instruction line changes behavior
+  compared to having no line at all. If the model would already do it by
+  default, the line buys nothing, and it should be deleted outright rather
+  than trimmed: shortening a sentence that changes nothing still pays for it
+  every turn. That's a **Remove**, not a **Lazy-load**, since moving a no-op
+  into the body still leaves a line there that does nothing. This isn't
+  "don't optimize blindly" in reverse: a rule that merely looks obvious isn't
+  automatically a no-op. Some rules exist because a model demonstrably
+  violated them, and this repo records those cases, so check for a recorded
+  failure, a `tasks/lessons.md` entry, or a regression case before cutting;
+  that evidence is what separates a load-bearing restatement from genuine
+  dead weight.
 
 For a large audit, batch the components and analyze each batch in its own
 subagent (keep the main context clean; researcher-tier work, so pick the tier

@@ -94,3 +94,4 @@ before/after for revisions). Then:
 - **What, not how**: extract principles (rules territory); code and commands stay in skills.
 - **Link back**: draft rule text can reference the source skill so readers find the detailed how.
 - **Anti-abstraction filter**: the 3 gates (2+ evidence, actionable test, violation risk) keep vague abstractions out of the rules.
+- **State the target, not the trap**: a prohibition names the behavior it forbids, which puts that behavior in context and can make it more available, not less. Where either phrasing would work, prefer the positive target ("do X") so the unwanted action stays unspoken. This is drafting guidance for newly proposed rule text, not license to rewrite this repo's existing "never X" rules: a prohibition backed by a hook or CI gate, or written to name a specific recorded failure, is doing a different job and stays as it is, since naming a concrete failure mode is often clearer than any positive restatement.
