@@ -65,6 +65,12 @@ work, then publish or capture what the session taught you.
   `--body-file`, requests a Copilot review when the repo doesn't
   auto-request one, then triages, replies to, and resolves every Copilot
   thread before calling it done. Threads people opened are left for them.
+- **`resolving-merge-conflicts`** (skill) covers an in-progress merge,
+  rebase, or cherry-pick conflict: read both sides' intent before choosing,
+  resolve hunk by hunk without inventing behavior neither side had, then
+  check the callers of anything either side renamed or changed the contract
+  of, since a semantic conflict leaves no textual marker. Finishes the
+  operation rather than aborting out of it.
 
 A harness that can't run a given hook still gets the rule as a skill.
 That's why Copilot gets gateguard but not delivery-gate: its `agentStop`
