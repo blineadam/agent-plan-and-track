@@ -51,6 +51,18 @@ Climb the ladder in order. A change that passes rung 2 but hasn't been run throu
 
 Unless the task explicitly calls for a behavior change, match the existing architecture, interfaces, and observable behavior rather than opportunistically redesigning code the migration happens to be touching (the standing surgical-changes rule, applied here to the code being migrated, not just its neighbors). Land the mechanical, behavior-preserving change first, and treat idiomatic refactoring or redesign as a separate later pass, taken up only once compatibility is established. Existing tests and externally observable behavior are the compatibility contract for that first pass (see Test-Oracle Integrity).
 
+## Expand and Contract
+
+Batching and behavior preservation both assume a change can be sliced into batches that each land green on their own. Some mechanical edits cannot: renaming a symbol every caller references, retyping a shared column, changing a signature every call site depends on. The first edit to any of these breaks every caller at once, leaving no batch boundary that stays green. Sequence a change like that in three phases instead of one edit:
+
+1. Expand: add the new form alongside the old, so both work and nothing breaks.
+2. Migrate: move call sites over in batches sized by the existing ownership map (see File Ownership and Parallel Isolation), each batch validated on its own ladder rungs. The old form stays in place through this phase, which is exactly what lets every batch land green.
+3. Contract: once every migrate batch is in and no caller of the old form remains, delete it.
+
+The overlap during the migrate phase is the mechanism, not an untidy side effect to clean up early: keeping both forms live is what buys per-batch validation. Collapsing expand and contract back into a single edit reintroduces the all-at-once break the three phases exist to avoid. Where even one migrate batch genuinely cannot stay green on its own, keep the three-phase sequence but land the migrate batches on a shared integration branch and validate at the integration point.
+
+Which phase the effort is currently in is a resume-critical fact, so record it on the `## Migration State` block's existing Queue line alongside the open and done batch ids, rather than leaving it to whoever remembers. The values are `expand`, `migrate`, and `contract`, or `n/a` for a migration that needed no expand-contract sequencing at all.
+
 ## Semantic-Error Review Brief
 
 A port or rewrite can compile, typecheck, and even pass a shallow smoke test while still being behaviorally wrong in ways that only show up under specific inputs or timing. When writing a review brief for this kind of change (per [[efficient-frontier]]'s default-deny verification-brief approach), it helps to include the semantic-error checklist as a reviewer appendix rather than trusting the reviewer to think of each category unprompted. The agent that wrote a diff is never its only reviewer (that separation lives in [[efficient-frontier]]'s review loop); for a high-risk diff whose plausible failures sit in the checklist's hardest categories (concurrency, memory ownership, resource cleanup), use two independent reviewers rather than one, since a second pass by the same reviewer shares the same blind spots. This is reviewer guidance, not a mandated output format. See [references/semantic-error-checklist.md](references/semantic-error-checklist.md) for the full list; don't inline it here.
@@ -70,6 +82,8 @@ The validation ladder feeds this structure: each rung's captured failure output 
 
 A behavior-preserving migration's test suite is only a valid oracle if it stays fixed for the duration of the work. If the same suite is being edited concurrently with the migration itself, a passing run no longer proves behavior was preserved, since either side could be why it passes. Freeze or snapshot the behavior-verification suite for the migration's duration, and when practical, run that same frozen suite against both the old and the new implementation to compare results directly rather than trusting a single pass/fail.
 
+Freezing the suite assumes the suite itself isn't part of what's being ported. When it is, an expected value can end up recomputed the way the new implementation computes it rather than carried over from somewhere independent, and a test built that way passes by construction: it can never disagree with the code it's supposed to be checking, so a suite full of them reports green on a port that changed behavior. An expected value in a ported test has to trace to something outside the new implementation: the literal the original test asserted, a worked example, the specification, or the old implementation's recorded output. Regenerating a snapshot or fixture from the new implementation to get a failing test to pass is the same mistake in miniature, converting the oracle into a mirror of the implementation.
+
 ## Fix the Process, Not Just the Output
 
 When the same mistake appears across workers or across batches, patching each occurrence treats a process defect as a run of coincidences. Fix the artifact that keeps producing it: the worker-brief template, the porting-conventions doc, the batch validation command (never the frozen oracle suite, which stays fixed per Test-Oracle Integrity), or the ownership map, and note the revision in the `## Migration State` block, on the line for the artifact it touches or an added one, so later batches are attributable to the revised process. This is [[capture-lesson]]'s systemic-fix rule at migration scale: the correction lands in the artifact the next worker will actually read, not in a conversation that worker will never see, and batches already completed under the flawed process get re-checked for the same mistake rather than grandfathered in.
@@ -79,6 +93,12 @@ When the same mistake appears across workers or across batches, patching each oc
 For a long, multi-agent, multi-session migration, squash-merging the final result erases the branch, merge, and revert history that a postmortem or a later debugging session would need to reconstruct what actually happened during the effort. Preserve the working branch (or merge with a merge commit instead of squashing) and keep any internal audit or progress docs the effort produced rather than deleting them pre-merge. This is specific to large multi-session efforts: a small, single-topic PR still squashes fine, and this discipline shouldn't be read as a blanket objection to squash-merging in general.
 
 The trail also outlives the merge. A fully green ladder is not an exhaustive oracle, and a large port should be expected to surface post-merge regressions whose triage lands in the semantic-error checklist's categories. Keep the preserved branch, the `## Migration State` block, and the checklist on hand through a regression-watch window after merge rather than archiving them the day the change lands.
+
+## Write Durable Artifacts
+
+A migration renames and moves the very files it is touching, so a path or line number pointing into the migrating codebase can point at nothing, or at something else, by the time a later session or a post-merge regression reads it back. Any artifact meant to outlive the batch that produced it, the porting-conventions doc, an entry in the captured work queue, the `## Migration State` block itself, should refer to that code by interface, type, symbol, and behavioral contract rather than by path and line number, since those are what survive the rename.
+
+The rule governs how an artifact points at the code being migrated, not its own bookkeeping. The state block's Conventions and Queue lines record where the conventions doc and the captured output live, and those files sit outside the migration's blast radius, so naming them by path is correct. Nor does it reach a worker brief's ownership scope or its batch validation command (see Worker Briefs): those stay exact file paths, because a brief is consumed immediately by the dispatch it belongs to and is gone once that batch lands, not read back after the files it names have moved.
 
 ## Durable Migration State
 
@@ -91,7 +111,7 @@ Maintained per the migration-discipline skill. Re-read before each batch; update
 - Ladder: highest rung passed: <N (rung name)>, as of batch <M>
 - Ownership: <stream -> files/components, worktree/branch; one line per stream>
 - Conventions: <doc path or plan section>, last revised at batch <M>
-- Queue: open: <batch ids>; done: <ids>; source: <where the captured output lives>
+- Queue: phase: <expand | migrate | contract | n/a>; open: <batch ids>; done: <ids>; source: <where the captured output lives>
 - Updated: batch <M>, <date>
 ```
 

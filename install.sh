@@ -45,11 +45,13 @@
 # Claude .md copies, the Codex TOML rendering, and the Copilot .agent.md
 # rendering), the core-rules digest, the instructions managed block, hook
 # wiring + __SCRIPTS__ substitution (including plan-gate's two additive Claude
-# PreToolUse entries and the Codex plan gate's SessionStart, apply_patch
-# PreToolUse, Bash PreToolUse, and apply_patch PostToolUse entries, each with
-# its own matcher + command idempotency check), model/effort defaults, the TOML
-# upsert, the global gitignore entries, the manifest-based stale prune keyed by
-# .plan-and-track-manifest) must be mirrored there.
+# PreToolUse entries, the Codex plan gate's SessionStart, apply_patch
+# PreToolUse, Bash PreToolUse, and apply_patch PostToolUse entries, and
+# git-guard's Bash PreToolUse entry on Claude and Codex, each with its own
+# matcher + command idempotency check rather than a whole-file grep), model/
+# effort defaults, the TOML upsert, the global gitignore entries, the
+# manifest-based stale prune keyed by .plan-and-track-manifest) must be
+# mirrored there.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -677,6 +679,9 @@ install_claude() {
   # gateguard fact-forcing edit gate (shared universal script): + PreToolUse hook.
   cp "$REPO_DIR/hooks/gateguard.js" "$HOME/.claude/scripts/gateguard.js"
   echo "  gateguard script-> ~/.claude/scripts/gateguard.js"
+  # git-guard destructive-git-command gate (shared universal script): + PreToolUse hook.
+  cp "$REPO_DIR/hooks/git-guard.js" "$HOME/.claude/scripts/git-guard.js"
+  echo "  git-guard script-> ~/.claude/scripts/git-guard.js"
   # plan-gate plan-and-track enforcement (Claude-only script): + PreToolUse hook.
   cp "$REPO_DIR/hooks/claude/plan-gate.js" "$HOME/.claude/scripts/plan-gate.js"
   echo "  plan-gate script-> ~/.claude/scripts/plan-gate.js"
@@ -741,6 +746,24 @@ install_claude() {
       "$settings" > "$tmp" && write_back "$tmp" "$settings"
     echo "  gateguard hook  -> merged into $settings (PreToolUse on edits; GATEGUARD_DISABLED=1 to turn off)"
   fi
+  # Per-entry check (matcher + command, not the coarse `grep -q 'git-guard'`
+  # this repo already moved plan-gate off of above): a whole-file grep would
+  # be fooled by any other occurrence of 'git-guard' in the file, for example
+  # a user permission-allowlist entry naming the script path, and silently
+  # leave the actual hook entry missing after it was deleted.
+  local gitguard_cmd="node \"$cscripts/git-guard.js\""
+  local gitguard_present
+  gitguard_present="$(jq --arg m 'Bash' --arg c "$gitguard_cmd" \
+    '[.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]? | select(.command == $c)] | length > 0' "$settings")"
+  if [ "$gitguard_present" = true ]; then
+    echo "  git-guard hook  -- already present in settings.json"
+  else
+    tmp="$(mktemp)"
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/claude/pretooluse-git-guard.json" "$cscripts") \
+      '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
+      "$settings" > "$tmp" && write_back "$tmp" "$settings"
+    echo "  git-guard hook  -> merged into $settings (PreToolUse on Bash; GITGUARD_DISABLED=1 to turn off)"
+  fi
   # plan-gate ships as TWO separate PreToolUse entries (Skill+todo.md edits,
   # and Bash git/gh mutations) pointing at the same command, added additively
   # rather than as one combined entry so a user who deletes just one gets it
@@ -801,6 +824,8 @@ install_copilot() {
   echo "  digest script   -> ~/.copilot/scripts/core-rules-digest.js"
   cp "$REPO_DIR/hooks/gateguard.js" "$cscripts/gateguard.js"
   echo "  gateguard script-> ~/.copilot/scripts/gateguard.js"
+  cp "$REPO_DIR/hooks/git-guard.js" "$cscripts/git-guard.js"
+  echo "  git-guard script-> ~/.copilot/scripts/git-guard.js"
   # Repo-owned hook wiring, overwritten each install (with a .bak if it differed).
   # Compare against the RENDERED template (paths already substituted), not the raw
   # template, or the baked-in path would always read as "changed" and re-.bak.
@@ -822,6 +847,15 @@ install_copilot() {
   fi
   cp "$rendered" "$ghook"; rm -f "$rendered"
   echo "  gateguard hook  -> ~/.copilot/hooks/pretooluse-gateguard.json (preToolUse on create|edit)"
+  local gghook="$HOME/.copilot/hooks/pretooluse-git-guard.json"
+  rendered="$(mktemp)"
+  render_hook "$REPO_DIR/hooks/copilot/pretooluse-git-guard.json" "$cscripts" > "$rendered"
+  if [ -f "$gghook" ] && ! cmp -s "$rendered" "$gghook"; then
+    cp "$gghook" "$gghook.bak"
+    echo "  (existing git-guard hook differed; backed up to $gghook.bak)"
+  fi
+  cp "$rendered" "$gghook"; rm -f "$rendered"
+  echo "  git-guard hook  -> ~/.copilot/hooks/pretooluse-git-guard.json (preToolUse on bash|powershell; GITGUARD_DISABLED=1 to turn off)"
   echo "  done. Hooks need node at runtime. Start a NEW copilot session to load."
 }
 
@@ -853,9 +887,10 @@ install_codex() {
   # universal scripts run here unchanged (dialect sniffed at runtime).
   cp "$REPO_DIR/hooks/core-rules-digest.js" "$cscripts/core-rules-digest.js"
   cp "$REPO_DIR/hooks/gateguard.js" "$cscripts/gateguard.js"
+  cp "$REPO_DIR/hooks/git-guard.js" "$cscripts/git-guard.js"
   cp "$REPO_DIR/hooks/delivery-gate.js" "$cscripts/delivery-gate.js"
   cp "$REPO_DIR/hooks/codex/plan-gate-pilot.js" "$cscripts/plan-gate.js"
-  echo "  scripts         -> ~/.codex/scripts/{core-rules-digest,gateguard,delivery-gate,plan-gate}.js"
+  echo "  scripts         -> ~/.codex/scripts/{core-rules-digest,gateguard,git-guard,delivery-gate,plan-gate}.js"
   # Match either the new digest command or an old install's inline `cat ...core-rules.md`,
   # so upgrading never double-merges the hook.
   if grep -q 'core-rules' "$hooks"; then
@@ -875,6 +910,24 @@ install_codex() {
       '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
       "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
     echo "  gateguard hook  -> merged into $hooks (PreToolUse on apply_patch; GATEGUARD_DISABLED=1 to turn off)"
+  fi
+  # Per-entry check (matcher + command, not the coarse `grep -q 'git-guard'`
+  # this repo already moved plan-gate off of above): a whole-file grep would
+  # be fooled by any other occurrence of 'git-guard' in the file, for example
+  # a user permission-allowlist entry naming the script path, and silently
+  # leave the actual hook entry missing after it was deleted.
+  local gitguard_cmd="node \"$cscripts/git-guard.js\""
+  local gitguard_present
+  gitguard_present="$(jq --arg m 'Bash' --arg c "$gitguard_cmd" \
+    '[.hooks.PreToolUse[]? | select(.matcher == $m) | .hooks[]? | select(.command == $c)] | length > 0' "$hooks")"
+  if [ "$gitguard_present" = true ]; then
+    echo "  git-guard hook  -- already present in hooks.json"
+  else
+    tmp="$(mktemp)"
+    jq --slurpfile h <(render_hook "$REPO_DIR/hooks/codex/pretooluse-git-guard.json" "$cscripts") \
+      '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + $h[0].hooks.PreToolUse)' \
+      "$hooks" > "$tmp" && write_back "$tmp" "$hooks"
+    echo "  git-guard hook  -> merged into $hooks (PreToolUse on Bash; GITGUARD_DISABLED=1 to turn off)"
   fi
   if grep -q 'delivery-gate' "$hooks"; then
     echo "  delivery hook   -- already present in hooks.json"

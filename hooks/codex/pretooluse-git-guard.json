@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"__SCRIPTS__/git-guard.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

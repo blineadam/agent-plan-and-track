@@ -27,10 +27,27 @@
  * with a stderr warning: never gate what we can't record, or the model would
  * be gated forever.
  *
- * Deliberately not ported from ECC: the destructive-Bash and routine-Bash
- * gates. Each harness's own permission system already covers destructive
- * commands, and a once-per-session gate on the first Bash call is friction
- * without signal.
+ * Deliberately not ported from ECC: the routine-Bash gate, a once-per-session
+ * gate on the first Bash call regardless of content, is friction without
+ * signal and stays rejected here.
+ *
+ * The destructive-command concern did NOT stay rejected: it moved to
+ * hooks/git-guard.js, which inspects the command text and gates a closed,
+ * named set of destructive git forms rather than gating Bash generally. The
+ * earlier reasoning here ("each harness's own permission system already
+ * covers destructive commands") was wrong for Claude Code specifically:
+ * Anthropic's own Claude Code hooks documentation
+ * (https://code.claude.com/docs/en/hooks-guide) states that PreToolUse
+ * hooks fire before any permission-mode check, in every permission mode, and
+ * that a hook returning permissionDecision: "deny" blocks the tool even in
+ * bypassPermissions mode or with --dangerously-skip-permissions; a blocking
+ * hook also takes precedence over allow rules. So a hook gate is genuinely
+ * not redundant with the permission layer: it fires where no permission
+ * prompt ever does. The same is NOT documented for Codex: its current hooks
+ * and approvals documentation does not state whether PreToolUse hooks fire
+ * under its bypass or full-auto modes, or whether a hook deny overrides
+ * them, so treat that side as unverified rather than assumed to match
+ * Claude.
  *
  * Skipped: subagent tool calls (the parent session owns the gate),
  * `.claude/settings*.json` (hook repair must never be blocked), and

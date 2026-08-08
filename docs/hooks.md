@@ -4,13 +4,16 @@ What each hook script does, which harnesses it runs on, and the wiring contract 
 
 ## Shared script architecture
 
-`hooks/core-rules-digest.js`, `hooks/gateguard.js`, and
+`hooks/core-rules-digest.js`, `hooks/gateguard.js`, `hooks/git-guard.js`, and
 `hooks/delivery-gate.js` are shared Node scripts, not one fork per harness.
 Each handles harness differences at the point where they matter:
 
 - `gateguard.js` sniffs the wire dialect at runtime (`detectDialect`) and
   branches between Copilot's shape and the shared Claude/Codex shape. Its
   payload differs by harness.
+- `git-guard.js` sniffs the wire dialect at runtime the same way gateguard
+  does, with one extra wrinkle on its Copilot leg: it has to parse `toolArgs`
+  as a JSON-encoded string rather than an object.
 - `core-rules-digest.js` branches on a `--copilot` argv flag baked into its
   wiring at install time. Copilot needs a 10-minute throttle, tracked via a
   `.core-rules-last` stamp file, plus `{"additionalContext": ...}` JSON
@@ -29,12 +32,13 @@ install time. Each uses its harness's hook contract:
 Those keys come from the wire contracts. Do not normalize one shape to match
 the other.
 
-All six Node hook scripts fail open, wrapped in a top-level
-`try { main() } catch { ...; process.exit(0) }`. Only `gateguard.js` needs to
-emit an explicit allow decision because Copilot's `PreToolUse` is fail-closed.
-`core-rules-digest.js`, `delivery-gate.js`, `suggest-compact.js`, and
-`plan-gate.js` simply exit 0 on failure. A hook that produces no output is
-already a no-op on every harness.
+All seven Node hook scripts fail open, wrapped in a top-level
+`try { main() } catch { ...; process.exit(0) }`. Only `gateguard.js` and
+`git-guard.js` need to emit an explicit allow decision because Copilot's
+`PreToolUse` is fail-closed. `core-rules-digest.js`, `delivery-gate.js`,
+`suggest-compact.js`, `plan-gate.js`, and `plan-gate-pilot.js` simply exit 0
+on failure. A hook that produces no output is already a no-op on every
+harness.
 
 ## core-rules-digest.js
 
@@ -68,6 +72,97 @@ The file was marked "checked" at deny time, so a denied-then-retried edit
 always passed. The gate could not verify that the demanded facts were ever
 presented. A measured A/B found that the deny-and-retry loop cost about 20%
 more turns for an identical edit.
+
+## git-guard.js
+
+- Hook event: `PreToolUse`. Runs on all 3 harnesses.
+- Gates a closed, named set of destructive git command forms, matched against
+  the actual command text rather than gating Bash generally.
+- Denies the first occurrence of a blocked kind per session, quoting the
+  standing protect-the-working-tree rule; a retry of the same kind then
+  passes.
+
+### Why deny-once rather than hard deny or warn
+
+The hook cannot observe whether the user actually asked for the operation, so
+it cannot tell a deliberate destructive command from an accidental one.
+Hard-denying forever would block a legitimate, intentional use with no way
+through. Warning would let an accidental destructive command straight
+through. Deny-once forces one conscious re-assertion instead: the same
+epistemic position, and the same fix, that `plan-gate.js`'s attribution guard
+already uses for its own unverifiable claim.
+
+### Blocked set
+
+- `reset-hard`: `git reset --hard`.
+- `clean-force`: `git clean` with a force flag: `-f`, `--force`, or `-f`
+  inside a combined short cluster (`-fd`, `-fdx`, `-xdf`), excluding
+  `-n`/`--dry-run` (including `-n` inside a combined short cluster like
+  `-fdn`).
+- `force-push`: `git push` with `--force`, `-f`, `--force-with-lease`,
+  `--force-if-includes`, or `--mirror` (bare, `=value` form, or `-f` inside a
+  combined short cluster like `-uf`), or a leading `+` on a refspec argument
+  (`git push origin +main`). `--mirror` force-updates every remote ref and
+  propagates deletions, a forced rewrite of remote history.
+- `discard-worktree`: `git checkout .`, `git checkout -- <path>`,
+  `git checkout -f`/`--force` (bare or with a branch), `git switch -f` /
+  `--discard-changes`, and `git restore <path>` unless `--staged`/`-S` is
+  present without `--worktree`/`-W` (a staged-only restore unstages but never
+  touches the worktree).
+
+`--help`/`-h` on any of the above suppresses the match for that git
+invocation. The `git` executable token itself is matched case-insensitively
+with an optional `.exe` suffix (`Git`, `GIT`, `git.exe` all match), since this
+hook also gates Copilot's `powershell` tool, where those spellings are valid.
+
+### Deliberate exclusions
+
+- Plain `git push`: not destructive, and `yeet` needs it.
+- `git push --delete`: removes a named ref rather than rewriting history, so
+  it sits outside the closed set this hook's standing rule enumerates.
+- `git stash`, `stash pop`, `stash drop`, and `stash clear`: the standing rule
+  scopes these by "over work you don't own," which no hook can observe;
+  approximating it would risk blocking a session's own stash.
+- `git rebase` and `commit --amend`: destructive only against shared history,
+  which is also unobservable from the command text, and routine locally.
+- `git branch -D`: in upstream's blocked list but not in our rule, and
+  reflog-recoverable.
+- `git restore --staged <path>` (unstages only, worktree untouched) and a
+  bare `git checkout <branchname>` / `git checkout -b <name>` (branch
+  checkout, not a worktree discard; branch-vs-path ambiguity from the command
+  text alone makes this an accepted false negative).
+- Indirection such as `bash -c`, `/usr/bin/git`, `env git`, aliases, and
+  command substitution: accepted false negatives, matching `plan-gate.js`'s
+  documented conservative posture.
+- Quote-wrapped flags (`git reset '--hard'`): the tokenizer keeps the quote
+  characters as part of the token, so a quoted flag never equals the bare
+  token the classifier matches on.
+- An environment-assignment prefix whose value is itself quoted and contains
+  a space (`GIT_AUTHOR_NAME="John Doe" git reset --hard`): whitespace token
+  splitting breaks the assignment into two tokens before the leading-
+  assignment strip runs, so `git` is never seen as the first token.
+- The two-token form of an unrecognized git global option
+  (`git --git-dir .git reset --hard`, value in a separate token): resolving
+  this needs a full global-option table this classifier doesn't carry; the
+  self-contained forms (`--git-dir=...`, `--no-pager`, `-C.`) are still
+  caught.
+- PowerShell-specific syntax: this hook also gates Copilot's `powershell`
+  tool but tokenizes every dialect with bash quoting/separator rules, so a
+  PowerShell backtick line continuation splits wrong and can let a
+  multi-line command escape the gate. The common single-line case is still
+  gated correctly.
+
+### Configuration (git-guard.js)
+
+- `GITGUARD_DISABLED=1` turns the gate off entirely.
+- `GITGUARD_WARN=1` demotes the gate to warn on Claude and Codex. Copilot has
+  no soft-warn channel, so there it degrades to allow plus a stderr note.
+
+### Fail-open guarantee
+
+Like every other Node hook script here, it is wrapped in a top-level
+`try { main() } catch { ...; process.exit(0) }`, so any unexpected failure
+allows the command through rather than blocking it.
 
 ## delivery-gate.js
 

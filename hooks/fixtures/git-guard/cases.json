@@ -1,0 +1,518 @@
+{
+  "cases": [
+    {
+      "id": "reset-hard-snake-denies",
+      "description": "git reset --hard, snake dialect (Claude/Codex), denies with the reset-hard kind named.",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "reset-hard-copilot-bash-denies",
+      "description": "git reset --hard, Copilot bash with a JSON-string toolArgs, denies.",
+      "steps": [
+        { "dialect": "copilot-bash", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "reset-hard-copilot-powershell-denies",
+      "description": "git reset --hard, Copilot powershell with a JSON-string toolArgs, denies.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "clean-force-snake-denies",
+      "description": "git clean -fd (combined short cluster), snake dialect, denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git clean -fd", "expect": "deny", "expectContains": ["clean-force"] }
+      ]
+    },
+    {
+      "id": "clean-force-copilot-bash-denies",
+      "description": "git clean --force, Copilot bash, denies.",
+      "steps": [
+        { "dialect": "copilot-bash", "command": "git clean --force", "expect": "deny", "expectContains": ["clean-force"] }
+      ]
+    },
+    {
+      "id": "clean-force-copilot-powershell-denies",
+      "description": "git clean -xdf (combined short cluster), Copilot powershell, denies.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git clean -xdf", "expect": "deny", "expectContains": ["clean-force"] }
+      ]
+    },
+    {
+      "id": "force-push-snake-denies",
+      "description": "git push --force, snake dialect, denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git push --force", "expect": "deny", "expectContains": ["force-push"] }
+      ]
+    },
+    {
+      "id": "force-push-copilot-bash-denies",
+      "description": "git push -f, Copilot bash, denies.",
+      "steps": [
+        { "dialect": "copilot-bash", "command": "git push -f", "expect": "deny", "expectContains": ["force-push"] }
+      ]
+    },
+    {
+      "id": "force-push-copilot-powershell-denies",
+      "description": "git push --force-with-lease, Copilot powershell, denies.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git push --force-with-lease", "expect": "deny", "expectContains": ["force-push"] }
+      ]
+    },
+    {
+      "id": "discard-worktree-snake-denies",
+      "description": "git checkout ., snake dialect, denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git checkout .", "expect": "deny", "expectContains": ["discard-worktree"] }
+      ]
+    },
+    {
+      "id": "discard-worktree-copilot-bash-denies",
+      "description": "git checkout -- <path>, Copilot bash, denies.",
+      "steps": [
+        { "dialect": "copilot-bash", "command": "git checkout -- src/file.txt", "expect": "deny", "expectContains": ["discard-worktree"] }
+      ]
+    },
+    {
+      "id": "discard-worktree-copilot-powershell-denies",
+      "description": "git restore <path>, Copilot powershell, denies.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git restore src/file.txt", "expect": "deny", "expectContains": ["discard-worktree"] }
+      ]
+    },
+    {
+      "id": "force-push-force-if-includes-value-form-denies",
+      "description": "git push --force-if-includes=<value>, the =value form, still denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git push --force-if-includes=refs/heads/main:abc123", "expect": "deny", "expectContains": ["force-push"] }
+      ]
+    },
+    {
+      "id": "restore-staged-with-worktree-denies",
+      "description": "git restore --staged --worktree <path> touches the worktree too, so it denies (resolves the --staged/--worktree ambiguity the spec flags).",
+      "steps": [
+        { "dialect": "snake", "command": "git restore --staged --worktree file.txt", "expect": "deny", "expectContains": ["discard-worktree"] }
+      ]
+    },
+    {
+      "id": "checkout-force-short-flag-with-branch-denies",
+      "description": "git checkout -f main discards local modifications; -f is the explicit force flag that makes an otherwise-excluded branch checkout destructive.",
+      "steps": [
+        { "dialect": "snake", "command": "git checkout -f main", "expect": "deny", "expectContains": ["discard-worktree"] }
+      ]
+    },
+    {
+      "id": "checkout-force-long-flag-with-branch-denies",
+      "description": "git checkout --force main, the long form of the same force flag, denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git checkout --force main", "expect": "deny", "expectContains": ["discard-worktree"] }
+      ]
+    },
+    {
+      "id": "checkout-bare-force-denies",
+      "description": "Bare git checkout -f (no target) still discards local modifications.",
+      "steps": [{ "dialect": "snake", "command": "git checkout -f", "expect": "deny", "expectContains": ["discard-worktree"] }]
+    },
+    {
+      "id": "switch-force-flag-denies",
+      "description": "git switch -f main discards local modifications the same way checkout -f does.",
+      "steps": [{ "dialect": "snake", "command": "git switch -f main", "expect": "deny", "expectContains": ["discard-worktree"] }]
+    },
+    {
+      "id": "switch-discard-changes-denies",
+      "description": "git switch --discard-changes main, the long form of switch's force flag, denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git switch --discard-changes main", "expect": "deny", "expectContains": ["discard-worktree"] }
+      ]
+    },
+    {
+      "id": "push-force-combined-cluster-denies",
+      "description": "git push -uf origin feature force-pushes via a combined short-flag cluster; push's force detection is cluster-aware the same way clean's is.",
+      "steps": [
+        { "dialect": "snake", "command": "git push -uf origin feature", "expect": "deny", "expectContains": ["force-push"] }
+      ]
+    },
+    {
+      "id": "push-refspec-leading-plus-denies",
+      "description": "git push origin +main is git's own force-push spelling, no flag required.",
+      "steps": [{ "dialect": "snake", "command": "git push origin +main", "expect": "deny", "expectContains": ["force-push"] }]
+    },
+    {
+      "id": "push-refspec-leading-plus-with-colon-denies",
+      "description": "git push origin +HEAD:main, the same leading-plus refspec form with a source:dest pair, denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git push origin +HEAD:main", "expect": "deny", "expectContains": ["force-push"] }
+      ]
+    },
+    {
+      "id": "global-option-work-tree-self-contained-denies",
+      "description": "git --work-tree=. reset --hard: an unrecognized but self-contained (=value) global option no longer breaks subcommand detection.",
+      "steps": [
+        { "dialect": "snake", "command": "git --work-tree=. reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "global-option-no-value-flag-denies",
+      "description": "git --no-pager reset --hard: an unrecognized global option that takes no value is skipped by itself.",
+      "steps": [{ "dialect": "snake", "command": "git --no-pager reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }]
+    },
+    {
+      "id": "global-option-c-attached-value-denies",
+      "description": "git -C. reset --hard: -C with its value attached (no space) is self-contained, which real git also accepts.",
+      "steps": [{ "dialect": "snake", "command": "git -C. reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }]
+    },
+    {
+      "id": "preamble-c-separate-arg-denies",
+      "description": "git -C /repo reset --hard: -C's value in a separate token is consumed as a pair; pre-existing behavior with no prior coverage.",
+      "steps": [{ "dialect": "snake", "command": "git -C /repo reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }]
+    },
+    {
+      "id": "preamble-env-assignment-prefix-denies",
+      "description": "ENV=1 git push --force: a leading VAR=value assignment is stripped before classification; pre-existing behavior with no prior coverage.",
+      "steps": [{ "dialect": "snake", "command": "ENV=1 git push --force", "expect": "deny", "expectContains": ["force-push"] }]
+    },
+    {
+      "id": "preamble-command-prefix-denies",
+      "description": "command git clean -fd: a leading literal `command` is stripped before classification; pre-existing behavior with no prior coverage.",
+      "steps": [{ "dialect": "snake", "command": "command git clean -fd", "expect": "deny", "expectContains": ["clean-force"] }]
+    },
+    {
+      "id": "push-mirror-denies",
+      "description": "git push --mirror force-updates every remote ref and propagates deletions, a forced rewrite of remote history by any reading; denies as force-push.",
+      "steps": [{ "dialect": "snake", "command": "git push --mirror", "expect": "deny", "expectContains": ["force-push"] }]
+    },
+    {
+      "id": "git-executable-capitalized-denies",
+      "description": "Git reset --hard (capitalized executable, valid on Copilot's powershell tool) is recognized case-insensitively and denies the same as lowercase.",
+      "steps": [{ "dialect": "snake", "command": "Git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }]
+    },
+    {
+      "id": "git-executable-all-caps-denies",
+      "description": "GIT reset --hard (all-caps executable) is recognized case-insensitively and denies the same as lowercase.",
+      "steps": [{ "dialect": "snake", "command": "GIT reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }]
+    },
+    {
+      "id": "git-executable-exe-suffix-denies",
+      "description": "git.exe reset --hard (the Windows executable spelling) is recognized and denies the same as bare git.",
+      "steps": [{ "dialect": "snake", "command": "git.exe reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }]
+    },
+    {
+      "id": "git-executable-full-path-still-allows",
+      "description": "/usr/bin/git reset --hard still allows: the case-insensitive/`.exe` fix is about the bare executable name's spelling, not about resolving paths, so a full path stays an accepted false negative (see header).",
+      "steps": [{ "dialect": "snake", "command": "/usr/bin/git reset --hard", "expect": "allow" }]
+    },
+    {
+      "id": "plain-push-allowed",
+      "description": "Plain git push with no force flag is not destructive; yeet needs it.",
+      "steps": [{ "dialect": "snake", "command": "git push", "expect": "allow" }]
+    },
+    {
+      "id": "push-delete-allowed",
+      "description": "git push --delete origin foo removes a named ref rather than rewriting history, so it sits outside the closed set this hook's standing rule enumerates (see header's accepted-exclusions list).",
+      "steps": [{ "dialect": "snake", "command": "git push --delete origin foo", "expect": "allow" }]
+    },
+    {
+      "id": "clean-no-force-allowed",
+      "description": "git clean with no force flag allows.",
+      "steps": [{ "dialect": "snake", "command": "git clean", "expect": "allow" }]
+    },
+    {
+      "id": "clean-dry-run-allowed",
+      "description": "git clean -fd -n is a dry run; -n suppresses the match.",
+      "steps": [{ "dialect": "snake", "command": "git clean -fd -n", "expect": "allow" }]
+    },
+    {
+      "id": "clean-dry-run-combined-cluster-allowed",
+      "description": "git clean -fdn is a dry run with -n inside the same combined cluster as the force flag; dry-run suppression is cluster-aware, symmetric with force detection.",
+      "steps": [{ "dialect": "snake", "command": "git clean -fdn", "expect": "allow" }]
+    },
+    {
+      "id": "push-dry-run-allowed",
+      "description": "git push --force --dry-run never actually pushes; --dry-run suppresses the match.",
+      "steps": [{ "dialect": "snake", "command": "git push --force --dry-run", "expect": "allow" }]
+    },
+    {
+      "id": "stash-allowed",
+      "description": "git stash is out of scope: the standing rule scopes it by \"work you don't own\", unobservable from the command text.",
+      "steps": [{ "dialect": "snake", "command": "git stash", "expect": "allow" }]
+    },
+    {
+      "id": "stash-pop-allowed",
+      "description": "git stash pop is out of scope, same reasoning as plain stash.",
+      "steps": [{ "dialect": "snake", "command": "git stash pop", "expect": "allow" }]
+    },
+    {
+      "id": "stash-drop-allowed",
+      "description": "git stash drop is out of scope, same reasoning as plain stash.",
+      "steps": [{ "dialect": "snake", "command": "git stash drop", "expect": "allow" }]
+    },
+    {
+      "id": "stash-clear-allowed",
+      "description": "git stash clear is out of scope, same reasoning as plain stash.",
+      "steps": [{ "dialect": "snake", "command": "git stash clear", "expect": "allow" }]
+    },
+    {
+      "id": "rebase-allowed",
+      "description": "git rebase is destructive only against shared history, unobservable from the command text, and routine locally.",
+      "steps": [{ "dialect": "snake", "command": "git rebase main", "expect": "allow" }]
+    },
+    {
+      "id": "commit-amend-allowed",
+      "description": "git commit --amend is out of scope, same reasoning as rebase.",
+      "steps": [{ "dialect": "snake", "command": "git commit --amend", "expect": "allow" }]
+    },
+    {
+      "id": "branch-delete-allowed",
+      "description": "git branch -D is reflog-recoverable and not in the standing rule's scope.",
+      "steps": [{ "dialect": "snake", "command": "git branch -D old-feature", "expect": "allow" }]
+    },
+    {
+      "id": "restore-staged-only-allowed",
+      "description": "git restore --staged <path> alone unstages but never touches the worktree.",
+      "steps": [{ "dialect": "snake", "command": "git restore --staged file.txt", "expect": "allow" }]
+    },
+    {
+      "id": "checkout-branch-allowed",
+      "description": "git checkout <branchname> is branch checkout, not a worktree discard; accepted false negative.",
+      "steps": [{ "dialect": "snake", "command": "git checkout main", "expect": "allow" }]
+    },
+    {
+      "id": "checkout-b-allowed",
+      "description": "git checkout -b <name> creates a branch; not a worktree discard.",
+      "steps": [{ "dialect": "snake", "command": "git checkout -b feature", "expect": "allow" }]
+    },
+    {
+      "id": "switch-branch-allowed",
+      "description": "git switch <branchname> with no force flag is a plain branch switch, not a worktree discard.",
+      "steps": [{ "dialect": "snake", "command": "git switch main", "expect": "allow" }]
+    },
+    {
+      "id": "push-cluster-without-force-letter-allowed",
+      "description": "git push -un origin feature: a combined short-flag cluster with unrelated letters but no 'f' must not match (the inverse of the force-cluster fix).",
+      "steps": [{ "dialect": "snake", "command": "git push -un origin feature", "expect": "allow" }]
+    },
+    {
+      "id": "push-quoted-plus-refspec-allowed",
+      "description": "git push origin \"+weird\": the tokenizer keeps quote characters as part of the token, so a quoted leading + is not mistaken for the force-push refspec form.",
+      "steps": [{ "dialect": "snake", "command": "git push origin \"+weird\"", "expect": "allow" }]
+    },
+    {
+      "id": "global-option-two-token-unknown-allowed",
+      "description": "git --git-dir .git reset --hard: the two-token form of an unrecognized global option (value in a separate token) is an accepted false negative, documented in the header.",
+      "steps": [{ "dialect": "snake", "command": "git --git-dir .git reset --hard", "expect": "allow" }]
+    },
+    {
+      "id": "indirection-bash-c-allowed",
+      "description": "bash -c \"git reset --hard\" is indirection; accepted false negative.",
+      "steps": [{ "dialect": "snake", "command": "bash -c \"git reset --hard\"", "expect": "allow" }]
+    },
+    {
+      "id": "indirection-full-path-allowed",
+      "description": "/usr/bin/git reset --hard is a full-path invocation; accepted false negative.",
+      "steps": [{ "dialect": "snake", "command": "/usr/bin/git reset --hard", "expect": "allow" }]
+    },
+    {
+      "id": "indirection-env-allowed",
+      "description": "env git reset --hard is indirection via env; accepted false negative.",
+      "steps": [{ "dialect": "snake", "command": "env git reset --hard", "expect": "allow" }]
+    },
+    {
+      "id": "indirection-command-substitution-allowed",
+      "description": "echo $(git reset --hard) buries the command in a substitution; accepted false negative.",
+      "steps": [{ "dialect": "snake", "command": "echo $(git reset --hard)", "expect": "allow" }]
+    },
+    {
+      "id": "help-flag-suppresses-match-allowed",
+      "description": "--help on a destructive form suppresses the match, same exclusion detectOutwardMutations applies.",
+      "steps": [{ "dialect": "snake", "command": "git reset --hard --help", "expect": "allow" }]
+    },
+    {
+      "id": "dash-h-flag-suppresses-match-allowed",
+      "description": "-h on a destructive form suppresses the match too.",
+      "steps": [{ "dialect": "snake", "command": "git push --force -h", "expect": "allow" }]
+    },
+    {
+      "id": "quoted-commit-message-allowed",
+      "description": "A quoted commit message mentioning a blocked form must not trip the classifier: the tokenizer sees git commit, not git reset.",
+      "steps": [{ "dialect": "snake", "command": "git commit -m \"do not git reset --hard\"", "expect": "allow" }]
+    },
+    {
+      "id": "heredoc-body-allowed",
+      "description": "A heredoc body mentioning a blocked form is stripped before classification.",
+      "steps": [{ "dialect": "snake", "command": "cat <<EOF\ngit reset --hard\nEOF", "expect": "allow" }]
+    },
+    {
+      "id": "comment-strips-command-allowed",
+      "description": "A shell comment mentioning a blocked form is stripped before classification.",
+      "steps": [{ "dialect": "snake", "command": "echo done # then git reset --hard", "expect": "allow" }]
+    },
+    {
+      "id": "compound-command-denies",
+      "description": "The tokenizer splits on &&, so a blocked form later in a compound command still denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git status && git reset --hard HEAD", "expect": "deny", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "same-kind-twice-fast-both-deny",
+      "description": "Two same-kind occurrences land well inside the racing-loser window (this runner's own back-to-back subprocess spawns take single-digit milliseconds, far under the 2000ms threshold ported from plan-gate.js), so both deny: a fast retry is indistinguishable from a same-turn race and is treated the same way. The companion case immediately below (same-kind-twice-backdated-second-allows) back-dates the marker past RACE_MS to prove the other side: a genuine model-turn-later retry passes.",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] },
+        { "dialect": "snake", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "same-kind-twice-backdated-second-allows",
+      "description": "Companion to same-kind-twice-fast-both-deny: the second occurrence's marker is back-dated past RACE_MS (2000ms) before it runs, so this call sees a genuine model-turn-later retry rather than a race, and passes. This is deny-once's headline behavior and had no automated coverage before backdateMarkersMs existed.",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] },
+        { "dialect": "snake", "command": "git reset --hard", "backdateMarkersMs": 5000, "expect": "allow" }
+      ]
+    },
+    {
+      "id": "compound-command-backdated-kind-omitted-from-reason",
+      "description": "reset-hard is gated and its marker is back-dated, then a compound command matching both reset-hard and force-push runs: reset-hard is already-seen (allowed silently for that kind) while force-push is new, so the deny names only force-push, not reset-hard.",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] },
+        {
+          "dialect": "snake",
+          "command": "git reset --hard && git push --force",
+          "backdateMarkersMs": 5000,
+          "expect": "deny",
+          "expectContains": ["force-push"],
+          "expectExcludes": ["reset-hard"]
+        }
+      ]
+    },
+    {
+      "id": "warn-mode-twice-backdated-second-silent",
+      "description": "Warn-path counterpart to same-kind-twice-backdated-second-allows: GITGUARD_WARN=1 with a back-dated marker means the second occurrence emits nothing (a genuine retry) rather than warning again, mirroring the deny-mode retry-passes case on the warn path.",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "env": { "GITGUARD_WARN": "1" }, "expect": "warn", "expectContains": ["reset-hard"] },
+        {
+          "dialect": "snake",
+          "command": "git reset --hard",
+          "env": { "GITGUARD_WARN": "1" },
+          "backdateMarkersMs": 5000,
+          "expect": "allow"
+        }
+      ]
+    },
+    {
+      "id": "backdate-one-kind-does-not-affect-other-kind-freshness",
+      "description": "Back-dating reset-hard's marker must not leak into force-push's own freshness: force-push's first occurrence still denies as new (unaffected by the unrelated back-date), and an immediate same-kind repeat right after still races and denies, proving force-push's marker was never touched by the earlier reset-hard-only back-date.",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] },
+        {
+          "dialect": "snake",
+          "command": "git push --force",
+          "backdateMarkersMs": 5000,
+          "expect": "deny",
+          "expectContains": ["force-push"]
+        },
+        { "dialect": "snake", "command": "git push --force", "expect": "deny", "expectContains": ["force-push"] }
+      ]
+    },
+    {
+      "id": "two-different-kinds-each-deny-once",
+      "description": "Two distinct kinds in one session each deny on their own first occurrence.",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] },
+        { "dialect": "snake", "command": "git push --force", "expect": "deny", "expectContains": ["force-push"] }
+      ]
+    },
+    {
+      "id": "disabled-allows-normally-denied-command",
+      "description": "GITGUARD_DISABLED=1 allows a command that would otherwise deny.",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "env": { "GITGUARD_DISABLED": "1" }, "expect": "allow" }
+      ]
+    },
+    {
+      "id": "warn-demotes-on-snake",
+      "description": "GITGUARD_WARN=1 demotes deny to a non-blocking warning on the snake dialect.",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "env": { "GITGUARD_WARN": "1" }, "expect": "warn", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "warn-mode-second-call-in-race-window-still-warns",
+      "description": "GITGUARD_WARN=1: a second call of the same kind, landing inside the racing-loser window like same-kind-twice-fast-both-deny, warns again rather than silently allowing, proving warn mode is governed by the same race-protected marker claim as deny mode (not a separate path the fix missed).",
+      "steps": [
+        { "dialect": "snake", "command": "git reset --hard", "env": { "GITGUARD_WARN": "1" }, "expect": "warn", "expectContains": ["reset-hard"] },
+        { "dialect": "snake", "command": "git reset --hard", "env": { "GITGUARD_WARN": "1" }, "expect": "warn", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "warn-degrades-to-allow-on-copilot",
+      "description": "GITGUARD_WARN=1 on Copilot has no soft-warn channel, so it degrades to allow plus a stderr note.",
+      "steps": [
+        { "dialect": "copilot-bash", "command": "git reset --hard", "env": { "GITGUARD_WARN": "1" }, "expect": "warn", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "both-env-vars-disabled-wins",
+      "description": "GITGUARD_DISABLED=1 and GITGUARD_WARN=1 set together: disabled wins, full allow.",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git reset --hard",
+          "env": { "GITGUARD_DISABLED": "1", "GITGUARD_WARN": "1" },
+          "expect": "allow"
+        }
+      ]
+    },
+    {
+      "id": "empty-stdin-allows",
+      "description": "Empty stdin parses as {} and allows silently.",
+      "steps": [{ "rawStdin": "", "expect": "allow" }]
+    },
+    {
+      "id": "non-json-stdin-allows",
+      "description": "Unparseable stdin hits the top-level catch and emits an explicit allow, regardless of dialect.",
+      "steps": [{ "rawStdin": "not valid json {", "expect": "allow", "allowStyle": "explicit" }]
+    },
+    {
+      "id": "missing-command-field-allows",
+      "description": "A Bash tool_input with no command field has nothing to classify, so it allows silently.",
+      "steps": [
+        {
+          "input": { "session_id": "gg-missing-cmd", "tool_name": "Bash", "tool_input": {} },
+          "expect": "allow"
+        }
+      ]
+    },
+    {
+      "id": "non-gated-tool-snake-allowed",
+      "description": "A non-Bash tool on the snake dialect (Read) allows silently.",
+      "steps": [{ "dialect": "snake-non-bash", "toolName": "Read", "expect": "allow" }]
+    },
+    {
+      "id": "non-gated-tool-copilot-allowed",
+      "description": "A non-bash/powershell Copilot tool (view) allows explicitly.",
+      "steps": [{ "dialect": "copilot-non-gated", "toolName": "view", "expect": "allow" }]
+    },
+    {
+      "id": "copilot-toolargs-object-tolerated-denies",
+      "description": "A Copilot toolArgs that already arrives as an object (not a JSON string) is tolerated and still classified.",
+      "steps": [
+        { "dialect": "copilot-object-args", "toolName": "bash", "command": "git reset --hard", "expect": "deny", "expectContains": ["reset-hard"] }
+      ]
+    },
+    {
+      "id": "copilot-toolargs-neither-string-nor-object-allowed",
+      "description": "A Copilot toolArgs that is neither a string nor an object (e.g. a number) has no command to extract, so it allows.",
+      "steps": [
+        {
+          "input": { "sessionId": "gg-toolargs-bad", "toolName": "bash", "toolArgs": 12345 },
+          "expect": "allow",
+          "allowStyle": "explicit"
+        }
+      ]
+    }
+  ]
+}

@@ -39,12 +39,15 @@ jobs:
           for f in \
             "$HOME/.claude/scripts/core-rules-digest.js" \
             "$HOME/.claude/scripts/gateguard.js" \
+            "$HOME/.claude/scripts/git-guard.js" \
             "$HOME/.claude/scripts/delivery-gate.js" \
             "$HOME/.claude/scripts/suggest-compact.js" \
             "$HOME/.claude/scripts/plan-gate.js" \
             "$HOME/.codex/scripts/core-rules-digest.js" \
+            "$HOME/.codex/scripts/git-guard.js" \
             "$HOME/.codex/scripts/plan-gate.js" \
             "$HOME/.copilot/scripts/core-rules-digest.js" \
+            "$HOME/.copilot/scripts/git-guard.js" \
             "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md" \
             "$HOME/.copilot/copilot-instructions.md"; do
             test -f "$f" || { echo "FAIL: missing $f"; exit 1; }
@@ -122,6 +125,30 @@ jobs:
           ./install.sh claude >/dev/null
           n="$(jq '[.hooks.PreToolUse[]? | select(.matcher=="Bash") | .hooks[]? | select(.command|test("plan-gate\\.js"))] | length' "$HOME/.claude/settings.json")"
           [ "$n" = "1" ] || { echo "FAIL: Claude installer did not re-add the deleted plan-gate Bash entry"; exit 1; }
+          # The deletion above removed every Bash-matcher PreToolUse entry, which
+          # also wiped git-guard's entry (it shares the Bash matcher). Assert the
+          # reinstall restored it too.
+          n="$(jq '[.hooks.PreToolUse[]? | select(.matcher=="Bash") | .hooks[]? | select(.command|test("git-guard\\.js"))] | length' "$HOME/.claude/settings.json")"
+          [ "$n" = "1" ] || { echo "FAIL: Claude installer did not re-add the deleted git-guard Bash entry"; exit 1; }
+          # git-guard's Codex PreToolUse entry: matcher Bash, command pointing at
+          # the installed git-guard.js (proves the wiring actually rendered, not
+          # just that the script file exists).
+          n="$(jq '[.hooks.PreToolUse[]? | select(.matcher=="Bash") | .hooks[]? | select(.command|test("git-guard\\.js"))] | length' "$HOME/.codex/hooks.json")"
+          [ "$n" = "1" ] || { echo "FAIL: expected 1 Codex git-guard Bash PreToolUse entry, found $n"; exit 1; }
+          cmd="$(jq -r '[.hooks.PreToolUse[]? | select(.matcher=="Bash") | .hooks[]? | select(.command|test("git-guard\\.js"))][0].command' "$HOME/.codex/hooks.json")"
+          f="$(echo "$cmd" | sed -E 's/^node "([^"]+)".*/\1/')"
+          test -f "$f" || { echo "FAIL: Codex git-guard command does not point at an installed script: $f"; exit 1; }
+          # git-guard's Copilot rendered file: preToolUse entry, matcher, and the
+          # substituted script path with no leftover __SCRIPTS__ placeholder.
+          gg_copilot="$HOME/.copilot/hooks/pretooluse-git-guard.json"
+          test -f "$gg_copilot" || { echo "FAIL: missing $gg_copilot"; exit 1; }
+          n="$(jq '[.hooks.preToolUse[]? | select(.matcher=="bash|powershell") | select(.bash|test("git-guard\\.js"))] | length' "$gg_copilot")"
+          [ "$n" = "1" ] || { echo "FAIL: expected 1 Copilot git-guard preToolUse entry, found $n"; exit 1; }
+          bash_cmd="$(jq -r '.hooks.preToolUse[0].bash' "$gg_copilot")"
+          echo "$bash_cmd" | grep -q '__SCRIPTS__' \
+            && { echo "FAIL: Copilot git-guard file leaked __SCRIPTS__ placeholder"; exit 1; }
+          f="$(echo "$bash_cmd" | sed -E 's/^node "([^"]+)".*/\1/')"
+          test -f "$f" || { echo "FAIL: Copilot git-guard command does not point at an installed script: $f"; exit 1; }
           # Codex TOML agents: one rendered file per agents/*.md source.
           agent_md_count="$(ls agents/*.md | wc -l | tr -d ' ')"
           agent_toml_count="$(ls "$HOME/.codex/agents"/*.toml | wc -l | tr -d ' ')"
@@ -357,11 +384,14 @@ jobs:
           node skills/skill-comply/scripts/run-codex-cases.js --dry-run >/dev/null
           node hooks/codex/scripts/run-plan-gate-pilot-fixtures.js >/dev/null
           node hooks/claude/scripts/run-plan-gate-fixtures.js >/dev/null
+          node hooks/scripts/run-git-guard-fixtures.js >/dev/null
           node skills/rules-distill/scripts/scan-rules.js >/dev/null
           node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
           node .github/scripts/run-lint-pr-body-fixtures.js >/dev/null
           node .github/scripts/check-digest-preview.js >/dev/null
           node .github/scripts/run-check-digest-preview-fixtures.js >/dev/null
+          node .github/scripts/check-split-shell-segments-parity.js >/dev/null
+          node .github/scripts/run-check-split-shell-segments-parity-fixtures.js >/dev/null
       - name: Probe-agent frontmatter escape/quote round-trip
         run: |
           set -euo pipefail
@@ -670,12 +700,15 @@ jobs:
           $need = @(
             "$H\.claude\scripts\core-rules-digest.js",
             "$H\.claude\scripts\gateguard.js",
+            "$H\.claude\scripts\git-guard.js",
             "$H\.claude\scripts\delivery-gate.js",
             "$H\.claude\scripts\suggest-compact.js",
             "$H\.claude\scripts\plan-gate.js",
             "$H\.codex\scripts\core-rules-digest.js",
+            "$H\.codex\scripts\git-guard.js",
             "$H\.codex\scripts\plan-gate.js",
             "$H\.copilot\scripts\core-rules-digest.js",
+            "$H\.copilot\scripts\git-guard.js",
             "$H\.claude\CLAUDE.md", "$H\.codex\AGENTS.md",
             "$H\.copilot\copilot-instructions.md"
           )
@@ -769,6 +802,30 @@ jobs:
           $claudeSettings = Get-Content -Raw "$H\.claude\settings.json" | ConvertFrom-Json
           $hasPlanBash = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'plan-gate\.js' }).Count -gt 0
           if (-not $hasPlanBash) { throw "Claude installer did not re-add the deleted plan-gate Bash entry" }
+          # The deletion above removed every Bash-matcher PreToolUse entry, which
+          # also wiped git-guard's entry (it shares the Bash matcher). Assert the
+          # reinstall restored it too.
+          $hasGitGuardBash = @($claudeSettings.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'git-guard\.js' }).Count -gt 0
+          if (-not $hasGitGuardBash) { throw "Claude installer did not re-add the deleted git-guard Bash entry" }
+          # git-guard's Codex PreToolUse entry: matcher Bash, command pointing at
+          # the installed git-guard.js (proves the wiring actually rendered, not
+          # just that the script file exists).
+          $codexHooks = Get-Content -Raw "$H\.codex\hooks.json" | ConvertFrom-Json
+          $codexGitGuardCmds = @($codexHooks.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -match 'git-guard\.js' })
+          if ($codexGitGuardCmds.Count -ne 1) { throw "expected 1 Codex git-guard Bash PreToolUse entry, found $($codexGitGuardCmds.Count)" }
+          $codexGitGuardPath = ($codexGitGuardCmds[0].command -replace '^node "([^"]+)".*', '$1')
+          if (-not (Test-Path -LiteralPath $codexGitGuardPath)) { throw "Codex git-guard command does not point at an installed script: $codexGitGuardPath" }
+          # git-guard's Copilot rendered file: preToolUse entry, matcher, and the
+          # substituted script path with no leftover __SCRIPTS__ placeholder.
+          $ggCopilot = "$H\.copilot\hooks\pretooluse-git-guard.json"
+          if (-not (Test-Path -LiteralPath $ggCopilot)) { throw "missing $ggCopilot" }
+          $ggCopilotJson = Get-Content -Raw $ggCopilot | ConvertFrom-Json
+          $ggCopilotEntries = @($ggCopilotJson.hooks.preToolUse | Where-Object { $_.matcher -eq 'bash|powershell' -and $_.bash -match 'git-guard\.js' })
+          if ($ggCopilotEntries.Count -ne 1) { throw "expected 1 Copilot git-guard preToolUse entry, found $($ggCopilotEntries.Count)" }
+          $ggBashCmd = $ggCopilotJson.hooks.preToolUse[0].bash
+          if ($ggBashCmd -match '__SCRIPTS__') { throw "Copilot git-guard file leaked __SCRIPTS__ placeholder" }
+          $ggPath = ($ggBashCmd -replace '^node "([^"]+)".*', '$1')
+          if (-not (Test-Path -LiteralPath $ggPath)) { throw "Copilot git-guard command does not point at an installed script: $ggPath" }
           # Codex TOML agents: one rendered file per agents/*.md source.
           $agentMdCount = (Get-ChildItem 'agents\*.md').Count
           $agentTomlCount = (Get-ChildItem "$H\.codex\agents\*.toml").Count
@@ -917,11 +974,14 @@ jobs:
           node skills\skill-comply\scripts\run-codex-cases.js --dry-run | Out-Null; Assert-Node 'skill-comply Codex dry-run'
           node hooks\codex\scripts\run-plan-gate-pilot-fixtures.js | Out-Null; Assert-Node 'Codex plan-gate fixtures'
           node hooks\claude\scripts\run-plan-gate-fixtures.js | Out-Null; Assert-Node 'Claude plan-gate fixtures'
+          node hooks\scripts\run-git-guard-fixtures.js | Out-Null; Assert-Node 'git-guard fixtures'
           node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
           node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'
           node .github\scripts\run-lint-pr-body-fixtures.js | Out-Null; Assert-Node 'lint-pr-body fixtures'
           node .github\scripts\check-digest-preview.js | Out-Null; Assert-Node 'check-digest-preview'
           node .github\scripts\run-check-digest-preview-fixtures.js | Out-Null; Assert-Node 'check-digest-preview fixtures'
+          node .github\scripts\check-split-shell-segments-parity.js | Out-Null; Assert-Node 'split-shell-segments parity'
+          node .github\scripts\run-check-split-shell-segments-parity-fixtures.js | Out-Null; Assert-Node 'split-shell-segments parity fixtures'
       - name: Probe-agent frontmatter escape/quote round-trip
         shell: powershell
         run: |
