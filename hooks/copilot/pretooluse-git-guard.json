@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "node \"__SCRIPTS__/git-guard.js\"",
+        "timeoutSec": 10,
+        "matcher": "bash|powershell"
+      }
+    ]
+  }
+}

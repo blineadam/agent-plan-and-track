@@ -143,7 +143,7 @@ markers at all is left alone entirely.
 
 Hook *scripts* are copied into each harness's scripts directory, with per-harness scopes:
 
-- `core-rules-digest.js` and `gateguard.js` go to all three harnesses.
+- `core-rules-digest.js`, `gateguard.js`, and `git-guard.js` go to all three harnesses.
 - `delivery-gate.js` goes to Claude and Codex.
 - Claude and Codex each get their own separate `plan-gate.js` implementation.
 
@@ -164,6 +164,16 @@ Claude and Codex merge wiring only when it is not already present:
 - The digest idempotency check matches `core-rules`, covering the current
   command and any pre-existing inline command.
 
+Most single-entry hooks (`suggest-compact.js`, `delivery-gate.js`,
+`gateguard.js`) check idempotency with a coarse whole-file match on the hook's
+script name. `plan-gate.js`/`plan-gate-pilot.js` and `git-guard.js` check
+per-entry instead (matcher + command, not a whole-file grep or
+`.Contains(...)`), because a coarse whole-file match can be fooled by any
+other occurrence of the name elsewhere in the file, for example a user
+permission-allowlist entry naming the script path, which would silently leave
+the actual hook entry missing after it was deleted while install still prints
+success.
+
 Hooks with multiple wiring entries are checked and repaired one entry at a
 time:
 
@@ -175,9 +185,9 @@ time:
 If one entry is missing, the installer appends only that entry. It never
 duplicates the entries still present.
 
-Copilot's hook files (`core-rules.json`, `pretooluse-gateguard.json`) are
-repo-owned and overwritten outright. The installer takes a `.bak` backup if
-the existing file differs.
+Copilot's hook files (`core-rules.json`, `pretooluse-gateguard.json`,
+`pretooluse-git-guard.json`) are repo-owned and overwritten outright. The
+installer takes a `.bak` backup if the existing file differs.
 
 ## Model and permission defaults
 

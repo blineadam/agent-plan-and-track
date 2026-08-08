@@ -45,11 +45,12 @@
   managed surface (skills, agents (the Claude .md copies, the Codex TOML
   rendering, and the Copilot .agent.md rendering), the core-rules digest, the
   instructions managed block, hook wiring + __SCRIPTS__ substitution
-  (including plan-gate's two additive Claude PreToolUse entries and the Codex
+  (including plan-gate's two additive Claude PreToolUse entries, the Codex
   plan gate's SessionStart, apply_patch PreToolUse, Bash PreToolUse, and
-  apply_patch PostToolUse entries, each with its own matcher + command
-  idempotency check), model/effort defaults, the TOML upsert, the global
-  gitignore entries, the manifest-based stale prune keyed by
+  apply_patch PostToolUse entries, and git-guard's Bash PreToolUse entry on
+  Claude and Codex, each with its own matcher + command idempotency check
+  rather than a whole-file substring check), model/effort defaults, the TOML
+  upsert, the global gitignore entries, the manifest-based stale prune keyed by
   .plan-and-track-manifest) must be mirrored in both. See install.sh for the
   same note.
 #>
@@ -746,6 +747,8 @@ function Install-Claude {
   Write-Host "  delivery script -> ~/.claude/scripts/delivery-gate.js"
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/gateguard.js') -Destination (Join-Path $scripts 'gateguard.js') -Force
   Write-Host "  gateguard script-> ~/.claude/scripts/gateguard.js"
+  Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/git-guard.js') -Destination (Join-Path $scripts 'git-guard.js') -Force
+  Write-Host "  git-guard script-> ~/.claude/scripts/git-guard.js"
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/claude/plan-gate.js') -Destination (Join-Path $scripts 'plan-gate.js') -Force
   Write-Host "  plan-gate script-> ~/.claude/scripts/plan-gate.js"
 
@@ -792,6 +795,20 @@ function Install-Claude {
   } else {
     Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-gateguard.json') $scriptsFwd
     Write-Host "  gateguard hook  -> merged into settings.json (PreToolUse on edits; GATEGUARD_DISABLED=1 to turn off)"
+  }
+  # Per-entry check (matcher + command, not the coarse $raw.Contains('git-guard')
+  # this repo already moved plan-gate off of below): a whole-file substring
+  # check would be fooled by any other occurrence of 'git-guard' in the file,
+  # for example a user permission-allowlist entry naming the script path, and
+  # silently leave the actual hook entry missing after it was deleted.
+  $gitGuardCommand = "node `"$scriptsFwd/git-guard.js`""
+  $gitGuardSettingsJson = [System.IO.File]::ReadAllText($settings) | ConvertFrom-Json
+  $hasGitGuard = @($gitGuardSettingsJson.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $gitGuardCommand }).Count -gt 0
+  if ($hasGitGuard) {
+    Write-Host "  git-guard hook  -- already present in settings.json"
+  } else {
+    Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-git-guard.json') $scriptsFwd
+    Write-Host "  git-guard hook  -> merged into settings.json (PreToolUse on Bash; GITGUARD_DISABLED=1 to turn off)"
   }
   # plan-gate ships as TWO separate PreToolUse entries (Skill+todo.md edits,
   # and Bash git/gh mutations) pointing at the same command, added additively
@@ -855,10 +872,14 @@ function Install-Copilot {
   Write-Host "  digest script   -> ~/.copilot/scripts/core-rules-digest.js"
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/gateguard.js') -Destination (Join-Path $scripts 'gateguard.js') -Force
   Write-Host "  gateguard script-> ~/.copilot/scripts/gateguard.js"
+  Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/git-guard.js') -Destination (Join-Path $scripts 'git-guard.js') -Force
+  Write-Host "  git-guard script-> ~/.copilot/scripts/git-guard.js"
   Install-RenderedHookFile (Join-Path $RepoDir 'hooks/copilot/core-rules.json') (Join-Path $hooksDir 'core-rules.json') $scriptsFwd 'existing hook'
   Write-Host "  hook            -> ~/.copilot/hooks/core-rules.json (postToolUse, 10-min throttle)"
   Install-RenderedHookFile (Join-Path $RepoDir 'hooks/copilot/pretooluse-gateguard.json') (Join-Path $hooksDir 'pretooluse-gateguard.json') $scriptsFwd 'existing gateguard hook'
   Write-Host "  gateguard hook  -> ~/.copilot/hooks/pretooluse-gateguard.json (preToolUse on create|edit)"
+  Install-RenderedHookFile (Join-Path $RepoDir 'hooks/copilot/pretooluse-git-guard.json') (Join-Path $hooksDir 'pretooluse-git-guard.json') $scriptsFwd 'existing git-guard hook'
+  Write-Host "  git-guard hook  -> ~/.copilot/hooks/pretooluse-git-guard.json (preToolUse on bash|powershell; GITGUARD_DISABLED=1 to turn off)"
   Write-Host "  done. Hooks need node at runtime. Start a NEW copilot session to load."
 }
 
@@ -890,9 +911,10 @@ function Install-Codex {
   # universal scripts run here unchanged (dialect sniffed at runtime).
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/core-rules-digest.js') -Destination (Join-Path $scripts 'core-rules-digest.js') -Force
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/gateguard.js') -Destination (Join-Path $scripts 'gateguard.js') -Force
+  Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/git-guard.js') -Destination (Join-Path $scripts 'git-guard.js') -Force
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/delivery-gate.js') -Destination (Join-Path $scripts 'delivery-gate.js') -Force
   Copy-Item -LiteralPath (Join-Path $RepoDir 'hooks/codex/plan-gate-pilot.js') -Destination (Join-Path $scripts 'plan-gate.js') -Force
-  Write-Host "  scripts         -> ~/.codex/scripts/{core-rules-digest,gateguard,delivery-gate,plan-gate}.js"
+  Write-Host "  scripts         -> ~/.codex/scripts/{core-rules-digest,gateguard,git-guard,delivery-gate,plan-gate}.js"
 
   $scriptsFwd = $scripts.Replace('\', '/')
   $raw = [System.IO.File]::ReadAllText($hooks)
@@ -907,6 +929,20 @@ function Install-Codex {
   } else {
     Merge-HookInto $hooks 'PreToolUse' (Join-Path $RepoDir 'hooks/codex/pretooluse-gateguard.json') $scriptsFwd
     Write-Host "  gateguard hook  -> merged into hooks.json (PreToolUse on apply_patch; GATEGUARD_DISABLED=1 to turn off)"
+  }
+  # Per-entry check (matcher + command, not the coarse $raw.Contains('git-guard')
+  # this repo already moved plan-gate off of below): a whole-file substring
+  # check would be fooled by any other occurrence of 'git-guard' in the file,
+  # for example a user permission-allowlist entry naming the script path, and
+  # silently leave the actual hook entry missing after it was deleted.
+  $gitGuardCommand = "node `"$scriptsFwd/git-guard.js`""
+  $gitGuardHooksJson = [System.IO.File]::ReadAllText($hooks) | ConvertFrom-Json
+  $hasGitGuard = @($gitGuardHooksJson.hooks.PreToolUse | Where-Object { $_.matcher -eq 'Bash' } | ForEach-Object { $_.hooks } | ForEach-Object { $_ } | Where-Object { $_.command -eq $gitGuardCommand }).Count -gt 0
+  if ($hasGitGuard) {
+    Write-Host "  git-guard hook  -- already present in hooks.json"
+  } else {
+    Merge-HookInto $hooks 'PreToolUse' (Join-Path $RepoDir 'hooks/codex/pretooluse-git-guard.json') $scriptsFwd
+    Write-Host "  git-guard hook  -> merged into hooks.json (PreToolUse on Bash; GITGUARD_DISABLED=1 to turn off)"
   }
   if ($raw.Contains('delivery-gate')) {
     Write-Host "  delivery hook   -- already present in hooks.json"

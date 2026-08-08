@@ -458,7 +458,7 @@ function splitShellSegments(command) {
   let current = '';
   let inSingle = false;
   let inDouble = false;
-  const pendingHeredocs = [];
+  const pendingHeredocs = []; // delimiters whose bodies follow the current line
   let i = 0;
 
   while (i < n) {
@@ -482,6 +482,7 @@ function splitShellSegments(command) {
       continue;
     }
 
+    // Unquoted context below.
     if (ch === '\\' && i + 1 < n) {
       current += ch + text[i + 1];
       i += 2;
@@ -500,11 +501,15 @@ function splitShellSegments(command) {
       continue;
     }
 
+    // A `#` at a word boundary starts a comment that runs to end of line.
     if (ch === '#' && (current === '' || /\s/.test(current[current.length - 1]))) {
       while (i < n && text[i] !== '\n') i += 1;
-      continue;
+      continue; // leave the '\n' for the separator branch to close the segment
     }
 
+    // Heredoc operator `<<` or `<<-` (not `<<<`, a here-string): record the
+    // delimiter (quoted 'X'/"X" or a bare word) and skip its body once the
+    // command line ends. Multiple heredocs on one line strip in order.
     if (ch === '<' && text[i + 1] === '<' && text[i + 2] !== '<') {
       let j = i + 2;
       let stripTabs = false;
@@ -521,7 +526,7 @@ function splitShellSegments(command) {
           word += text[j];
           j += 1;
         }
-        if (j < n) j += 1;
+        if (j < n) j += 1; // consume the closing quote
       } else {
         while (j < n && !/[\s;&|<>()]/.test(text[j])) {
           word += text[j];
@@ -530,10 +535,10 @@ function splitShellSegments(command) {
       }
       if (word) {
         pendingHeredocs.push({ word, stripTabs });
-        i = j;
+        i = j; // consumed the operator + delimiter; keep scanning this line
         continue;
       }
-      current += ch;
+      current += ch; // no delimiter parsed: treat `<` as ordinary text
       i += 1;
       continue;
     }
@@ -542,6 +547,7 @@ function splitShellSegments(command) {
       segments.push(current);
       current = '';
       i += 1;
+      // Drop the bodies of any heredocs this line opened, in order.
       while (pendingHeredocs.length && i < n) {
         const { word, stripTabs } = pendingHeredocs.shift();
         for (;;) {
