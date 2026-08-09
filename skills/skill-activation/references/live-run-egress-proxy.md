@@ -25,6 +25,21 @@ chown proxy:proxy /etc/squid/dummy.pem && chmod 600 /etc/squid/dummy.pem
 Cert and key share one file because Squid assumes the `tls-cert=` file also
 carries the key when no `tls-key=` is given. The subject is irrelevant.
 
+Initialize the certificate generation helper database before starting Squid.
+This is required for the ssl-bump port to start even though the ruleset only
+peeks and splices, never bumps. On Squid 5.7 with squid-openssl on Debian
+bookworm, omitting this causes startup to fail with "FATAL: The sslcrtd_program
+helpers are crashing too rapidly, need help!"
+
+```bash
+mkdir -p /var/lib/squid
+/usr/lib/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 4MB
+chown -R proxy:proxy /var/lib/squid/ssl_db
+```
+
+The parent directory does not exist on a fresh install. The database must be owned
+by the proxy user that Squid drops to.
+
 ```squid
 # squid.conf: destination-allowlisted forward proxy for billable live runs.
 # Host list: https://code.claude.com/docs/en/network-config is the source of
@@ -43,6 +58,9 @@ carries the key when no `tls-key=` is given. The subject is irrelevant.
 # Never change splice to bump below: that would MITM provider traffic and
 # expose the credential and every prompt to the proxy.
 http_port 172.20.0.1:3128 ssl-bump tls-cert=/etc/squid/dummy.pem
+# sslcrtd_program is required for the ssl-bump port to start.
+sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/lib/squid/ssl_db -M 4MB
+sslcrtd_children 1
 acl sandbox src 172.20.0.2/32
 
 # api.anthropic.com carries inference. platform.claude.com carries OAuth token
