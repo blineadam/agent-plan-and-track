@@ -6,16 +6,20 @@
  * Usage: scan-context.js [EXTRA_SKILLS_DIR ...]
  * Output: JSON to stdout. Node built-ins only (fs, path, os); no jq/awk/wc.
  *
- * This is a faithful, cross-platform (Windows/macOS/Linux) port of the sibling
- * scan-context.sh. Same arguments, same environment variables, same defaults,
- * and byte-for-byte the same stdout for a given filesystem. All file walking
- * and text processing is done in pure JS so there is no bash/jq/awk dependency.
+ * This is a pure-Node, cross-platform (Windows/macOS/Linux) scanner: all file
+ * walking and text processing is done in JS, so there is no bash/jq/awk
+ * dependency. It was originally a port of a shell-plus-jq sibling script that
+ * PR #37 deleted once this file replaced it; the ordering and formatting
+ * choices documented below (e.g. shell-glob ordering, jq's pretty-printer)
+ * are carried over from that heritage for output stability, not because a
+ * sibling file still exists to stay in sync with.
  *
  * Tool-agnostic: scans the user-scope skills dir of Claude Code, GitHub Copilot,
  * and Codex (whichever exist), plus any dirs passed as arguments (e.g. this
  * repo's own skills/ when run from the repo root); each harness's instruction
- * file (CLAUDE.md / AGENTS.md / copilot-instructions.md); and the core-rules
- * digest (core-rules.md, plus core-rules.local.md) wherever it is installed.
+ * file (CLAUDE.md / AGENTS.md / copilot-instructions.md); the core-rules
+ * digest (core-rules.md, plus core-rules.local.md) wherever it is installed;
+ * and each harness's agent roster.
  *
  * Token estimate is deliberately crude: words x 1.3. It is a relative signal for
  * spotting bloat, not an exact tokenizer count.
@@ -26,8 +30,9 @@
  * (the on-demand cost), and size-flag on total file lines (in practice the
  * body; frontmatter is only a few lines).
  *
- * Thresholds (override via env): SKILL_LINE_LIMIT (400), RULES_LINE_LIMIT (100),
- * INSTRUCTIONS_LINE_LIMIT (300).
+ * Thresholds (override via env): SKILL_LINE_LIMIT (400), RULES_CHAR_LIMIT
+ * (10000, matching check-digest-preview.js's INLINE_THRESHOLD_CHARS),
+ * INSTRUCTIONS_CHAR_LIMIT (20000).
  *
  * Environment:
  *   CONTEXT_BUDGET_SKILLS_DIRS  Dirs to scan instead of the default harness
@@ -36,8 +41,12 @@
  *   CONTEXT_BUDGET_CONFIG_DIRS  Dirs to search for instruction files + the
  *                               core-rules digest instead of the defaults
  *                               (same delimiter).
+ *   CONTEXT_BUDGET_AGENTS_DIRS  Dirs to search for agent rosters instead of
+ *                               the default harness agents dirs (same
+ *                               delimiter). For testing.
  *
- * Parity notes (differences from the .sh that are cosmetic and intentional):
+ * Heritage notes (why the output looks the way it does; "the .sh" throughout
+ * these comments means the deleted sibling described above, not a live file):
  *   - Ordering. The .sh emits skills/configs in shell-glob order of temp files
  *     ("skill.<i>.json"), which is lexicographic on the index string, not
  *     numeric (0, 1, 10, 11, ... 19, 2, 20 ...). We reproduce that exact order
@@ -73,8 +82,12 @@ function intEnv(name, fallback) {
 }
 
 const SKILL_LINE_LIMIT = intEnv('SKILL_LINE_LIMIT', 400);
-const RULES_LINE_LIMIT = intEnv('RULES_LINE_LIMIT', 100);
-const INSTRUCTIONS_LINE_LIMIT = intEnv('INSTRUCTIONS_LINE_LIMIT', 300);
+// 10000 matches INLINE_THRESHOLD_CHARS in .github/scripts/check-digest-preview.js
+// (line 33): that is the real char count above which Claude Code stops
+// persisting hook stdout inline, so this threshold is grounded in that
+// measured harness behavior rather than invented.
+const RULES_CHAR_LIMIT = intEnv('RULES_CHAR_LIMIT', 10000);
+const INSTRUCTIONS_CHAR_LIMIT = intEnv('INSTRUCTIONS_CHAR_LIMIT', 20000);
 
 // --- Text metrics (pure JS equivalents of wc -w, wc -l, and the token math) ---
 
@@ -103,6 +116,17 @@ function tokensFromText(text) {
   return Math.trunc(wordCount(text) * 1.3 + 0.5);
 }
 
+// Character count for the rules/instructions size flag: JS string length
+// after UTF-8 decoding (UTF-16 code units), the same measurement
+// check-digest-preview.js's INLINE_THRESHOLD_CHARS gate uses (its
+// `content.length`), so a file classified under/over that threshold here
+// agrees with that script. ASCII text makes this identical to a byte count;
+// the repo's rules/instruction files are ASCII except for rare typographic
+// punctuation.
+function charCount(text) {
+  return text.length;
+}
+
 // The YAML frontmatter block (between the first two lines that are exactly
 // "---"), which is the always-on part of a skill. Mirrors the awk that prints
 // records while fm==1 and exits on the second "---". Split on \r?\n so a
@@ -121,6 +145,33 @@ function frontmatterText(content) {
     if (fm === 1) out.push(line);
   }
   return out.join('\n');
+}
+
+// A single scalar field's value from a YAML frontmatter block (as returned by
+// frontmatterText), e.g. `name: foo` or `description: "some text"`. Strips an
+// optional surrounding double-quote pair, the style Claude's and Copilot's
+// agent files use for description. Line-based, not a full YAML parser: fine
+// for the single-line name/description fields these agent files use.
+function yamlFieldValue(frontmatter, field) {
+  const m = frontmatter.match(new RegExp('^' + field + ':\\s*(.*)$', 'm'));
+  if (!m) return '';
+  let v = m[1].trim();
+  if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+  return v;
+}
+
+// A single top-level scalar field's value from a Codex agent TOML file, e.g.
+// `name = "foo"`. Reads only single-line `key = "value"` assignments and
+// stops at the `developer_instructions = '''` heredoc opener, so prose inside
+// that multi-line body is never mistaken for a top-level field.
+function tomlFieldValue(content, field) {
+  const re = new RegExp('^' + field + '\\s*=\\s*"(.*)"\\s*$');
+  for (const line of content.split(/\r?\n/)) {
+    if (/^developer_instructions\s*=/.test(line)) break;
+    const m = line.match(re);
+    if (m) return m[1];
+  }
+  return '';
 }
 
 // --- Path helpers ---
@@ -193,8 +244,15 @@ function findSkillFiles(dir) {
     }
     for (const ent of entries) {
       const full = joinChild(d, ent.name);
-      if (ent.isDirectory()) stack.push(full);
-      else if (ent.isFile() && ent.name === 'SKILL.md') out.push(full);
+      if (ent.isDirectory()) {
+        // Skip dot-prefixed dirs (e.g. .plan-and-track-pruned): a quarantined
+        // or hidden skill dir is not loaded by any session, so it should not
+        // be billed as always-on.
+        if (ent.name.startsWith('.')) continue;
+        stack.push(full);
+      } else if (ent.isFile() && ent.name === 'SKILL.md') {
+        out.push(full);
+      }
     }
   }
   return out;
@@ -229,16 +287,20 @@ function sum(values) {
 }
 
 // hstats: the per-harness always-on summary, matching the jq def of the same
-// name (empty arrays sum to 0, as in jq's `(... | add) // 0`).
-function harnessStats(skillsArr, configsArr) {
+// name (empty arrays sum to 0, as in jq's `(... | add) // 0`). Agent routing
+// text (name + description) is always-on the same way skill frontmatter is,
+// so it folds into always_on_tokens alongside it.
+function harnessStats(skillsArr, configsArr, agentsArr) {
   const fm = sum(skillsArr.map((s) => s.frontmatter_tokens));
   const ct = sum(configsArr.map((c) => c.tokens));
+  const art = sum(agentsArr.map((a) => a.routing_tokens));
   return {
     skill_count: skillsArr.length,
     skill_frontmatter_tokens: fm,
     skill_body_tokens: sum(skillsArr.map((s) => s.body_tokens)),
     config_tokens: ct,
-    always_on_tokens: fm + ct,
+    agent_routing_tokens: art,
+    always_on_tokens: fm + ct + art,
     oversized:
       skillsArr.filter((s) => s.over_limit).length +
       configsArr.filter((c) => c.over_limit).length,
@@ -259,6 +321,11 @@ function main() {
     path.join(HOME, '.copilot'),
     path.join(HOME, '.codex'),
   ];
+  const defaultAgentsDirs = [
+    path.join(HOME, '.claude', 'agents'),
+    path.join(HOME, '.copilot', 'agents'),
+    path.join(HOME, '.codex', 'agents'),
+  ];
 
   // CONTEXT_BUDGET_SKILLS_DIRS overrides the defaults, then positional args are
   // always appended (matching `skills_dirs+=("$@")`).
@@ -268,6 +335,9 @@ function main() {
 
   const configEnv = process.env.CONTEXT_BUDGET_CONFIG_DIRS;
   const configDirs = configEnv ? splitPathList(configEnv) : defaultConfigDirs.slice();
+
+  const agentsEnv = process.env.CONTEXT_BUDGET_AGENTS_DIRS;
+  const agentsDirs = agentsEnv ? splitPathList(agentsEnv) : defaultAgentsDirs.slice();
 
   // --- Skills ---
   // Build entries in the .sh's index order: for each existing, not-yet-seen dir
@@ -308,17 +378,61 @@ function main() {
       const file = joinChild(dir, base); // literal "$dir/$base", as the .sh writes it
       if (!isFile(file)) continue;
       const kind = base.startsWith('core-rules') ? 'rules' : 'instructions';
-      const limit = kind === 'rules' ? RULES_LINE_LIMIT : INSTRUCTIONS_LINE_LIMIT;
+      const limit = kind === 'rules' ? RULES_CHAR_LIMIT : INSTRUCTIONS_CHAR_LIMIT;
       const content = readFile(file);
       const tokens = content === null ? 0 : tokensFromText(content);
+      const chars = content === null ? 0 : charCount(content);
+      // `lines` stays reported alongside `chars` even though only `chars`
+      // gates over_limit: it is the Lines column of the summary table the
+      // skill's Phase 3 asks for, and dropping it would leave the two
+      // heaviest always-on components as the only rows that cannot fill it.
       const lines = content === null ? 0 : lineCount(content);
       configEntries.push({
         path: homeToTilde(file),
         kind,
         tokens,
+        chars,
         lines,
         limit,
-        over_limit: lines > limit,
+        over_limit: chars > limit,
+      });
+    }
+  }
+
+  // --- Agent rosters (routing text: name + description, always on) ---
+  // Flat, non-recursive per dir: unlike skills, agent files sit directly in
+  // the harness's agents dir with no per-agent subdirectory.
+  const agentEntries = [];
+  for (const dir of agentsDirs) {
+    if (!dir || !isDir(dir)) continue;
+    let dirEntries;
+    try {
+      dirEntries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    const files = dirEntries
+      .filter((e) => e.isFile() && (e.name.endsWith('.md') || e.name.endsWith('.toml')))
+      .map((e) => e.name)
+      .sort(byteCmp);
+    for (const base of files) {
+      const file = joinChild(dir, base);
+      const content = readFile(file);
+      if (content === null) continue;
+      let nameField;
+      let descField;
+      if (base.endsWith('.toml')) {
+        nameField = tomlFieldValue(content, 'name');
+        descField = tomlFieldValue(content, 'description');
+      } else {
+        const fm = frontmatterText(content);
+        nameField = yamlFieldValue(fm, 'name');
+        descField = yamlFieldValue(fm, 'description');
+      }
+      agentEntries.push({
+        path: homeToTilde(file),
+        name: nameField,
+        routing_tokens: tokensFromText(nameField + ' ' + descField),
       });
     }
   }
@@ -334,6 +448,7 @@ function main() {
   // Attach the harness classification (appended last, as jq's `. + {harness}`).
   const sk = globReorder(skillEntries).map((s) => ({ ...s, harness: harnessKey(s.source) }));
   const cf = globReorder(configEntries).map((c) => ({ ...c, harness: harnessKey(c.path) }));
+  const ag = agentEntries.map((a) => ({ ...a, harness: harnessKey(a.path) }));
 
   const byHarness = (arr, key) => arr.filter((x) => x.harness === key);
   const repoSkills = byHarness(sk, 'repo');
@@ -348,14 +463,14 @@ function main() {
   const result = {
     limits: {
       skill_lines: SKILL_LINE_LIMIT,
-      rules_lines: RULES_LINE_LIMIT,
-      instructions_lines: INSTRUCTIONS_LINE_LIMIT,
+      rules_chars: RULES_CHAR_LIMIT,
+      instructions_chars: INSTRUCTIONS_CHAR_LIMIT,
     },
     note: 'always_on_tokens is PER harness: a session pays one harness column, never the sum. repo_inventory is source skills from extra dirs passed as args (e.g. ./skills), not a session cost.',
     harnesses: {
-      claude: harnessStats(byHarness(sk, 'claude'), byHarness(cf, 'claude')),
-      copilot: harnessStats(byHarness(sk, 'copilot'), byHarness(cf, 'copilot')),
-      codex: harnessStats(byHarness(sk, 'codex'), byHarness(cf, 'codex')),
+      claude: harnessStats(byHarness(sk, 'claude'), byHarness(cf, 'claude'), byHarness(ag, 'claude')),
+      copilot: harnessStats(byHarness(sk, 'copilot'), byHarness(cf, 'copilot'), byHarness(ag, 'copilot')),
+      codex: harnessStats(byHarness(sk, 'codex'), byHarness(cf, 'codex'), byHarness(ag, 'codex')),
     },
     repo_inventory: {
       skill_count: repoSkills.length,
@@ -370,6 +485,7 @@ function main() {
     },
     skills: sk,
     configs: cf,
+    agents: ag,
   };
 
   // jq's default pretty-printer: 2-space indent, a trailing newline, and the
