@@ -10,6 +10,12 @@ Portable, user-scoped agent rules/skills/hooks for Claude Code, GitHub Copilot, 
 
 This repo's implicit conventions are captured in `.ai-style-rules.md` at the project root. Read it before writing or editing code here, and follow its Golden Files, naming/state-control rules, and DONTs.
 
+## Out of scope
+
+Before proposing something this repo does not already have, whether that is a skill, a hook, a rule, a new check, or a migration across existing files, and before adopting one from another repo, read [docs/out-of-scope.md](docs/out-of-scope.md).
+
+It holds this repo's decisions not to build something, so a later session does not re-propose ground already covered. It does not hold decisions about how an existing component behaves, which live in that component's own header, or corrections about how to work, which live in `tasks/lessons.md`. Adapted from [mattpocock/skills](https://github.com/mattpocock/skills).
+
 ## PR body convention
 
 A PR body describes the change as it stands, not the review history that produced it, and is structured as `## Summary` (required, first), then an optional `## Implementation`, then either `## Test plan` or `## Verification` (exactly one required).
