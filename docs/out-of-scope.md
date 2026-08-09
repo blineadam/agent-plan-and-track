@@ -16,7 +16,7 @@ Re-reviewed 2026-07-13 and 2026-07-16 during the ecc port. Its two outputs dupli
 
 ## Five other ecc skills stay skipped as redundant
 
-Redundant with skills already installed here: `verification-loop` (covered by `delivery-gate` plus the verify-before-done rule), `growth-log` (covered by `capture-lesson`), `token-budget-advisor` (covered by `context-budget`), `agent-self-evaluation` (covered by `skill-comply`), and `continuous-learning-v2` (declined 2026-07-13).
+Redundant with behavior already installed here, which is not always shipped as a skill: `verification-loop` is covered by the `delivery-gate` hook plus the verify-before-done rule, `growth-log` by `capture-lesson`, `token-budget-advisor` by `context-budget`, and `agent-self-evaluation` by `skill-comply`. `continuous-learning-v2` was declined on 2026-07-13.
 
 ## Frontmatter quoting needs no migration
 
@@ -34,6 +34,8 @@ Decided 2026-07-21. Subagents already inherit the managed block and the gateguar
 
 The `wizard` skill from `mattpocock/skills` generates an interactive bash script that walks a human through steps only they can perform: provisioning infrastructure, setting up credentials or CI secrets, navigating an unfamiliar third-party dashboard, or running a one-off migration or cutover.
 
-It surfaced as a candidate during the 2026-08-08 survey of that repo and was raised to the user as one of two remaining adoption candidates. The user declined it on 2026-08-09, saying they do not need credential provisioning.
+It surfaced as a candidate during the 2026-08-08 survey of that repo and was raised as one of two remaining adoption candidates. The repo owner declined it on 2026-08-09, in these words:
+
+> i dont actually need credential provisioning
 
 The skill's value is proportional to how often a project runs a manual provisioning procedure, and this repo installs rules and skills rather than provisioning infrastructure. Nothing stops a project that does need this kind of walkthrough from adding the skill later; this is a judgment about fit here, not about the skill's quality.
