@@ -90,13 +90,17 @@ egress off scores every case invalid instead of protecting it). A `mktemp -d` is
 a working directory, not a sandbox. Never pass `--dangerously-skip-permissions`
 here: it would let an injected scenario reach your home dir, credentials, and
 network unattended. If you can't containerize, keep normal permission prompts or
-an explicit tool allowlist. Keep stdout (the stream-json trace) and stderr
-(`--verbose` diagnostics) in **separate** files, or the diagnostics corrupt the
-trace and later lines won't parse as JSON:
+an explicit tool allowlist. Pin `--permission-mode default` in the command
+itself: without it, a sandbox HOME's own `defaultMode` setting governs instead,
+which could be a bypass posture that quietly defeats the advice above. Keep
+stdout (the stream-json trace) and stderr (`--verbose` diagnostics) in
+**separate** files, or the diagnostics corrupt the trace and later lines won't
+parse as JSON:
 
 ```bash
 # inside an isolated container/VM working dir
 claude -p "<scenario prompt>" --output-format stream-json --verbose \
+  --permission-mode default \
   > trace.jsonl 2> trace.err
 ```
 

@@ -132,7 +132,12 @@ ACTIVATION_ALLOW_SPEND=1 \
 **Isolate `--run`.** Each case is a real, tool-executing `claude -p` process, and
 a `forbid`/competing prompt *will* run tool calls, so run inside a container/VM
 with restricted mounts, and never pass `--dangerously-skip-permissions`. The
-script refuses `--run` unless `ACTIVATION_ALLOW_SPEND=1`.
+script refuses `--run` unless `ACTIVATION_ALLOW_SPEND=1`. `--run` also fixes
+`--permission-mode default` in its own argv, which overrides `defaultMode`
+from settings files (short of a Managed-scope `managed-settings.json`, which
+the documented setup path never creates), so the `PT_BYPASS_PERMISSIONS=1`
+sandbox-HOME install described under Behavioral smokes below cannot silently
+escalate this run's posture.
 
 Restrict egress to the model provider's API rather than sealing it off. A sealed
 sandbox is not the stricter choice here: the case cannot reach the API, so it
