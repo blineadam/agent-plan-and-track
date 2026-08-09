@@ -40,6 +40,26 @@ It surfaced as a candidate during the 2026-08-08 survey of that repo and was rai
 
 The skill's value is proportional to how often a project runs a manual provisioning procedure, and this repo installs rules and skills rather than provisioning infrastructure. Nothing stops a project that does need this kind of walkthrough from adding the skill later; this is a judgment about fit here, not about the skill's quality.
 
+## ASD-STE100 stays unadopted for rule text
+
+Proposed on 2026-08-09 by the repo owner, who opened with the observation that this repo has many writing rules "which have had issues holding up", and then:
+
+> I saw a suggestion to just put in the core-rules something similar to "Use ASD-STE100 Simplified Technical English (STE) for all prose and user responses"
+
+They pointed at `danyuchn/asd-ste100-skill` as a possible scoring companion and asked whether the change would simplify things.
+
+Three measurements settled it against adoption.
+
+The digest cannot carry it. On the day of the measurement `rules/core-rules.md` sat six characters under the 10,000-character inline-persistence ceiling that `.github/scripts/check-digest-preview.js` enforces, counted in characters because that is the unit the guard enforces. Rewriting the writing-voice bullet in STE style added 130 characters and took the file to 10,124, which the guard rejects. Both bullets rewritten for this evaluation grew, one by 35 percent and one by 17 percent, which is what STE's one-instruction-per-sentence and keep-every-word-explicit rules would predict, though two rewrites establish a direction rather than a general rate. Crossing that ceiling reverts the digest to a roughly 2KB inline preview plus a file pointer, which is the delivery failure the character budget exists to prevent.
+
+Applied anyway, it changed no behavior. An A/B compared the writing-voice bullet's current wording against an STE rewrite, with an identical offsetting cut in both arms so the wording was the only variable, over four prose scenarios in fresh isolated sessions. Both arms scored identically on every scenario, passing both neutral prompts and failing both prompts that pushed toward bulleted output. The control arm failed twice, so the measurement had room to show an improvement and showed none.
+
+The clearest available restatement still did not hold. The STE arm states the em dash ban as its own short dedicated sentence rather than a parenthetical aside, and both arms emitted an em dash under formatting pressure regardless. This round found no sign that clearer rule text helps, on the strength of one run per scenario against a single model, which is enough to withhold the change and not enough to rule the effect out.
+
+One assumption behind the proposal does not hold. The upstream skill ships no scoring script, producing a qualitative before-and-after table instead, so it cannot serve as the mechanical check the proposal imagined. Its stated scope is otherwise a fit here, since it explicitly targets prompts, system messages, tool descriptions, and inter-agent instructions, and excludes only creative or persuasive copy. That exclusion is where the `humanizer` skill governs instead, and it does not argue against the rule-text use evaluated above.
+
+Two things would reopen this: evidence that rule wording measurably affects compliance, which this round looked for and did not find, or a digest with enough headroom to absorb STE's expansion without losing inline delivery. The evidence here is directional rather than statistical, at one run per scenario per arm and on Claude only.
+
 ## `resolving-merge-conflicts` stays its own skill
 
 Proposed on 2026-08-09 by the repo owner, who asked whether `yeet` should reference `resolving-merge-conflicts` and then argued the stronger form:
