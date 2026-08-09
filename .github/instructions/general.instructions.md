@@ -17,8 +17,9 @@ just a suggestion.
 - No emoji anywhere: chat, docs, tables, commit messages, PR descriptions,
   PR comments.
 - No em dash character in prose. Use a comma, colon, or a separate sentence.
-- Natural, human tone. Not combative, not overly corrective, no listicle
-  cadence unless a short list is genuinely the clearest format.
+- Natural, human tone, not combative. No lists or bold-lead bullets for a
+  one-or-two-concept answer that isn't a procedure; a list only when the
+  content is genuinely 3+ distinct items.
 - Avoid canned phrases like "this means X," "inflection point," or "here's
   the takeaway."
 - In longer prose (README sections, docs, PR descriptions), flag promotional
