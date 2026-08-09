@@ -205,7 +205,8 @@ skill's own `--check` uses for routing.
 
 Each case in `behavioral-cases.jsonl` is `{ id, skill, prompt, max_turns,
 fixture, setup?, allowed_tools?, assertions: [{ kind: file_regex |
-response_regex | trace_agent_dispatch_count, ... }], note }`. `fixture` names
+response_regex | trace_agent_dispatch_count | trace_agent_dispatch_names,
+... }], note }`. `fixture` names
 a directory under `fixtures/behavioral/` copied into the case's working
 directory before the agent runs (a file the skill's mandated output must be
 appended to, not clobber). Unlike this skill's own routing prompts, a
@@ -225,21 +226,32 @@ review a batch, for instance): a non-empty array of bare tool names (e.g.
 CLI), each matching `/^[A-Za-z][A-Za-z0-9_]*$/`. No case is ever run with a
 bypass or skip-permissions posture.
 
-`response_regex` and `trace_agent_dispatch_count` each hard-fail only what
-they literally measure, per the narrower-than-its-rule disclosure this repo's
-checks carry: `response_regex` hard-fails when its regex doesn't match
-assistant text, proving only that the marker starts some line, not that it
-was the review's first line; `trace_agent_dispatch_count` hard-fails when the
-trace's de-duplicated Task/Agent tool_use count falls outside `[min, max]`,
-proving only how many dispatches happened, not the identity or independence
-of the agents dispatched. `min` must be an integer >= 0; a bare `min: 0` with
-no `max` asserts nothing (any count satisfies it) and is rejected, but
-`{min: 0, max: 0}` is a real, useful assertion ("no dispatches happened") and
-is accepted. A single case asserting either "always high risk, always two
-dispatches" or "always normal risk, never dispatches" can pass by ignoring
-the diff entirely: `plan-and-track-risk-classification` and its
-`-normal` counterpart are a deliberate discriminating pair for exactly this
-reason, and only make sense scored together.
+`response_regex`, `trace_agent_dispatch_count`, and `trace_agent_dispatch_names`
+each hard-fail only what they literally measure, per the narrower-than-its-rule
+disclosure this repo's checks carry: `response_regex` hard-fails when its regex
+doesn't match assistant text, proving only that the marker starts some line,
+not that it was the review's first line; `trace_agent_dispatch_count`
+hard-fails when the trace's de-duplicated Task/Agent tool_use count falls
+outside `[min, max]`, proving only how many dispatches happened, not the
+identity or independence of the agents dispatched. `min` must be an integer
+>= 0; a bare `min: 0` with no `max` asserts nothing (any count satisfies it)
+and is rejected, but `{min: 0, max: 0}` is a real, useful assertion ("no
+dispatches happened") and is accepted. A single case asserting either "always
+high risk, always two dispatches" or "always normal risk, never dispatches"
+can pass by ignoring the diff entirely: `plan-and-track-risk-classification`
+and its `-normal` counterpart are a deliberate discriminating pair for exactly
+this reason, and only make sense scored together. `trace_agent_dispatch_names`
+hard-fails when a listed `forbid` name matches a dispatched agent's identity
+(checked first, the more specific failure) or when no listed `expect` name
+matches (any-of, not all-of); it proves identity presence in the trace only,
+never that the dispatched agent ran, returned anything usable, or produced a
+particular result, and a dispatch whose identity field isn't exposed is
+invisible to both directions, so `forbid` can only prove no readable forbidden
+dispatch, not true absence. Neither direction is required alone, but an
+assertion with neither is rejected as vacuous, the same rejection the bare
+`min: 0` count case gets above; each present array must be non-empty and match
+`/^[a-z][a-z0-9-]*$/`, and naming the same agent in both `expect` and `forbid`
+is rejected too.
 
 Same three modes as this skill's own runner, with one deliberate difference:
 `--dry-run` here lints the corpus and exits 1 on any problem (a CI guard, not
@@ -250,11 +262,18 @@ just a listing).
 - `--run [RESULTS_DIR] [CORPUS]`: invoke `claude -p` per case (billable, behind
   the same `ACTIVATION_ALLOW_SPEND=1` gate).
 
-A `trace_agent_dispatch_count` case needs the roster installed before `--run`
-does anything else: `PT_BYPASS_PERMISSIONS=1 HOME=<sandbox> ./install.sh
-claude` installs it into a sandbox `HOME` with a bypass posture that avoids an
-interactive confirmation stalling a headless run. `--run` refuses up front,
-before spending, when the corpus needs a roster and none is installed.
+A `trace_agent_dispatch_count` or `trace_agent_dispatch_names` case needs the
+roster installed before `--run` does anything else: `PT_BYPASS_PERMISSIONS=1
+HOME=<sandbox> ./install.sh claude` installs it into a sandbox `HOME` with a
+bypass posture that avoids an interactive confirmation stalling a headless
+run. The required set is derived from the whole corpus, not one fixed list:
+the existing fixed pair, architect-reviewer.md and security-auditor.md, for
+any `trace_agent_dispatch_count` case, plus every agent named in either
+`expect` or `forbid` of any `trace_agent_dispatch_names` case. Both
+directions matter: skipping `forbid` names would let an uninstalled
+forbidden agent satisfy a forbid trivially, since a dispatch that can't
+happen never appears in the trace either. `--run` refuses up front, before
+spending, when the corpus needs a roster and any required entry is missing.
 
 Scoring is liveness-first: a trace's terminal `result` event must show
 `subtype: "success"`, a falsy `is_error`, `num_turns > 0`, and
@@ -262,6 +281,16 @@ Scoring is liveness-first: a trace's terminal `result` event must show
 `invalid`, never a pass and never a negative, distinct from a real behavioral
 failure. Only a live run is checked for activation, and only a live,
 activated run is checked against its file assertions.
+
+The four `efficient-frontier-threat-model-delegation`,
+`efficient-frontier-architecture-review-delegation`,
+`efficient-frontier-advisor-consult`, and
+`efficient-frontier-user-decision-no-consult` cases in this corpus exist for
+the reason Phase 3's "Right substance, no Skill invocation" bullet already
+names: a routing-corpus checker reads Skill invocation only, so an ask where
+the agent roster delivers the right substance with no governing skill ever
+firing belongs here instead of tuned against a description that was never
+the problem.
 
 Run the free process-control fixtures after changing either live runner:
 

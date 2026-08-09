@@ -23,7 +23,8 @@
  *     assertions: [
  *       { kind: "file_regex", path, regex, flags } |
  *       { kind: "response_regex", regex, flags } |
- *       { kind: "trace_agent_dispatch_count", min, max? }
+ *       { kind: "trace_agent_dispatch_count", min, max? } |
+ *       { kind: "trace_agent_dispatch_names", expect?, forbid? }
  *     ], note }
  * `fixture` names a directory under fixtures/behavioral/ that is copied into
  * the case's working directory before the agent runs (a file the skill's
@@ -39,12 +40,32 @@
  * trace's Task/Agent tool_use count (de-duplicated by id) falls outside
  * [min, max]: it only proves HOW MANY Task/Agent tool_use objects the trace
  * carries, not that the dispatched agents were the two independent
- * reviewers a rule names. Any trace_agent_dispatch_count case run via --run
- * needs the reviewer-capable roster entries the dispatch assertion actually
- * depends on installed (~/.claude/agents/architect-reviewer.md and
- * ~/.claude/agents/security-auditor.md) first, or the count would measure
- * the sandbox, not the skill; --run dies up front, before spending, when a
- * corpus needs the dispatch assertion and either entry is missing.
+ * reviewers a rule names. A `trace_agent_dispatch_names` assertion
+ * hard-fails the case on WHICH agents were dispatched rather than how many:
+ * `forbid` fails the case when any listed name matches a dispatched agent's
+ * identity (checked first, since a forbidden dispatch is the more specific
+ * failure), and `expect` is any-of (fails unless at least one listed name
+ * matches; not all-of). Identity is read from the same Task/Agent tool_use
+ * objects `trace_agent_dispatch_count` counts, so it proves identity
+ * PRESENCE in the trace only, never that the dispatched agent ran, returned,
+ * or produced anything useful; a dispatch whose identity field the harness
+ * doesn't expose is invisible to both directions, so `forbid` can only prove
+ * "no *readable* forbidden dispatch", not true absence. At least one of
+ * `expect`/`forbid` is required (neither present is rejected as vacuous, the
+ * same rejection the `trace_agent_dispatch_count` bare min:0 case gets);
+ * each present array must be non-empty and match /^[a-z][a-z0-9-]*$/, and
+ * the same name is rejected if it names both `expect` and `forbid`. Any
+ * trace_agent_dispatch_count or trace_agent_dispatch_names case run via
+ * --run needs the roster entries those assertions actually depend on
+ * installed first, or the measurement would measure the sandbox, not the
+ * skill: the required set is derived from the corpus, always
+ * ~/.claude/agents/architect-reviewer.md and
+ * ~/.claude/agents/security-auditor.md for a trace_agent_dispatch_count
+ * case, plus ~/.claude/agents/<name>.md for every name in both a
+ * trace_agent_dispatch_names case's expect and its forbid (both
+ * directions: an uninstalled forbidden agent would otherwise satisfy a
+ * forbid trivially); --run dies up front, before spending, when the corpus
+ * needs the roster and any required entry is missing.
  * response_regex and file_regex both compile an operator-supplied pattern and
  * run it over trace/file text this runner caps at 64 MB, so a catastrophic
  * pattern can hang the single-threaded scorer while the per-case timeout only
@@ -118,6 +139,7 @@ const { spawn, spawnSync } = require('child_process');
 const SCRIPT_DIR = __dirname;
 const DEFAULT_CORPUS = path.join(SCRIPT_DIR, '..', 'fixtures', 'behavioral-cases.jsonl');
 const DISPATCH_TOOL_NAMES = new Set(['task', 'agent']);
+const AGENT_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 const FORCE_SETTLE_MS = 100;
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const MAX_TIMER_MS = 2_147_483_647;
@@ -259,6 +281,47 @@ function agentDispatchCount(traceFile) {
   return ids.size + idless;
 }
 
+// The set of agent identities a trace dispatched via the Task/Agent tool,
+// harness-tolerant in the same shape as activatedSkills(): identity is read
+// from input.subagent_type (confirmed against a real captured Claude Code
+// trace), falling back to input.agent_type, input.agent, then
+// arguments.subagent_type. Returns a sorted, de-duplicated array. A dispatch
+// whose identity isn't exposed in any of these fields contributes nothing:
+// this function can under-report a dispatch, never invent one, which means a
+// `forbid` assertion built on it can only prove "no *readable* forbidden
+// dispatch", not true absence.
+function agentDispatchNames(traceFile) {
+  const set = new Set();
+  let text;
+  try {
+    text = fs.readFileSync(traceFile, 'utf8');
+  } catch {
+    return [];
+  }
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    for (const obj of walkObjects(parsed)) {
+      if (obj.type !== 'tool_use' || typeof obj.name !== 'string') continue;
+      if (!DISPATCH_TOOL_NAMES.has(obj.name.toLowerCase())) continue;
+      let agent = null;
+      const input = obj.input;
+      const args = obj.arguments;
+      if (input && input.subagent_type != null && input.subagent_type !== '') agent = input.subagent_type;
+      else if (input && input.agent_type != null && input.agent_type !== '') agent = input.agent_type;
+      else if (input && input.agent != null && input.agent !== '') agent = input.agent;
+      else if (args && args.subagent_type != null && args.subagent_type !== '') agent = args.subagent_type;
+      if (agent != null && agent !== '') set.add(String(agent));
+    }
+  }
+  return Array.from(set).sort();
+}
+
 // Text a response_regex assertion may match: assistant `text` blocks scoped
 // to assistant-type events only, plus the terminal result's `result` string
 // when it is a string. This scoping is what stops a prompt echo or a tool
@@ -333,6 +396,20 @@ function allowedToolsIsValid(tools) {
   );
 }
 
+// A trace_agent_dispatch_names assertion's `expect`/`forbid` are each a
+// non-empty array of agent names matching AGENT_NAME_PATTERN. Shared by
+// lintCase, scoreCase, and the modeRun roster preflight so the three sites
+// can't drift apart. The grammar matters beyond shape: these names get
+// interpolated into a `<name>.md` path under ~/.claude/agents by the
+// preflight, so a name outside this pattern could escape that directory.
+function agentNameListIsValid(names) {
+  return (
+    Array.isArray(names) &&
+    names.length > 0 &&
+    names.every((n) => typeof n === 'string' && AGENT_NAME_PATTERN.test(n))
+  );
+}
+
 // Validates the assertions COLLECTION itself (missing, null, not an array, or
 // empty), shared by lintCase, the modeRun pre-spawn guard, and scoreCase so
 // the three sites can't disagree about what a well-formed collection is. Must
@@ -391,8 +468,29 @@ function assertionShapeProblems(a) {
     if (a.max !== undefined && !(Number.isInteger(a.max) && a.max >= a.min)) {
       problems.push('max must be an integer >= min');
     }
+  } else if (kind === 'trace_agent_dispatch_names') {
+    if (a.expect === undefined && a.forbid === undefined) {
+      problems.push('needs expect, forbid, or both: an assertion with neither asserts nothing');
+    } else {
+      let expectValid = true;
+      let forbidValid = true;
+      if (a.expect !== undefined && !agentNameListIsValid(a.expect)) {
+        expectValid = false;
+        problems.push('expect must be a non-empty array of agent names matching /^[a-z][a-z0-9-]*$/');
+      }
+      if (a.forbid !== undefined && !agentNameListIsValid(a.forbid)) {
+        forbidValid = false;
+        problems.push('forbid must be a non-empty array of agent names matching /^[a-z][a-z0-9-]*$/');
+      }
+      if (a.expect !== undefined && a.forbid !== undefined && expectValid && forbidValid) {
+        const sharedNames = a.expect.filter((n) => a.forbid.includes(n));
+        if (sharedNames.length > 0) {
+          problems.push(`expect and forbid must not name the same agent: ${sharedNames.join(', ')}`);
+        }
+      }
+    }
   } else {
-    problems.push('kind must be file_regex, response_regex, or trace_agent_dispatch_count');
+    problems.push('kind must be file_regex, response_regex, trace_agent_dispatch_count, or trace_agent_dispatch_names');
   }
   return problems;
 }
@@ -670,6 +768,30 @@ function scoreCase(c, resultsDir, dups, runState) {
           id,
           status: 'fail',
           reason: `assertion failed: ${count} subagent dispatches, expected min ${a.min}${suffix}`,
+          activated,
+        };
+      }
+      continue;
+    }
+    if (a.kind === 'trace_agent_dispatch_names') {
+      const names = agentDispatchNames(trace);
+      const seen = new Set(names.map((n) => n.toLowerCase()));
+      if (a.forbid !== undefined) {
+        const hit = a.forbid.find((n) => seen.has(n.toLowerCase()));
+        if (hit !== undefined) {
+          return {
+            id,
+            status: 'fail',
+            reason: `assertion failed: dispatched forbidden agent ${hit}, from [${names.join(', ')}]`,
+            activated,
+          };
+        }
+      }
+      if (a.expect !== undefined && !a.expect.some((n) => seen.has(n.toLowerCase()))) {
+        return {
+          id,
+          status: 'fail',
+          reason: `assertion failed: dispatched [${names.join(', ')}], expected one of [${a.expect.join(', ')}]`,
           activated,
         };
       }
@@ -974,28 +1096,50 @@ async function modeRun(args) {
   const fixturesDir = path.join(path.dirname(corpus), 'behavioral');
   const attempted = new Set();
 
-  // A trace_agent_dispatch_count assertion measures how many subagents the
-  // real installed roster dispatches; without the reviewer-capable agents
-  // the dispatch assertion actually depends on, the count would only
-  // measure the sandbox, not the skill. Checked once, up front, so a whole
-  // run doesn't spend on a foregone-invalid case count.
-  const needsRoster = cases.some(
-    (c) => Array.isArray(c.assertions) && c.assertions.some((a) => a && a.kind === 'trace_agent_dispatch_count')
-  );
-  if (needsRoster) {
+  // A trace_agent_dispatch_count or trace_agent_dispatch_names assertion
+  // measures what the real installed roster dispatches; without the agents
+  // those assertions actually depend on, the measurement would only reflect
+  // the sandbox, not the skill. The required set is derived from the corpus:
+  // any trace_agent_dispatch_count assertion needs the two reviewer-capable
+  // agents, and any trace_agent_dispatch_names assertion needs <name>.md for
+  // every name in BOTH its expect and its forbid, since an uninstalled
+  // forbidden agent would satisfy a forbid trivially. Checked once, up
+  // front, so a whole run doesn't spend on a foregone-invalid case.
+  const requiredAgents = new Set();
+  if (
+    cases.some(
+      (c) => Array.isArray(c.assertions) && c.assertions.some((a) => a && a.kind === 'trace_agent_dispatch_count')
+    )
+  ) {
+    requiredAgents.add('architect-reviewer.md');
+    requiredAgents.add('security-auditor.md');
+  }
+  for (const c of cases) {
+    if (!Array.isArray(c.assertions)) continue;
+    for (const a of c.assertions) {
+      if (!a || a.kind !== 'trace_agent_dispatch_names') continue;
+      // A malformed expect/forbid is scored invalid by the existing
+      // per-case guard below and never spawns; collecting its raw,
+      // unvalidated names here would instead die() the whole run over an
+      // agent name nobody will ever look up, blocking valid sibling cases.
+      if (agentNameListIsValid(a.expect)) for (const n of a.expect) requiredAgents.add(`${n}.md`);
+      if (agentNameListIsValid(a.forbid)) for (const n of a.forbid) requiredAgents.add(`${n}.md`);
+    }
+  }
+  if (requiredAgents.size > 0) {
     const agentsDir = path.join(os.homedir(), '.claude', 'agents');
-    const requiredAgents = ['architect-reviewer.md', 'security-auditor.md'];
+    const requiredList = Array.from(requiredAgents).sort();
     let present = new Set();
     if (isDir(agentsDir)) {
       try {
         present = new Set(fs.readdirSync(agentsDir));
       } catch {}
     }
-    const missing = requiredAgents.filter((entry) => !present.has(entry));
+    const missing = requiredList.filter((entry) => !present.has(entry));
     if (missing.length > 0) {
       die(
-        `error: a trace_agent_dispatch_count assertion needs the reviewer-capable roster entries ` +
-          `${requiredAgents.join(', ')} installed at ${agentsDir}; missing: ${missing.join(', ')} ` +
+        `error: a trace_agent_dispatch_count or trace_agent_dispatch_names assertion needs the roster ` +
+          `entries ${requiredList.join(', ')} installed at ${agentsDir}; missing: ${missing.join(', ')} ` +
           '(fix: PT_BYPASS_PERMISSIONS=1 HOME=<sandbox> ./install.sh claude); without them a dispatch ' +
           'assertion measures the sandbox, not the skill.'
       );

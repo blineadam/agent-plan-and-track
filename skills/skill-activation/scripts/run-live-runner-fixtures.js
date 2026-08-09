@@ -81,6 +81,10 @@ function writeFakeExecutables(binDir) {
       "    content.push({type:'tool_use',id:'d1',name:'Task',input:{}});",
       "    content.push({type:'tool_use',id:'d2',name:'Agent',input:{}});",
       "  }",
+      "  if (prompt.includes('dispatch-named')) {",
+      "    content.push({type:'tool_use',id:'n1',name:'Task',input:{subagent_type:'architect-reviewer'}});",
+      "    content.push({type:'tool_use',id:'n2',name:'Agent',input:{subagent_type:'security-auditor'}});",
+      "  }",
       "  if (prompt.includes('risk-line')) {",
       "    content.push({type:'text',text:'Risk: high (concurrency)'});",
       "  }",
@@ -1467,6 +1471,158 @@ async function testBehavioralZeroMaxDispatchCount(binDir) {
   );
 }
 
+async function testBehavioralDispatchNames(binDir) {
+  const root = path.join(scratchRoot, 'dispatch-names');
+  fs.mkdirSync(root, { recursive: true });
+
+  // Seed a scratch HOME with a roster containing architect-reviewer,
+  // security-auditor, and fable-advisor, mirroring the scratch-roster
+  // seeding pattern used by the dispatch-count preflight tests above.
+  // planner.md is deliberately absent, for the preflight-refusal case below.
+  const home = path.join(root, 'home');
+  const agentsDir = path.join(home, '.claude', 'agents');
+  fs.mkdirSync(agentsDir, { recursive: true });
+  fs.writeFileSync(path.join(agentsDir, 'architect-reviewer.md'), '# architect-reviewer\n');
+  fs.writeFileSync(path.join(agentsDir, 'security-auditor.md'), '# security-auditor\n');
+  fs.writeFileSync(path.join(agentsDir, 'fable-advisor.md'), '# fable-advisor\n');
+
+  // --- pass/forbid-fail/expect-fail trio, one --run against the seeded
+  // roster. ---------------------------------------------------------------
+  const runRoot = path.join(root, 'run');
+  const corpus = makeBehavioralCorpus(runRoot, [
+    {
+      id: 'names-pass',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-named',
+      max_turns: 2,
+      fixture: 'names-pass',
+      assertions: [
+        { kind: 'trace_agent_dispatch_names', expect: ['architect-reviewer'], forbid: ['fable-advisor'] },
+      ],
+    },
+    {
+      id: 'names-forbid-fail',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-named',
+      max_turns: 2,
+      fixture: 'names-forbid-fail',
+      assertions: [
+        { kind: 'trace_agent_dispatch_names', expect: ['architect-reviewer'], forbid: ['security-auditor'] },
+      ],
+    },
+    {
+      id: 'names-expect-fail',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-named',
+      max_turns: 2,
+      fixture: 'names-expect-fail',
+      assertions: [{ kind: 'trace_agent_dispatch_names', expect: ['fable-advisor'] }],
+    },
+  ]);
+  const results = path.join(runRoot, 'results');
+  const run = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', results, corpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      HOME: home,
+      USERPROFILE: home,
+    })
+  );
+  const report = parseReport(run, 'behavioral dispatch names trio');
+  assert(run.code === 1, `dispatch names trio exited ${run.code}, expected 1`);
+  assert(
+    report.passed === 1 && report.failed === 2,
+    `dispatch names trio scored passed=${report.passed} failed=${report.failed}, expected passed=1 failed=2`
+  );
+  const byId = Object.fromEntries(report.cases.map((c) => [c.id, c]));
+  assert(byId['names-pass'].status === 'pass', 'names-pass did not pass');
+  assert(
+    byId['names-forbid-fail'].status === 'fail' &&
+      byId['names-forbid-fail'].reason.includes('forbidden agent security-auditor'),
+    `names-forbid-fail did not fail with the expected reason: ${JSON.stringify(byId['names-forbid-fail'])}`
+  );
+  assert(
+    byId['names-expect-fail'].status === 'fail' &&
+      byId['names-expect-fail'].reason.includes('expected one of'),
+    `names-expect-fail did not fail with the expected reason: ${JSON.stringify(byId['names-expect-fail'])}`
+  );
+
+  // --- lint: a vacuous assertion (neither expect nor forbid). -----------------
+  const vacuousRoot = path.join(root, 'lint-vacuous');
+  const vacuousCorpus = makeBehavioralCorpus(vacuousRoot, [
+    {
+      id: 'names-vacuous',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-named',
+      max_turns: 2,
+      fixture: 'names-vacuous',
+      assertions: [{ kind: 'trace_agent_dispatch_names' }],
+    },
+  ]);
+  const vacuousRun = await runNode(BEHAVIORAL_RUNNER, ['--dry-run', vacuousCorpus], baseEnv(binDir));
+  const vacuousReport = parseReport(vacuousRun, 'dispatch names vacuous lint');
+  assert(vacuousRun.code === 1, `vacuous dispatch names dry-run exited ${vacuousRun.code}, expected 1`);
+  assert(
+    vacuousReport.cases[0].problems.some((p) => p.includes('asserts nothing')),
+    'a trace_agent_dispatch_names assertion with neither expect nor forbid was not flagged as vacuous'
+  );
+
+  // --- lint: a malformed name list (capitalized/spaced). ----------------------
+  const malformedRoot = path.join(root, 'lint-malformed');
+  const malformedCorpus = makeBehavioralCorpus(malformedRoot, [
+    {
+      id: 'names-malformed',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-named',
+      max_turns: 2,
+      fixture: 'names-malformed',
+      assertions: [{ kind: 'trace_agent_dispatch_names', expect: ['Architect Reviewer'] }],
+    },
+  ]);
+  const malformedRun = await runNode(BEHAVIORAL_RUNNER, ['--dry-run', malformedCorpus], baseEnv(binDir));
+  const malformedReport = parseReport(malformedRun, 'dispatch names malformed lint');
+  assert(malformedRun.code === 1, `malformed dispatch names dry-run exited ${malformedRun.code}, expected 1`);
+  assert(
+    malformedReport.cases[0].problems.some((p) => p.includes('expect must be a non-empty array')),
+    'a malformed trace_agent_dispatch_names expect list was not flagged'
+  );
+
+  // --- preflight refusal: expect names an agent absent from the roster. ------
+  const preflightRoot = path.join(root, 'preflight-missing');
+  const preflightCorpus = makeBehavioralCorpus(preflightRoot, [
+    {
+      id: 'names-missing-agent',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-named',
+      max_turns: 2,
+      fixture: 'names-missing-agent',
+      assertions: [{ kind: 'trace_agent_dispatch_names', expect: ['planner'] }],
+    },
+  ]);
+  const preflightMarker = path.join(preflightRoot, 'spawned');
+  const preflightRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(preflightRoot, 'results'), preflightCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      FAKE_SPAWN_MARKER: preflightMarker,
+      HOME: home,
+      USERPROFILE: home,
+    })
+  );
+  assert(
+    preflightRun.code !== 0,
+    `a trace_agent_dispatch_names case naming an agent absent from the roster exited ${preflightRun.code}, expected nonzero`
+  );
+  assert(
+    !fs.existsSync(preflightMarker),
+    'a trace_agent_dispatch_names case naming an agent absent from the roster spawned an agent process'
+  );
+}
+
 async function testBehavioralSetupEnvScrub(binDir) {
   const root = path.join(scratchRoot, 'setup-env-scrub');
   fs.mkdirSync(root, { recursive: true });
@@ -1899,6 +2055,7 @@ async function main() {
   await testBehavioralAssertionsAndSetup(binDir);
   await testBehavioralAllowedTools(binDir);
   await testBehavioralZeroMaxDispatchCount(binDir);
+  await testBehavioralDispatchNames(binDir);
   await testBehavioralSetupEnvScrub(binDir);
   await testCodex(binDir, codexRunner);
   await testParentSignal(binDir);

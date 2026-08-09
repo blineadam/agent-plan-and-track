@@ -1,0 +1,7 @@
+{
+  "name": "session-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client for calling an internal API with short-lived session tokens",
+  "main": "src/api-client.js"
+}
