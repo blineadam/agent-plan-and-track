@@ -1,0 +1,12 @@
+{
+  "hooks": [
+    {
+      "event": "PreCommit",
+      "command": "node hooks/format-lint.js"
+    },
+    {
+      "event": "PostTurn",
+      "command": "node hooks/session-stats.js"
+    }
+  ]
+}
