@@ -1,0 +1,119 @@
+{
+  "cases": [
+    {
+      "id": "em_dash_prose_warns",
+      "input": {
+        "last_assistant_message": "The fix landed—tests pass now."
+      },
+      "expect": "warn",
+      "expectContains": "an em dash"
+    },
+    {
+      "id": "em_dash_fenced_allowed",
+      "input": {
+        "last_assistant_message": "Here is the change:\n\n```js\nconst label = 'a—b';\n```\n"
+      },
+      "expect": "allow"
+    },
+    {
+      "id": "emoji_prose_warns",
+      "input": {
+        "last_assistant_message": "Shipped it ✅ all tests green."
+      },
+      "expect": "warn",
+      "expectContains": "an emoji"
+    },
+    {
+      "id": "emoji_inline_code_allowed",
+      "input": {
+        "last_assistant_message": "The constant is named `OK_✅_FLAG` in the fixture."
+      },
+      "expect": "allow"
+    },
+    {
+      "id": "preamble_opener_prose_warns",
+      "input": {
+        "last_assistant_message": "Let me check that error for you."
+      },
+      "expect": "warn",
+      "expectContains": "Let me"
+    },
+    {
+      "id": "preamble_opener_fenced_allowed",
+      "input": {
+        "last_assistant_message": "```\nLet me know if this comment shows up\n```\nThe fix landed in commit abc123."
+      },
+      "expect": "allow"
+    },
+    {
+      "id": "clean_message_allowed",
+      "input": {
+        "last_assistant_message": "The fix landed in commit abc123. Tests pass."
+      },
+      "expect": "allow"
+    },
+    {
+      "id": "preamble_opener_block_mode",
+      "input": {
+        "last_assistant_message": "I'll look into that now."
+      },
+      "env": {
+        "DELIVERY_GATE_BLOCK": "1"
+      },
+      "expect": "block",
+      "expectContains": "I'll"
+    },
+    {
+      "id": "voice_check_falls_back_to_transcript_tail",
+      "input": {},
+      "transcript": [
+        {
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hi"
+              }
+            ]
+          }
+        },
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Sure thing—done."
+              }
+            ]
+          }
+        }
+      ],
+      "expect": "warn",
+      "expectContains": "an em dash"
+    },
+    {
+      "id": "em_dash_tilde_fence_allowed",
+      "input": {
+        "last_assistant_message": "Here is the change:\n\n~~~js\nconst label = 'a—b';\n~~~\n"
+      },
+      "expect": "allow"
+    },
+    {
+      "id": "em_dash_double_backtick_span_allowed",
+      "input": {
+        "last_assistant_message": "The value is ``a—b`` in the fixture."
+      },
+      "expect": "allow"
+    },
+    {
+      "id": "preamble_opener_curly_apostrophe_warns",
+      "input": {
+        "last_assistant_message": "I’ll look into that error."
+      },
+      "expect": "warn",
+      "expectContains": "I'll"
+    }
+  ]
+}

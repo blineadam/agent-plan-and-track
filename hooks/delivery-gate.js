@@ -31,6 +31,20 @@
  *    work", "didn't run", ...) → nudge to actually verify.
  *  - Agreement opener + self-blame in recent assistant text -> evidence-free
  *    capitulation nudge (re-derive, then state the fact, no meta-narration).
+ *  - Writing-voice violation (em dash, emoji, or a "Let me"/"I'll" opening) in
+ *    the model's own final message, backing the writing-voice standing rule.
+ *    Checked on that one message only (last_assistant_message, falling back to
+ *    the transcript tail's own most recent assistant text block), not the
+ *    multi-message rationalization/capitulation window, since "opens with X"
+ *    is a property of a single message. Fenced code, inline code, and quoted
+ *    spans are stripped first via stripSecondhand() so a quoted example or a
+ *    code comment is never mistaken for the model's own voice, the same
+ *    carve-out lint-pr-body.js makes for secondhand PR-body text. In
+ *    WARN-ONLY mode this can only ever surface after the message it flags,
+ *    since a Stop hook fires once the message is already sent: it has no way
+ *    to make the model revise that same message. Only DELIVERY_GATE_BLOCK=1
+ *    forces the corrective extra turn where the model can see the reason and
+ *    fix its own output before actually stopping.
  *  - Low free disk on the working directory.
  *
  * Two transcript formats are read in one pass, keyed off record shape:
@@ -176,12 +190,70 @@ const SELF_BLAME = /\b(?:i (?:over-?corrected|over-?reacted|was wrong)|my (?:mis
 // else's words, so they come out before the capitulation scan. Same carve-out
 // the PR-body lint makes for secondhand text. Single quotes are left alone:
 // the apostrophes in "you're" and "didn't" would swallow whole sentences.
+// Fence and inline-code matching use a backreference to the opening
+// delimiter's exact text rather than a hardcoded ``` or single backtick, so a
+// `~~~` fence and a double-backtick inline span (Markdown's way of quoting
+// text that itself contains a backtick) are stripped too, not just the
+// triple-backtick/single-backtick cases.
 function stripSecondhand(text) {
   return text
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, ' ')
+    .replace(/(`+)[^\n]*?\1/g, ' ')
     .replace(/"[^"\n]*"/g, ' ')
     .replace(/“[^”\n]*”/g, ' ');
+}
+
+// Writing-voice violations in the model's own final message: an em dash, an
+// emoji, or a "Let me"/"I'll" opening. Detection mirrors
+// .github/scripts/lint-pr-body.js's em-dash/emoji checks (duplicated rather
+// than imported: the two scripts install standalone into different targets
+// with no shared module root, the same reasoning scripts.instructions.md
+// already applies to the plan-gate/git-guard tokenizer duplication).
+const EM_DASH = '\u2014';
+const EXCLUDED_PICTOGRAPHS = new Set(['\u00A9', '\u00AE', '\u2122']); // (c) (r) (tm)
+const EMOJI_RE = /\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3|\p{Extended_Pictographic}\uFE0F?/gu;
+// Anchored to the very start of the (stripped, trimmed) message: "Let me know
+// if..." at the end of a reply is fine, only the opening filler is the
+// violation.
+const PREAMBLE_OPENER_RE = /^(?:let me\b|i(?:'|’)ll\b)/i;
+
+function findEmoji(text) {
+  EMOJI_RE.lastIndex = 0;
+  let m = EMOJI_RE.exec(text);
+  while (m !== null) {
+    if (!EXCLUDED_PICTOGRAPHS.has(m[0])) return m[0];
+    m = EMOJI_RE.exec(text);
+  }
+  return null;
+}
+
+// Returns a short human-readable label for the first violation found, or null.
+// Runs on stripSecondhand() output so a quoted example or code comment is
+// never mistaken for the model's own voice.
+function voiceViolation(text) {
+  if (!text) return null;
+  const prose = stripSecondhand(text).trimStart();
+  if (!prose) return null;
+  if (prose.includes(EM_DASH)) return 'an em dash';
+  if (findEmoji(prose)) return 'an emoji';
+  if (PREAMBLE_OPENER_RE.test(prose)) return `a "Let me"/"I'll" opening`;
+  return null;
+}
+
+// The single most recent assistant message's own text, as opposed to
+// recentAssistantText()'s multi-message window: "opens with X" is a property
+// of one message, so concatenating several would test the wrong message's
+// start.
+function lastAssistantText(entries) {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const msg = entries[i] && entries[i].message;
+    if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
+    const texts = msg.content
+      .filter((block) => block && block.type === 'text' && typeof block.text === 'string')
+      .map((block) => block.text);
+    if (texts.length) return texts.join('\n');
+  }
+  return '';
 }
 
 // Full streaming pass over the whole transcript: session-wide edit count and
@@ -277,7 +349,8 @@ function main() {
   const { edits, touchedTodo } = scanEditsAndCheckpoint(transcriptPath);
   const lastMsg =
     input && typeof input.last_assistant_message === 'string' ? input.last_assistant_message : '';
-  const tailText = recentAssistantText(readTranscriptTail(transcriptPath, tailBytes));
+  const tailEntries = readTranscriptTail(transcriptPath, tailBytes);
+  const tailText = recentAssistantText(tailEntries);
   const rationalized = [tailText, lastMsg].some(
     (t) => !!t && RATIONALIZATION.some((re) => re.test(t))
   );
@@ -286,6 +359,8 @@ function main() {
     const prose = stripSecondhand(t);
     return AGREEMENT.test(prose) && SELF_BLAME.test(prose);
   });
+  const finalMessage = lastMsg || lastAssistantText(tailEntries);
+  const voiceIssue = voiceViolation(finalMessage);
 
   const warnings = [];
   if (edits >= editThreshold && !touchedTodo) {
@@ -301,6 +376,11 @@ function main() {
   if (capitulated) {
     warnings.push(
       `Recent text pairs an agreement opener ("you're right") with self-blame ("over-corrected"/"my mistake"): if that concession wasn't re-derived from the artifact, re-check and state the conclusion; if it was, state the corrected fact without the meta-narration.`
+    );
+  }
+  if (voiceIssue) {
+    warnings.push(
+      `Final message contains ${voiceIssue}, which the writing-voice rule forbids in prose (see the humanizer skill).`
     );
   }
   if (minDiskMB > 0) {

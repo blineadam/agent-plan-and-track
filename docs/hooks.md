@@ -169,7 +169,12 @@ allows the command through rather than blocking it.
 - Hook event: `Stop`. Claude and Codex only.
 - Runs warn-only pre-finish checks backing verify-before-done and
   capture-lesson. It also nudges when recent assistant text pairs an agreement
-  opener with self-blame.
+  opener with self-blame, and when the final message itself carries an em
+  dash, an emoji, or a "Let me"/"I'll" opening, backing the writing-voice
+  rule. Because a Stop hook fires after the flagged message is already sent,
+  that last check only surfaces mid-loop under `DELIVERY_GATE_BLOCK=1`
+  (see the hook's own header); in the default warn-only mode it can flag the
+  violation but not undo it.
 
 Copilot's `agentStop` exists, but its output contract is block/allow only. The
 documented exit-2 stderr warning was observed only in `~/.copilot/logs`, not in
