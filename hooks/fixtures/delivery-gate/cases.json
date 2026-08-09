@@ -92,6 +92,28 @@
       ],
       "expect": "warn",
       "expectContains": "an em dash"
+    },
+    {
+      "id": "em_dash_tilde_fence_allowed",
+      "input": {
+        "last_assistant_message": "Here is the change:\n\n~~~js\nconst label = 'a—b';\n~~~\n"
+      },
+      "expect": "allow"
+    },
+    {
+      "id": "em_dash_double_backtick_span_allowed",
+      "input": {
+        "last_assistant_message": "The value is ``a—b`` in the fixture."
+      },
+      "expect": "allow"
+    },
+    {
+      "id": "preamble_opener_curly_apostrophe_warns",
+      "input": {
+        "last_assistant_message": "I’ll look into that error."
+      },
+      "expect": "warn",
+      "expectContains": "I'll"
     }
   ]
 }

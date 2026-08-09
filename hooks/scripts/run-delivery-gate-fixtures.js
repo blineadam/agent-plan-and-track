@@ -40,6 +40,19 @@ const path = require('path');
 const SCRIPT = path.join(__dirname, '..', 'delivery-gate.js');
 const CASES = path.join(__dirname, '..', 'fixtures', 'delivery-gate', 'cases.json');
 
+// Strips any ambient DELIVERY_GATE_* var before applying fixture defaults and
+// per-case overrides, mirroring run-git-guard-fixtures.js's scratchEnv(): a
+// developer's shell exporting DELIVERY_GATE_BLOCK=1 would otherwise turn
+// every "warn" case into a "block" case, making this suite's result depend
+// on the caller's environment instead of the fixture data.
+function scratchEnv() {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('DELIVERY_GATE_')) delete env[key];
+  }
+  return env;
+}
+
 function runCase(fixtureCase) {
   const label = fixtureCase.id;
   let scratchDir = null;
@@ -53,7 +66,7 @@ function runCase(fixtureCase) {
     input.transcript_path = transcriptPath;
   }
 
-  const env = { ...process.env, DELIVERY_GATE_MIN_DISK_MB: '0', ...(fixtureCase.env || {}) };
+  const env = { ...scratchEnv(), DELIVERY_GATE_MIN_DISK_MB: '0', ...(fixtureCase.env || {}) };
 
   try {
     const result = childProcess.spawnSync(process.execPath, [SCRIPT], {

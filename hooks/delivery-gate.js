@@ -190,10 +190,15 @@ const SELF_BLAME = /\b(?:i (?:over-?corrected|over-?reacted|was wrong)|my (?:mis
 // else's words, so they come out before the capitulation scan. Same carve-out
 // the PR-body lint makes for secondhand text. Single quotes are left alone:
 // the apostrophes in "you're" and "didn't" would swallow whole sentences.
+// Fence and inline-code matching use a backreference to the opening
+// delimiter's exact text rather than a hardcoded ``` or single backtick, so a
+// `~~~` fence and a double-backtick inline span (Markdown's way of quoting
+// text that itself contains a backtick) are stripped too, not just the
+// triple-backtick/single-backtick cases.
 function stripSecondhand(text) {
   return text
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, ' ')
+    .replace(/(`+)[^\n]*?\1/g, ' ')
     .replace(/"[^"\n]*"/g, ' ')
     .replace(/“[^”\n]*”/g, ' ');
 }
@@ -210,7 +215,7 @@ const EMOJI_RE = /\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3|\p{Extended_Pic
 // Anchored to the very start of the (stripped, trimmed) message: "Let me know
 // if..." at the end of a reply is fine, only the opening filler is the
 // violation.
-const PREAMBLE_OPENER_RE = /^(?:let me\b|i'll\b)/i;
+const PREAMBLE_OPENER_RE = /^(?:let me\b|i(?:'|’)ll\b)/i;
 
 function findEmoji(text) {
   EMOJI_RE.lastIndex = 0;
