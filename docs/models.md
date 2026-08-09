@@ -84,10 +84,12 @@ documents that a custom agent's `model` and `model_reasoning_effort` take
 precedence when set. Its effective sandbox can still be narrower than the
 rendered mode because subagents inherit the parent runtime policy.
 
-Codex CLI 0.147.0 note: omitting `fork_turns` selects full history, which
-inherits the parent role and conflicts with a named agent override. Use
-`none` for a self-contained handoff or a positive bounded count when prior
-turns are required.
+Codex CLI 0.147.0 note: the tagged
+[spawn handler](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs#L210-L235)
+defaults an omitted `fork_turns` to full history, and its
+[shared validation](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/core/src/tools/handlers/multi_agents_common.rs#L226-L235)
+rejects a named agent override in that mode. Use `none` for a self-contained
+handoff or a positive bounded count when prior turns are required.
 
 ## Per-tool notes
 
