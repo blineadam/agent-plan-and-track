@@ -6,8 +6,9 @@ description: Decide when to manually compact context at logical task boundaries 
 # Strategic Compact
 
 Compact context (`/compact`, or your harness's equivalent) at *logical*
-boundaries rather than letting auto-compaction fire mid-task. This is the
-active-decision companion to the **Checkpoint & Compact** standing rule.
+boundaries rather than letting auto-compaction fire mid-task. Checkpointing
+state so it survives compaction is part of that decision, not a separate rule
+elsewhere: this skill owns both halves.
 
 Adapted from the ECC `strategic-compact` skill. The guidance below is
 harness-agnostic. Claude Code installs additionally get an auto-suggest hook
