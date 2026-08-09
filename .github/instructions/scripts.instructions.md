@@ -9,7 +9,7 @@ excludeAgent: "cloud-agent"
 
 Applies to the Node hook scripts under `hooks/` and every bash script
 (including `install.sh`). See `.ai-style-rules.md` (Golden Files: `gateguard.js`,
-`delivery-gate.js`, `install.sh`) for full detail.
+`delivery-gate.js`, `git-guard.js`, `install.sh`) for full detail.
 
 ## JS hooks
 
@@ -23,10 +23,14 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 - Do not propose factoring the duplicated `readStdin()` / `intEnv()` helpers
   (or the plan-gate mutation gate's `splitShellSegments()` /
   `detectOutwardMutations()` pair, duplicated the same way between
-  `hooks/claude/plan-gate.js` and `hooks/codex/plan-gate-pilot.js`) into a
-  shared module. Each script installs standalone into a different harness's
-  scripts directory with no shared `node_modules` or relative import root:
-  the duplication is intentional.
+  `hooks/claude/plan-gate.js` and `hooks/codex/plan-gate-pilot.js`, plus a
+  third standalone copy of `splitShellSegments()` alone in
+  `hooks/git-guard.js`) into a shared module. Each script installs standalone
+  into a different harness's scripts directory with no shared `node_modules`
+  or relative import root: the duplication is intentional. This triple copy
+  is checked byte-for-byte by `.github/scripts/check-split-shell-segments-parity.js`
+  in CI; a genuine fix to `splitShellSegments()` must land identically in all
+  three files, not just one.
 - `camelCase` for variables and functions, except wire-format fields
   mirrored verbatim from a JSON payload (`tool_name`, `tool_input`,
   `session_id`), which stay snake_case to match the payload.
@@ -65,10 +69,11 @@ Applies to the Node hook scripts under `hooks/` and every bash script
 
 ## CI guard scripts
 
-- `.github/scripts/*.js` (e.g. `lint-pr-body.js`, `check-digest-preview.js`)
-  are a distinct category from the JS hooks above: they enforce a convention
-  this repo's own instruction files already state, from CI, not from a
-  PreToolUse/Stop hook at edit or session time. Their control flow is the
+- `.github/scripts/*.js` (e.g. `lint-pr-body.js`, `check-digest-preview.js`,
+  `check-split-shell-segments-parity.js`) are a distinct category from the JS
+  hooks above: they enforce a convention this repo's own instruction files
+  already state, from CI, not from a PreToolUse/Stop hook at edit or session
+  time. Their control flow is the
   opposite of a hook's: they must hard-fail (exit 1) on a real violation, not
   fail open. Flag a new script under `.github/scripts/` that swallows an
   error into a soft warning instead of a nonzero exit, or that copies a
@@ -168,8 +173,12 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `hooks/<harness>/fixtures/<name>/cases.json`, mirroring the skill
   scripts/fixtures convention one level down (e.g.
   `hooks/codex/scripts/run-plan-gate-pilot-fixtures.js` next to
-  `hooks/codex/plan-gate-pilot.js`). Flag a hook test harness placed
-  anywhere else.
+  `hooks/codex/plan-gate-pilot.js`). A hook that is a single shared script
+  exercised across all three wire dialects from one process, not
+  harness-specific, places its fixtures one level up instead:
+  `hooks/scripts/run-<name>-fixtures.js` plus `hooks/fixtures/<name>/cases.json`
+  (e.g. `hooks/scripts/run-git-guard-fixtures.js` next to `hooks/git-guard.js`).
+  Flag a hook test harness placed anywhere else.
 
 ## Installers and cross-platform portability
 

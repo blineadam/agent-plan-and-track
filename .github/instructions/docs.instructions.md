@@ -185,6 +185,27 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   target for `docs/*.md` or `README.md`. Don't flag `.ai-style-rules.md`'s
   own paragraph density.
 
+## Out-of-scope decisions
+
+- `docs/out-of-scope.md` records a decision not to build something (a
+  proposed skill, hook, rule, check, or cross-file migration), so a later PR
+  doesn't re-propose ground already covered; `AGENTS.md` points every such
+  proposal there first. Flag a PR that adds a skill, hook, rule, or check
+  matching something already recorded there without addressing why the
+  earlier decision no longer applies.
+- Each entry there names when it was last re-reviewed and stays reopenable,
+  not a permanent ban; a PR that reopens one should update that entry in
+  place (new argument, changed circumstance) rather than silently
+  contradicting it or duplicating it as a second entry. Where a decision
+  turns on the repo owner's own judgment call, the entry quotes their exact
+  words instead of paraphrasing. Flag a rewritten quote or a second entry
+  covering ground an existing entry already settled.
+- A decision about how an existing component behaves belongs in that
+  component's own header, not here; a correction about how to work belongs
+  in the gitignored `tasks/lessons.md`, not this checked-in file. Flag an
+  entry that's actually one of those two miscategorized into
+  `docs/out-of-scope.md`.
+
 ## Skimmable docs
 
 - Match the surrounding density: don't inflate a section with exhaustive
