@@ -9,9 +9,11 @@ Squid built against OpenSSL: Debian and Ubuntu's default `squid` package is
 built against GnuTLS and refuses this config, so install
 [`squid-openssl`](https://packages.debian.org/bookworm/squid-openssl) instead
 (it conflicts with, and replaces, `squid`). The `tls-cert=` file below is a
-throwaway self-signed certificate that the port requires to start but never
-presents to anything, since this ruleset only peeks and splices, never
-decrypts.
+throwaway self-signed certificate that the port requires in order to start.
+An allowed connection is spliced end to end and never sees it. A denied one
+does: Squid presents this certificate instead of the real host's and the
+client rejects the handshake, which is the intended outcome and the reason
+the subject on it does not matter.
 
 Generate that certificate before starting Squid, or the port fails at
 startup:
@@ -25,20 +27,20 @@ chown proxy:proxy /etc/squid/dummy.pem && chmod 600 /etc/squid/dummy.pem
 Cert and key share one file because Squid assumes the `tls-cert=` file also
 carries the key when no `tls-key=` is given. The subject is irrelevant.
 
-Initialize the certificate generation helper database before starting Squid.
-This is required for the ssl-bump port to start even though the ruleset only
-peeks and splices, never bumps. On Squid 5.7 with squid-openssl on Debian
-bookworm, omitting this causes startup to fail with "FATAL: The sslcrtd_program
-helpers are crashing too rapidly, need help!"
+The `generate-host-certificates=off` on the port below is a startup
+requirement, not tidiness. That option defaults to on whenever ssl-bump is
+used, and Squid starts the certificate generation helper on that default
+alone, before any `ssl_bump` rule runs. The helper immediately dies because
+its database was never created, and on Squid 5.7 with squid-openssl on Debian
+bookworm startup fails with "FATAL: The sslcrtd_program helpers are crashing
+too rapidly, need help!"
 
-```bash
-mkdir -p /var/lib/squid
-/usr/lib/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 4MB
-chown -R proxy:proxy /var/lib/squid/ssl_db
-```
-
-The parent directory does not exist on a fresh install. The database must be owned
-by the proxy user that Squid drops to.
+Turning the option off stops the helper from starting at all, which is what
+this ruleset wants anyway. Left on, Squid mints a certificate for the denied
+hostname when it refuses a connection, so the signing machinery runs even
+though nothing here is ever bumped on purpose. Creating the database instead
+also clears the startup failure, but it does so by giving that machinery what
+it needs rather than by switching it off.
 
 ```squid
 # squid.conf: destination-allowlisted forward proxy for billable live runs.
@@ -55,12 +57,12 @@ by the proxy user that Squid drops to.
 # your own network hands out.
 #
 # ssl-bump plus tls-cert is required by the parser to start this port at all.
+# generate-host-certificates=off keeps Squid from starting the certificate
+# generation helper it would otherwise start by default under ssl-bump; see
+# the startup note above this config block.
 # Never change splice to bump below: that would MITM provider traffic and
 # expose the credential and every prompt to the proxy.
-http_port 172.20.0.1:3128 ssl-bump tls-cert=/etc/squid/dummy.pem
-# sslcrtd_program is required for the ssl-bump port to start.
-sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/lib/squid/ssl_db -M 4MB
-sslcrtd_children 1
+http_port 172.20.0.1:3128 ssl-bump tls-cert=/etc/squid/dummy.pem generate-host-certificates=off
 acl sandbox src 172.20.0.2/32
 
 # api.anthropic.com carries inference. platform.claude.com carries OAuth token
