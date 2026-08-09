@@ -32,7 +32,16 @@
  * egress allowed only to the model provider's API; a competing/injected prompt
  * will execute tool calls. Sealing egress off entirely is not the safer setting:
  * the case then cannot reach the API, exits at zero turns, and scores invalid.
- * Never pass --dangerously-skip-permissions here. --run is Claude-only and
+ * Never pass --dangerously-skip-permissions here. --run always passes
+ * --permission-mode default, which the CLI reference documents as overriding
+ * defaultMode from settings files (https://code.claude.com/docs/en/cli-reference),
+ * so a sandbox HOME installed with PT_BYPASS_PERMISSIONS=1 (which sets
+ * permissions.defaultMode to bypassPermissions) cannot silently escalate the
+ * run's posture, for any settings-file scope short of Managed. default is
+ * pinned rather than the behavioral runner's acceptEdits because this runner
+ * spawns its child with the operator's real, shared working directory (no
+ * per-case cwd, unlike the behavioral runner) and its cases only ever need to
+ * read it. --run is Claude-only and
  * intended for a unix sandbox; --dry-run / --precheck / --check are the
  * cross-platform modes. See SKILL.md for the allowlist recipe and the rationale.
  *
@@ -963,7 +972,16 @@ async function modeCheckOrRun(mode, traceDirArg, fixturesArg) {
         cases.length,
         id,
         invocation.command,
-        [...invocation.prefixArgs, '-p', prompt, '--output-format', 'stream-json', '--verbose'],
+        [
+          ...invocation.prefixArgs,
+          '-p',
+          prompt,
+          '--output-format',
+          'stream-json',
+          '--verbose',
+          '--permission-mode',
+          'default',
+        ],
         {},
         timeoutMs
       );

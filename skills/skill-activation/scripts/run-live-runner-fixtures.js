@@ -813,6 +813,41 @@ async function testActivation(binDir) {
   );
 }
 
+async function testActivationPermissionMode(binDir) {
+  const root = path.join(scratchRoot, 'activation-permission-mode');
+  fs.mkdirSync(root, { recursive: true });
+  const corpus = path.join(root, 'permission-mode.jsonl');
+  writeJsonl(corpus, [
+    { id: 'permission-mode-case', prompt: 'success', expect_skill: 'fixture-skill' },
+  ]);
+  const argvFile = path.join(root, 'argv.json');
+  const run = await runNode(
+    ACTIVATION_RUNNER,
+    ['--run', corpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      FAKE_ARGV_MARKER: argvFile,
+    })
+  );
+  const report = parseReport(run, 'activation permission mode');
+  assert(run.code === 0 && report.passed === 1, 'activation permission mode case did not pass');
+  const argv = JSON.parse(fs.readFileSync(argvFile, 'utf8'));
+  const modeIndex = argv.indexOf('--permission-mode');
+  assert(
+    modeIndex !== -1 && argv[modeIndex + 1] === 'default',
+    `--permission-mode default did not reach the child argv: ${JSON.stringify(argv)}`
+  );
+  assert(
+    !argv.includes('--dangerously-skip-permissions'),
+    `--dangerously-skip-permissions must never reach the child argv: ${JSON.stringify(argv)}`
+  );
+  assert(
+    argv.indexOf('--permission-mode') === argv.lastIndexOf('--permission-mode'),
+    `--permission-mode must appear exactly once in the child argv: ${JSON.stringify(argv)}`
+  );
+}
+
 async function testBehavioral(binDir) {
   const root = path.join(scratchRoot, 'behavioral');
   fs.mkdirSync(root, { recursive: true });
@@ -1315,6 +1350,19 @@ async function testBehavioralAllowedTools(binDir) {
   assert(
     toolsIndex !== -1 && withArgv[toolsIndex + 1] === 'Bash' && withArgv[toolsIndex + 2] === 'Read',
     `allowed_tools did not reach the child argv in order: ${JSON.stringify(withArgv)}`
+  );
+  const withModeIndex = withArgv.indexOf('--permission-mode');
+  assert(
+    withModeIndex !== -1 && withArgv[withModeIndex + 1] === 'acceptEdits',
+    `behavioral runner's --permission-mode acceptEdits did not reach the child argv: ${JSON.stringify(withArgv)}`
+  );
+  assert(
+    !withArgv.includes('--dangerously-skip-permissions'),
+    `--dangerously-skip-permissions must never reach the behavioral child argv: ${JSON.stringify(withArgv)}`
+  );
+  assert(
+    withArgv.indexOf('--permission-mode') === withArgv.lastIndexOf('--permission-mode'),
+    `--permission-mode must appear exactly once, since a later duplicate would win: ${JSON.stringify(withArgv)}`
   );
 
   // --- 2: absent allowed_tools never adds the flag. --------------------------
@@ -1846,6 +1894,7 @@ async function main() {
   await testTimeoutMaximum(binDir);
   await testMalformedInstalledToml(binDir);
   await testActivation(binDir);
+  await testActivationPermissionMode(binDir);
   await testBehavioral(binDir);
   await testBehavioralAssertionsAndSetup(binDir);
   await testBehavioralAllowedTools(binDir);

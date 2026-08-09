@@ -89,14 +89,23 @@ provider's API (see [[skill-activation]] for the proxy allowlist, and why sealin
 egress off scores every case invalid instead of protecting it). A `mktemp -d` is
 a working directory, not a sandbox. Never pass `--dangerously-skip-permissions`
 here: it would let an injected scenario reach your home dir, credentials, and
-network unattended. If you can't containerize, keep normal permission prompts or
-an explicit tool allowlist. Keep stdout (the stream-json trace) and stderr
-(`--verbose` diagnostics) in **separate** files, or the diagnostics corrupt the
-trace and later lines won't parse as JSON:
+network unattended. If you can't containerize, fall back on an explicit tool
+allowlist rather than on approving prompts by hand: print mode cannot show a
+permission prompt at all. Pin `--permission-mode default` in the command
+itself. Without it a sandbox HOME's own `defaultMode` governs instead, which
+could be a bypass posture that quietly defeats the advice above. Under
+`default` an ask-gated call is denied outright rather than queued for approval,
+which is the outcome this step wants; don't reach for `--permission-prompt-tool`
+to soften that, since it hands the approval decision to an MCP server an
+injected scenario is trying to reach in the first place. Keep
+stdout (the stream-json trace) and stderr (`--verbose` diagnostics) in
+**separate** files, or the diagnostics corrupt the trace and later lines won't
+parse as JSON:
 
 ```bash
 # inside an isolated container/VM working dir
 claude -p "<scenario prompt>" --output-format stream-json --verbose \
+  --permission-mode default \
   > trace.jsonl 2> trace.err
 ```
 
