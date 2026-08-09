@@ -6,9 +6,9 @@ description: Audit the always-on context cost of the agent config (skills, instr
 # Context Budget
 
 Estimate what the agent config costs in every session and find the bloat. The
-always-on surface (instruction files, the rules digest, and every skill's
-frontmatter) loads into the context window on *every* turn, before the task
-even starts. This skill enumerates that surface, estimates its token cost, flags
+always-on surface (instruction files, the rules digest, every skill's
+frontmatter, and every agent's routing text) loads into the context window on
+*every* turn, before the task even starts. This skill enumerates that surface, estimates its token cost, flags
 oversized components, and sorts each into **keep / lazy-load / remove**.
 
 Adapted from the ECC `context-budget` skill for this repo's model. Same

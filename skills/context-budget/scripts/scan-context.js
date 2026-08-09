@@ -411,8 +411,22 @@ function main() {
     } catch {
       continue;
     }
+    // Accept only the extension the harness owning this dir actually loads:
+    // Claude reads `.md`, Copilot `.agent.md`, Codex `.toml`. Taking the union
+    // everywhere would bill a stray `~/.claude/agents/x.toml` that Claude
+    // never loads, which is the same "counted but not loaded" error the
+    // dot-dir skip above exists to prevent. An unclassified dir is a
+    // CONTEXT_BUDGET_AGENTS_DIRS override with no harness to key off, so it
+    // keeps the union.
+    const agentHarness = harnessKey(dir);
+    const accepts = (n) => {
+      if (agentHarness === 'copilot') return n.endsWith('.agent.md');
+      if (agentHarness === 'codex') return n.endsWith('.toml');
+      if (agentHarness === 'claude') return n.endsWith('.md');
+      return n.endsWith('.md') || n.endsWith('.toml');
+    };
     const files = dirEntries
-      .filter((e) => e.isFile() && (e.name.endsWith('.md') || e.name.endsWith('.toml')))
+      .filter((e) => e.isFile() && accepts(e.name))
       .map((e) => e.name)
       .sort(byteCmp);
     for (const base of files) {
