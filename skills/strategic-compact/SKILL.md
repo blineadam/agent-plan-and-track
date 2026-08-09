@@ -1,13 +1,14 @@
 ---
 name: strategic-compact
-description: Decide when to manually compact context at logical task boundaries instead of relying on arbitrary auto-compaction. Use when asked whether now is a good moment to compact, clear out, or reset context, at a phase boundary (just finished research, planning, or debugging; about to start the next phase), when switching between unrelated tasks, after a milestone or an abandoned approach, or when responses degrade under context pressure. Not for auditing always-on config cost; that's context-budget.
+description: Decide when to manually compact context at logical task boundaries instead of relying on arbitrary auto-compaction. Use when asked whether now is a good moment to compact, clear out, or reset context, at a phase boundary (just finished research, planning, or debugging; about to start the next phase), when switching between unrelated tasks, after a milestone or an abandoned approach, when a long session or a big task is wrapping up, or when responses degrade under context pressure. Not for auditing always-on config cost; that's context-budget.
 ---
 
 # Strategic Compact
 
 Compact context (`/compact`, or your harness's equivalent) at *logical*
-boundaries rather than letting auto-compaction fire mid-task. This is the
-active-decision companion to the **Checkpoint & Compact** standing rule.
+boundaries rather than letting auto-compaction fire mid-task. Checkpointing
+state so it survives compaction is part of that decision, not a separate rule
+elsewhere: this skill owns both halves.
 
 Adapted from the ECC `strategic-compact` skill. The guidance below is
 harness-agnostic. Claude Code installs additionally get an auto-suggest hook

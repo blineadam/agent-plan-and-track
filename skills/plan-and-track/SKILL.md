@@ -49,7 +49,7 @@ All paths are relative to the active project root.
 
 ## Running autonomously
 
-When the user has explicitly authorized autonomous progress ("plow ahead", "do not stop", "use your best judgment", "keep going until done", "finish while I am away"), run the workflow above without routine clarification stops. This section is the full contract behind the "Autonomous execution" rule in `rules/agent-guidelines.md`.
+When the user has explicitly authorized autonomous progress ("plow ahead", "do not stop", "use your best judgment", "keep going until done", "finish while I am away"), run the workflow above without routine clarification stops. This section is the full contract for autonomous execution; no always-on rule duplicates it.
 
 - Turn routine questions into explicit assumptions and act on them; prefer the smallest reversible choice; decide from repo conventions, nearby patterns, local docs, tests, and existing behavior. Keep a lightweight decision log in the plan or the final answer, not a new repo artifact.
 - Don't pause to ask which reasonable option the user prefers: pick one, record why, keep going. A judgment call close enough to want a second opinion routes to the fitting advisor per [[efficient-frontier]] (`fable-advisor` for a quick gut-check, `architect-reviewer` for a design tradeoff, `security-auditor` for a security implication); weigh the read and continue. Without the roster, decide inline the same way.
