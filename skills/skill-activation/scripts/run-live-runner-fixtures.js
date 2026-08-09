@@ -1356,6 +1356,14 @@ async function testBehavioralAllowedTools(binDir) {
     withModeIndex !== -1 && withArgv[withModeIndex + 1] === 'acceptEdits',
     `behavioral runner's --permission-mode acceptEdits did not reach the child argv: ${JSON.stringify(withArgv)}`
   );
+  assert(
+    !withArgv.includes('--dangerously-skip-permissions'),
+    `--dangerously-skip-permissions must never reach the behavioral child argv: ${JSON.stringify(withArgv)}`
+  );
+  assert(
+    withArgv.indexOf('--permission-mode') === withArgv.lastIndexOf('--permission-mode'),
+    `--permission-mode must appear exactly once, since a later duplicate would win: ${JSON.stringify(withArgv)}`
+  );
 
   // --- 2: absent allowed_tools never adds the flag. --------------------------
   const withoutRoot = path.join(root, 'without');
