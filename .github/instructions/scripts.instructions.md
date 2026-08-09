@@ -39,10 +39,14 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   checked at that moment regardless of whether the firing blocks or only
   warns, so a later edit of the same file is never gated again
   (`gateguard.js`'s pattern: warn by default on Claude/Codex, deny by default
-  on Copilot, since Copilot's `PreToolUse` has no soft-warn channel). The
-  exception is a hook that intentionally gates on an external unlock event
-  outside its own control, in which case repeated denial is by design and
-  must say so explicitly in the hook's own header comment (`plan-gate.js`,
+  on Copilot, since Copilot's `PreToolUse` has no soft-warn channel). A
+  variant keys the same mark-at-deny-time machinery on a destructive-command
+  *kind* rather than a gated file path (`git-guard.js`: deny-once per kind
+  per session, e.g. `reset-hard`/`clean-force`/`force-push`/
+  `discard-worktree`), reusing the shape rather than inventing new state.
+  The exception is a hook that intentionally gates on an external unlock
+  event outside its own control, in which case repeated denial is by design
+  and must say so explicitly in the hook's own header comment (`plan-gate.js`,
   unlocked only by a `plan-and-track` Skill invocation). Flag a hook that
   denies repeatedly with no stated rationale, or a mode-dependent hook whose
   message text doesn't match the mode that actually fired.
