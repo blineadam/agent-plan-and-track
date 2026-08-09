@@ -80,6 +80,11 @@ just a suggestion.
 - Flag new code, a pattern, or an abstraction that duplicates something the
   repo already has; the change should say what it reuses, not just what it
   adds.
+- Flag a PR that adds a new skill, hook, rule, or check whose idea
+  `docs/out-of-scope.md` already records as rejected, unless it both says
+  why the decision is being reopened and updates that file's entry to
+  match. An entry left standing as rejected while the change adopts it is
+  the silent contradiction that file's own header warns against.
 - Flag a harder-to-reverse approach (schema change, destructive migration,
   forced push) chosen over a smaller, reversible one that would satisfy the
   same request.

@@ -20,17 +20,16 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   that's the norm across the golden hooks, not just `readStdin()`. Add a
   one-line comment or stderr diagnostic only when the fallback's safety
   isn't obvious from the code alone (e.g. it changes control flow).
-- Do not propose factoring the duplicated `readStdin()` / `intEnv()` helpers
-  (or the plan-gate mutation gate's `splitShellSegments()` /
-  `detectOutwardMutations()` pair, duplicated the same way between
-  `hooks/claude/plan-gate.js` and `hooks/codex/plan-gate-pilot.js`, plus a
-  third standalone copy of `splitShellSegments()` alone in
-  `hooks/git-guard.js`) into a shared module. Each script installs standalone
-  into a different harness's scripts directory with no shared `node_modules`
-  or relative import root: the duplication is intentional. This triple copy
-  is checked byte-for-byte by `.github/scripts/check-split-shell-segments-parity.js`
-  in CI; a genuine fix to `splitShellSegments()` must land identically in all
-  three files, not just one.
+- Do not propose factoring the duplicated `readStdin()` / `intEnv()` helpers,
+  or the plan-gate mutation gate's quote-aware classifier pair, into a shared
+  module. `splitShellSegments()` (the tokenizer) is duplicated byte-for-byte
+  across `hooks/claude/plan-gate.js`, `hooks/codex/plan-gate-pilot.js`, and
+  `hooks/git-guard.js`; `detectOutwardMutations()` (the classifier built on
+  top of it) is duplicated only between the two plan-gate files, since
+  `git-guard.js` defines its own `detectDestructiveGit()` instead and only
+  references `detectOutwardMutations()` in comments. Each script installs
+  standalone into a different harness's scripts directory with no shared
+  `node_modules` or relative import root: the duplication is intentional.
 - `camelCase` for variables and functions, except wire-format fields
   mirrored verbatim from a JSON payload (`tool_name`, `tool_input`,
   `session_id`), which stay snake_case to match the payload.
@@ -73,20 +72,21 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `check-split-shell-segments-parity.js`) are a distinct category from the JS
   hooks above: they enforce a convention this repo's own instruction files
   already state, from CI, not from a PreToolUse/Stop hook at edit or session
-  time. Their control flow is the
-  opposite of a hook's: they must hard-fail (exit 1) on a real violation, not
-  fail open. Flag a new script under `.github/scripts/` that swallows an
-  error into a soft warning instead of a nonzero exit, or that copies a
-  hook's fail-open `try { main() } catch { ...; process.exit(0) }` shape.
+  time. Their control flow is the opposite of a hook's: they must hard-fail
+  (exit 1) on a real violation, not fail open. Flag a new script under
+  `.github/scripts/` that swallows an error into a soft warning instead of a
+  nonzero exit, or that copies a hook's fail-open
+  `try { main() } catch { ...; process.exit(0) }` shape.
 - `lint-pr-body.js`'s header comment enumerates its findings by number, split
   into HARD (exit 1) and WARN (stderr-only, exit 0) groups, and it's wired
   into its own single-purpose `pr-body-lint.yml`; that's its own convention,
-  not a requirement for every guard here. `check-digest-preview.js` describes
-  its check in prose instead and runs inside the general `install.yml` smoke
-  job, since it's a smoke-test invariant on the digest file rather than a
-  PR-shaped lint. Both still ship a same-directory `run-<name>-fixtures.js`
-  (mirroring the hook and skill fixture-runner convention below). Flag a new
-  guard script with no fixture runner.
+  not a requirement for every guard here. `check-digest-preview.js` and
+  `check-split-shell-segments-parity.js` both describe their check in prose
+  instead and run inside the general `install.yml` smoke job, since each is a
+  smoke-test invariant rather than a PR-shaped lint. All three still ship a
+  same-directory `run-<name>-fixtures.js` (mirroring the hook and skill
+  fixture-runner convention below). Flag a new guard script with no fixture
+  runner.
 - A workflow step that touches PR/issue title, body, or comment text (all
   attacker-controlled on a fork PR) must pass it through `env:` and write it
   to a file, never interpolate a `${{ ... }}` expression directly inside a
@@ -168,16 +168,16 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `hooks/claude/suggest-compact.js`, plus the JSON that wires a shared
   script into that harness's hook contract). Don't reject a harness-specific
   script under `hooks/<harness>/` as misplaced just because it isn't JSON.
-- A hook that needs its own fixture-driven regression tests places them at
+- A hook's fixture-driven regression tests live one directory level below
+  wherever the hook script itself lives, mirroring the skill
+  scripts/fixtures convention one level down:
   `hooks/<harness>/scripts/run-<name>-*.js` plus
-  `hooks/<harness>/fixtures/<name>/cases.json`, mirroring the skill
-  scripts/fixtures convention one level down (e.g.
-  `hooks/codex/scripts/run-plan-gate-pilot-fixtures.js` next to
-  `hooks/codex/plan-gate-pilot.js`). A hook that is a single shared script
-  exercised across all three wire dialects from one process, not
-  harness-specific, places its fixtures one level up instead:
-  `hooks/scripts/run-<name>-fixtures.js` plus `hooks/fixtures/<name>/cases.json`
-  (e.g. `hooks/scripts/run-git-guard-fixtures.js` next to `hooks/git-guard.js`).
+  `hooks/<harness>/fixtures/<name>/cases.json` for a harness-specific hook
+  (e.g. `hooks/codex/scripts/run-plan-gate-pilot-fixtures.js` next to
+  `hooks/codex/plan-gate-pilot.js`), or `hooks/scripts/run-<name>-*.js` plus
+  `hooks/fixtures/<name>/cases.json` for a hook shared across all harnesses
+  and installed from `hooks/` itself (e.g.
+  `hooks/scripts/run-git-guard-fixtures.js` next to `hooks/git-guard.js`).
   Flag a hook test harness placed anywhere else.
 
 ## Installers and cross-platform portability
