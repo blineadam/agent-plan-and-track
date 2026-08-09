@@ -1118,8 +1118,12 @@ async function modeRun(args) {
     if (!Array.isArray(c.assertions)) continue;
     for (const a of c.assertions) {
       if (!a || a.kind !== 'trace_agent_dispatch_names') continue;
-      for (const n of Array.isArray(a.expect) ? a.expect : []) requiredAgents.add(`${n}.md`);
-      for (const n of Array.isArray(a.forbid) ? a.forbid : []) requiredAgents.add(`${n}.md`);
+      // A malformed expect/forbid is scored invalid by the existing
+      // per-case guard below and never spawns; collecting its raw,
+      // unvalidated names here would instead die() the whole run over an
+      // agent name nobody will ever look up, blocking valid sibling cases.
+      if (agentNameListIsValid(a.expect)) for (const n of a.expect) requiredAgents.add(`${n}.md`);
+      if (agentNameListIsValid(a.forbid)) for (const n of a.forbid) requiredAgents.add(`${n}.md`);
     }
   }
   if (requiredAgents.size > 0) {
