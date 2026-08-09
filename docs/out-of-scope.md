@@ -39,3 +39,13 @@ It surfaced as a candidate during the 2026-08-08 survey of that repo and was rai
 > i dont actually need credential provisioning
 
 The skill's value is proportional to how often a project runs a manual provisioning procedure, and this repo installs rules and skills rather than provisioning infrastructure. Nothing stops a project that does need this kind of walkthrough from adding the skill later; this is a judgment about fit here, not about the skill's quality.
+
+## `resolving-merge-conflicts` stays its own skill
+
+Proposed on 2026-08-09 by the repo owner, who asked whether `yeet` should reference `resolving-merge-conflicts` and then argued the stronger form:
+
+> resolving-merge-conflicts should just be part of yeet. No need for that extra skill in this context and typical use.
+
+The two load on different triggers. `yeet` fires when finished work is ready to publish, which is most sessions that ship anything. `resolving-merge-conflicts` fires when a merge, rebase, or cherry-pick is already conflicted in the working tree, which publishing does not imply and which happens plenty of times that never reach a PR. Folding the second into the first would carry conflict guidance into every publish that has no conflict, and would strand the conflict procedure behind a publish trigger for the rebases and cherry-picks that end at a local commit.
+
+What shipped instead is the overlap the proposal was pointing at. `yeet` said nothing about a rejected push or a branch that needs updating, so its push step now points at `[[resolving-merge-conflicts]]` for a reconciliation that conflicts. The owner accepted that in place of the fold on the same day.

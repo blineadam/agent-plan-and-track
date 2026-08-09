@@ -29,7 +29,7 @@ Publish local work with `git` + `gh`, then see the PR through Copilot review.
 2. Stage and commit the task's files; don't sweep in unrelated changes with a blanket `git add -A`.
 3. Check the commit message for AI self-attribution (a `Co-Authored-By:` trailer naming an AI tool, a "Generated with ..." footer) and amend it away if present.
 4. Run the project's checks if not already run.
-5. Push with tracking: `git push -u origin <branch>`.
+5. Push with tracking: `git push -u origin <branch>`. A rejected push means the remote branch moved under you. Pull to reconcile it and push again; if that leaves conflict markers in the tree, work them per [[resolving-merge-conflicts]] rather than force-pushing over the divergence.
 6. Write the PR body to a temp file with real newlines, then `gh pr create --title "..." --body-file <file>`; never inline `--body` with `\n` escapes. Absent the repo's own PR template: `## Summary` first, an optional `## Implementation`, then exactly one of `## Test plan` or `## Verification`. Describe the change as it stands, never the review history, and run the prose through [[humanizer]]. Shape the body for a reader skimming it, not for density:
    - One idea per paragraph, one to three sentences each, with `Closes #N` alone on its own line. Unpack colon-chained clauses and parenthetical asides into their own sentences, and spell statuses out (`401 Unauthorized`, not "a 401").
    - Three or more parallel items become a bulleted list, never clauses packed into one sentence. In the verification section, group related results as nested bullets under one lead-in ("Testing on real hardware confirmed:") and give still-unverified items their own short list under a plain lead-in ("Still to verify:").
