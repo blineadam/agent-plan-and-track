@@ -170,6 +170,19 @@ always upstream of a rerun:
   terse ownership boundary to each (this vs. that), as skill-comply and
   skill-activation do for one another. Keep it to one clause: frontmatter is
   paid every turn ([[context-budget]]'s concern).
+- **Right substance, no Skill invocation** → the installed agent roster's
+  always-visible Agent-tool descriptions can route some asks (an explicit
+  threat model, a design review) straight to the right agent, and an agent
+  can also grep a skill's own file and apply its content, without the
+  governing skill ever firing either way. A measurement limit of this
+  corpus, not a description defect: Skill invocation is the only signal the
+  checker reads, so move such a case to the behavioral smokes or remove it
+  rather than tuning descriptions against it. The same signal limit makes a
+  forbid between companion skills a false dichotomy: where the expected
+  skill and the forbidden one cross-reference each other's procedures (as
+  plan-and-track's dispatch and handback-review steps do with
+  efficient-frontier), a compliant co-fire is indistinguishable from a
+  misroute, so don't forbid a skill the expected one defers to.
 
 A persistently misrouting trigger that resists description fixes is a candidate
 for a hook, same escalation path skill-comply uses.
