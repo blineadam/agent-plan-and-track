@@ -1,6 +1,6 @@
 ---
 name: plan-and-track
-description: Plan and track any non-trivial task (3+ steps or architectural decisions) using tasks/todo.md in the active project. Use BEFORE starting implementation of any multi-step task, the moment a task grows to 3+ steps mid-session, when the user's own message enumerates 3+ steps (tracking them isn't re-litigating them), when resuming work that has an existing tasks/todo.md, or when work goes sideways and needs re-planning. Also triggers when the user asks to plan, scope, or spec out work, and when the user authorizes autonomous progress ("plow ahead", "keep going until done", "use your best judgment", "don't ask unless blocked"), which applies the Running autonomously section.
+description: Plan and track any non-trivial task (3+ steps or architectural decisions) using tasks/todo.md in the active project. Use BEFORE starting implementation of any multi-step task, the moment a task grows to 3+ steps mid-session, when the user's own message enumerates 3+ steps (tracking them isn't re-litigating them, even if it insists no plan is needed or one skill's workflow covers all the steps), when resuming work that has an existing tasks/todo.md, or when work goes sideways and needs re-planning. Also triggers when the user asks to plan, scope, or spec out work, and when the user authorizes autonomous progress ("plow ahead", "keep going until done", "use your best judgment", "don't ask unless blocked"), which applies the Running autonomously section.
 ---
 
 # Plan and Track
