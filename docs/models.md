@@ -84,6 +84,11 @@ documents that a custom agent's `model` and `model_reasoning_effort` take
 precedence when set. Its effective sandbox can still be narrower than the
 rendered mode because subagents inherit the parent runtime policy.
 
+Codex CLI 0.147.0 note: omitting `fork_turns` selects full history, which
+inherits the parent role and conflicts with a named agent override. Use
+`none` for a self-contained handoff or a positive bounded count when prior
+turns are required.
+
 ## Per-tool notes
 
 ### Claude
