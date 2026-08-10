@@ -6,9 +6,11 @@ How this repo's GitHub releases get their version number and their notes. Both a
 
 Releases follow semver (`MAJOR.MINOR.PATCH`):
 
-* **PATCH** - a fix or doc/wording cleanup with no new capability and no behavior change an installed user would notice (v2.3.0 -> v2.3.1).
-* **MINOR** - a new skill, hook, or capability, or a meaningful addition to an existing one, staying backward compatible (most releases).
-* **MAJOR** - a change to how already-installed rules or hooks behave for existing users, something they'd want to know about before reinstalling. v2.0.0 (enforcement parity added across all three harnesses, plus a digest re-architecture) and v3.0.0 (the git-guard blocking hook, a new mechanical check behind the writing-voice rule, eleven rules relocated off the always-on surface) are the precedents.
+| Level | Criteria | Example |
+| --- | --- | --- |
+| PATCH | A fix that restores already-intended behavior, or a doc/wording cleanup, with no new capability and no change to what a mechanism is designed to do | v2.3.1: Codex's plan gate works correctly under wrapped patch calls |
+| MINOR | A new skill, hook, or capability, or a change to an existing mechanism's tuning or defaults, staying backward compatible | v2.3.0: gateguard's default flipped from blocking to warning |
+| MAJOR | A new enforcement mechanism, or a structural change to how rules are delivered across the whole system, something an existing user would want to know about before reinstalling | v2.0.0: native gates added to Codex and Copilot for parity, plus a digest re-architecture. v3.0.0: the new git-guard blocking hook, plus eleven rules relocated off the always-on surface |
 
 ## Writing the notes
 
@@ -17,7 +19,7 @@ When preparing a GitHub release, review all changes since the previous tag and w
 ```markdown
 ## agent-plan-and-track <new-tag>
 
-A 1-2 sentence high level summary of the release.
+A 1-2 sentence high-level summary of the release.
 
 ### What’s new
 
