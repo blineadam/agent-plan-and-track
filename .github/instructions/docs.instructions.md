@@ -186,8 +186,10 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   own paragraph density.
 - Bullets in a doc's own prose use `-`, never `*`; `*` only belongs inside a
   fenced block quoting external template text (e.g. `docs/tag-and-release.md`'s
-  release-notes template). Flag a `*`-marked bullet outside a fenced block in
-  `docs/*.md`, `README.md`, or `AGENTS.md`.
+  release-notes template), with one known exception: `docs/tag-and-release.md`'s
+  own six-item pre-publish verification checklist predates this rule and sits
+  outside its fence. Flag any other `*`-marked bullet outside a fenced block in
+  `docs/*.md`, `README.md`, or `AGENTS.md`; don't re-flag that known one.
 
 ## Out-of-scope decisions
 
