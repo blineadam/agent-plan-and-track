@@ -184,6 +184,10 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   reflects how the `inherit-legacy-style` skill records diffs, not a style
   target for `docs/*.md` or `README.md`. Don't flag `.ai-style-rules.md`'s
   own paragraph density.
+- Bullets in a doc's own prose use `-`, never `*`; `*` only belongs inside a
+  fenced block quoting external template text (e.g. `docs/tag-and-release.md`'s
+  release-notes template). Flag a `*`-marked bullet outside a fenced block in
+  `docs/*.md`, `README.md`, or `AGENTS.md`.
 
 ## Out-of-scope decisions
 
