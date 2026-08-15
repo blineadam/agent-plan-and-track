@@ -61,4 +61,8 @@ Before publishing, verify that:
 * the drafted notes have been run through the `humanizer` skill, using the most recent previous release's notes as the voice-calibration sample, with any flagged patterns fixed
 * the version bump (patch/minor/major) matches the Choosing the version guidance above
 
-Then publish with `gh release create <new-tag> --target <sha> --notes-file <file>`, which mints the tag and the release together in one call, and report the tag and release URL. Don't push the tag separately first: `.github/workflows/release.yml` fires on any `v*.*.*` tag push and fails if no release exists yet for it, by design, so it can't be beaten to a bare tag with a placeholder changelog.
+Then publish with `gh release create <new-tag> --target <sha> --title <new-tag> --notes-file <file>`, which mints the tag and the release together in one call, and report the tag and release URL.
+
+The `--title` is required: without one, GitHub falls back to displaying the target commit's full message as the release title in the UI, which is often long and unrelated to the release itself.
+
+Don't push the tag separately first: `.github/workflows/release.yml` fires on any `v*.*.*` tag push and fails if no release exists yet for it, by design, so it can't be beaten to a bare tag with a placeholder changelog.
