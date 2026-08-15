@@ -31,6 +31,11 @@
       "expectNudge": false
     },
     {
+      "id": "fenced-code-info-string-line-no-nudge",
+      "stdin": "{\"prompt\":\"apply this patch\\n```js\\n```not-a-close\\nignored?\\n```\\n\"}",
+      "expectNudge": false
+    },
+    {
       "id": "inline-code-question-mark-no-nudge",
       "stdin": "{\"prompt\":\"the failing line is `const x = a ? b : c;`\"}",
       "expectNudge": false

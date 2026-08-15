@@ -19,7 +19,10 @@
  *
  * Exit 1 on any HARD finding (missing bullet, past-budget bullet,
  * out-of-order bullets, or a total character count over
- * INLINE_THRESHOLD_CHARS), with a message naming the offense. The digest
+ * INLINE_THRESHOLD_CHARS less the answer-shape nudge the hook appends after
+ * the digest on a question-shaped prompt), with a message naming the
+ * offense. The size check reserves that nudge because the threshold applies
+ * to what the hook prints, not to the digest file alone. The digest
  * was deliberately trimmed under the threshold on 2026-08-02 so the whole
  * file arrives inline; an edit that pushes it back over loses that
  * delivery property, so the threshold is a hard failure, not a warning.
@@ -31,11 +34,32 @@ const path = require('path');
 
 const PREVIEW_BUDGET_BYTES = 1998;
 const INLINE_THRESHOLD_CHARS = 10000;
+const HOOK_PATH = path.join(__dirname, '..', '..', 'hooks', 'core-rules-digest.js');
 const PRIORITY_PREFIXES = [
   '- Action-first output:',
   '- Be skimmable, not exhaustive:',
   '- Verify before done:',
 ];
+
+// What the hook actually prints on a question-shaped prompt is the digest plus
+// the answer-shape nudge, so the digest alone is not what Claude measures
+// against the persistence threshold. Read the nudge's literal out of the hook
+// rather than restating its length here, and throw if it can't be found, so
+// renaming or removing the constant fails CI loudly instead of silently
+// reserving nothing.
+function nudgeChars() {
+  const source = fs.readFileSync(HOOK_PATH, 'utf8');
+  const declaration = source.match(/const ANSWER_SHAPE_NUDGE =([\s\S]*?);\n/);
+  const parts = declaration && declaration[1].match(/'[^']*'/g);
+  if (!parts) {
+    throw new Error(
+      `ANSWER_SHAPE_NUDGE not found as a single-quoted literal in ${HOOK_PATH}; ` +
+      'this checker reserves its length against the inline persistence threshold and must be updated with it'
+    );
+  }
+  // + 1 for the newline main() writes after the nudge.
+  return parts.map((part) => part.slice(1, -1)).join('').length + 1;
+}
 
 function main() {
   const digestPath = process.argv[2]
@@ -89,10 +113,14 @@ function main() {
     }
   }
 
+  const reserved = nudgeChars();
+  const budget = INLINE_THRESHOLD_CHARS - reserved;
   const totalChars = content.length;
-  if (totalChars > INLINE_THRESHOLD_CHARS) {
+  if (totalChars > budget) {
     findings.push(
-      `digest is ${totalChars} chars, over the ${INLINE_THRESHOLD_CHARS}-char inline persistence threshold`
+      `digest is ${totalChars} chars, over the ${budget}-char budget: the ` +
+      `${INLINE_THRESHOLD_CHARS}-char inline persistence threshold less the ${reserved} chars ` +
+      'core-rules-digest.js appends as the answer-shape nudge'
     );
   }
 

@@ -115,20 +115,24 @@ function submittedPrompt() {
   }
 }
 
+// An opening fence may carry an info string (```js), but a closing fence may
+// not, per CommonMark, so the two are matched by different patterns: a line
+// like ```not-a-close inside a block is content, not the end of it.
 function stripCode(prompt) {
   let fence = '';
   return prompt
     .split('\n')
     .map((line) => {
-      const fenceMatch = line.match(/^[ \t]*(`{3,}|~{3,})/);
       if (fence) {
-        if (fenceMatch && fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length) {
+        const closeMatch = line.match(/^[ \t]*(`{3,}|~{3,})[ \t]*$/);
+        if (closeMatch && closeMatch[1][0] === fence[0] && closeMatch[1].length >= fence.length) {
           fence = '';
         }
         return ' ';
       }
-      if (fenceMatch) {
-        fence = fenceMatch[1];
+      const openMatch = line.match(/^[ \t]*(`{3,}|~{3,})/);
+      if (openMatch) {
+        fence = openMatch[1];
         return ' ';
       }
       return line.replace(/(`+)[^\n]*?\1/g, ' ');

@@ -116,8 +116,21 @@ async function overThresholdTotalHardFails(ctx, dir) {
   assertExitAndSubstring(runChecker(fixturePath), 1, 'stderr', 'inline persistence threshold');
 }
 
+// A digest that fits under the raw threshold but not once the hook's appended
+// answer-shape nudge is counted. Padding to one char under the threshold lands
+// inside the reserved band for any nudge longer than a single character, so
+// this case needs no coupling to the nudge's actual length.
+async function withinNudgeReserveHardFails(ctx, dir) {
+  const lines = ctx.lines.slice();
+  const padding = 'x'.repeat(INLINE_THRESHOLD_CHARS - 1 - ctx.content.length - '- Fixture padding bullet: \n'.length);
+  lines.push(`- Fixture padding bullet: ${padding}`);
+  const fixturePath = writeFixture(dir, 'within-nudge-reserve.md', lines);
+  assertExitAndSubstring(runChecker(fixturePath), 1, 'stderr', 'answer-shape nudge');
+}
+
 const CASES = [
   ['pass-unmodified-copy-ok', passUnmodifiedCopyOk],
+  ['within-nudge-reserve-hard-fails', withinNudgeReserveHardFails],
   ['missing-action-first-hard-fails', missingActionFirstHardFails],
   ['over-budget-action-first-hard-fails', overBudgetActionFirstHardFails],
   ['out-of-order-swap-hard-fails', outOfOrderSwapHardFails],
