@@ -12,11 +12,23 @@
  * ONE SCRIPT, TWO OUTPUT SHAPES:
  *   - Default (Claude / Codex UserPromptSubmit): print the concatenated digest
  *     as raw text on stdout. The harness injects stdout verbatim as context.
+ *     When the submitted prompt is question-shaped, one extra line follows the
+ *     digest: the answer-shape nudge backing the "answer the question asked"
+ *     standing rule. UserPromptSubmit is the only event that fires BEFORE the
+ *     reply is written, so it is the only layer that can shape the answer rather
+ *     than flag it afterwards (the Stop-hook route, delivery-gate.js, sees the
+ *     message only once it has already been sent).
  *   - `--copilot` (Copilot postToolUse): throttle to once per 10 minutes via a
  *     `.core-rules-last` stamp file, and when the window has elapsed print
  *     `{"additionalContext": <digest>}` as JSON. Copilot has no UserPromptSubmit
  *     event, so it refreshes off tool use instead, and the throttle keeps that
  *     from firing on every call.
+ *
+ * The `--copilot` path never reads stdin: Copilot has no UserPromptSubmit event,
+ * and its postToolUse payload carries no prompt, so the nudge is Claude/Codex
+ * only. Claude's payload was confirmed to carry `prompt` against the installed
+ * CLI bundle (2.1.226); Codex's is read the same way and simply comes back empty
+ * if absent, which prints the digest unchanged.
  *
  * The digest files are located relative to THIS script, never via a home-dir
  * lookup: the script installs to `<harness-config>/scripts/core-rules-digest.js`
@@ -75,6 +87,34 @@ function throttleElapsed() {
   return true;
 }
 
+const ANSWER_SHAPE_NUDGE =
+  '[AnswerShape] This prompt asks a question. Lead with the answer, one explicit answer per ' +
+  'proposition it contains. Do not open with "right"/"exactly"/"correct"/"yes" unless every part ' +
+  'of your reply confirms that exact claim.';
+
+// The submitted prompt from the UserPromptSubmit payload, or '' when there is
+// nothing to read. A TTY stdin means someone ran the script by hand, where
+// readFileSync(0) would block waiting for EOF, so that case is skipped rather
+// than hanging the terminal.
+function submittedPrompt() {
+  if (process.stdin.isTTY) return '';
+  try {
+    const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+    return payload && typeof payload.prompt === 'string' ? payload.prompt : '';
+  } catch {
+    return ''; // unreadable stdin or non-JSON payload: print the digest alone
+  }
+}
+
+// A question mark ending any line, once fenced blocks and inline code spans are
+// removed so a `?` inside pasted code or a quoted error message doesn't count.
+// Matching per line rather than only at the end catches a question followed by
+// context ("does X work? here's the file").
+function isQuestionShaped(prompt) {
+  const prose = prompt.replace(/(`{3,}|~{3,})[\s\S]*?\1/g, ' ').replace(/(`+)[^\n]*?\1/g, ' ');
+  return /\?[ \t]*$/m.test(prose);
+}
+
 function main() {
   if (process.argv.includes('--copilot')) {
     if (!throttleElapsed()) return; // within the window: stay quiet
@@ -82,7 +122,8 @@ function main() {
     return;
   }
   // Claude / Codex: raw stdout is injected verbatim as prompt context.
-  process.stdout.write(digest());
+  const nudge = isQuestionShaped(submittedPrompt()) ? `${ANSWER_SHAPE_NUDGE}\n` : '';
+  process.stdout.write(digest() + nudge);
 }
 
 try {
