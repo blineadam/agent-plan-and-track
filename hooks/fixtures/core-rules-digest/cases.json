@@ -1,0 +1,75 @@
+{
+  "cases": [
+    {
+      "id": "question-prompt-gets-nudge",
+      "stdin": "{\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"does the installer need jq?\"}",
+      "expectNudge": true
+    },
+    {
+      "id": "compound-question-gets-nudge",
+      "stdin": "{\"prompt\":\"will this work for codex and claude? or just claude?\"}",
+      "expectNudge": true
+    },
+    {
+      "id": "question-followed-by-context-gets-nudge",
+      "stdin": "{\"prompt\":\"does the gate still fire?\\nhere is the file I mean: hooks/gateguard.js\"}",
+      "expectNudge": true
+    },
+    {
+      "id": "statement-prompt-no-nudge",
+      "stdin": "{\"prompt\":\"fix the parser so it handles an empty digest\"}",
+      "expectNudge": false
+    },
+    {
+      "id": "fenced-code-question-mark-no-nudge",
+      "stdin": "{\"prompt\":\"apply this patch\\n```js\\nconst x = a ? b : c;\\n```\\n\"}",
+      "expectNudge": false
+    },
+    {
+      "id": "fenced-code-delimiter-text-no-nudge",
+      "stdin": "{\"prompt\":\"apply this patch\\n```js\\nconst marker = \\\"```\\\";\\nignored?\\n```\\n\"}",
+      "expectNudge": false
+    },
+    {
+      "id": "fenced-code-info-string-line-no-nudge",
+      "stdin": "{\"prompt\":\"apply this patch\\n```js\\n```not-a-close\\nignored?\\n```\\n\"}",
+      "expectNudge": false
+    },
+    {
+      "id": "inline-code-question-mark-no-nudge",
+      "stdin": "{\"prompt\":\"the failing line is `const x = a ? b : c;`\"}",
+      "expectNudge": false
+    },
+    {
+      "id": "multiline-inline-span-no-nudge",
+      "stdin": "{\"prompt\":\"the literal I mean is `is this\\nvalid?\\n` in the parser\"}",
+      "expectNudge": false
+    },
+    {
+      "id": "missing-stdin-prints-digest-only",
+      "expectNudge": false
+    },
+    {
+      "id": "non-json-stdin-prints-digest-only",
+      "stdin": "this is not json, and it ends in a question mark?",
+      "expectNudge": false
+    },
+    {
+      "id": "null-payload-prints-digest-only",
+      "stdin": "null",
+      "expectNudge": false
+    },
+    {
+      "id": "non-string-prompt-prints-digest-only",
+      "stdin": "{\"prompt\":42}",
+      "expectNudge": false
+    },
+    {
+      "id": "copilot-path-ignores-prompt",
+      "argv": ["--copilot"],
+      "stdin": "{\"prompt\":\"does the copilot path read stdin?\"}",
+      "expectNudge": false,
+      "expectJson": true
+    }
+  ]
+}

@@ -386,6 +386,7 @@ jobs:
           node hooks/claude/scripts/run-plan-gate-fixtures.js >/dev/null
           node hooks/scripts/run-git-guard-fixtures.js >/dev/null
           node hooks/scripts/run-delivery-gate-fixtures.js >/dev/null
+          node hooks/scripts/run-core-rules-digest-fixtures.js >/dev/null
           node skills/rules-distill/scripts/scan-rules.js >/dev/null
           node skills/rules-distill/scripts/scan-skills.js ./skills >/dev/null
           node .github/scripts/run-lint-pr-body-fixtures.js >/dev/null
@@ -977,6 +978,7 @@ jobs:
           node hooks\claude\scripts\run-plan-gate-fixtures.js | Out-Null; Assert-Node 'Claude plan-gate fixtures'
           node hooks\scripts\run-git-guard-fixtures.js | Out-Null; Assert-Node 'git-guard fixtures'
           node hooks\scripts\run-delivery-gate-fixtures.js | Out-Null; Assert-Node 'delivery-gate fixtures'
+          node hooks\scripts\run-core-rules-digest-fixtures.js | Out-Null; Assert-Node 'core-rules-digest fixtures'
           node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
           node skills\rules-distill\scripts\scan-skills.js .\skills | Out-Null; Assert-Node 'scan-skills'
           node .github\scripts\run-lint-pr-body-fixtures.js | Out-Null; Assert-Node 'lint-pr-body fixtures'

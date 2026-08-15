@@ -48,6 +48,14 @@ harness.
   rules get re-injected mid-session.
 - The `--copilot` flag adds the 10-minute throttle via the `.core-rules-last`
   stamp and the `additionalContext` JSON wrapping described above.
+- On Claude/Codex it also reads the payload's `prompt` and, when that prompt is
+  question-shaped, appends the answer-shape nudge after the digest, backing the
+  "answer the question asked" standing rule at the only event that fires before
+  the reply is written. Question detection ignores `?` inside fenced blocks and
+  inline code. Unreadable stdin, a non-JSON payload, or a missing `prompt` all
+  fail open to the digest alone, so the Copilot path (no prompt in a
+  `postToolUse` payload) is unaffected. Fixtures:
+  `hooks/scripts/run-core-rules-digest-fixtures.js`.
 - Locates the digest via `../core-rules.md` relative to itself, so it needs no
   runtime home-directory lookup.
 
