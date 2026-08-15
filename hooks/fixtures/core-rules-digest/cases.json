@@ -26,6 +26,11 @@
       "expectNudge": false
     },
     {
+      "id": "fenced-code-delimiter-text-no-nudge",
+      "stdin": "{\"prompt\":\"apply this patch\\n```js\\nconst marker = \\\"```\\\";\\nignored?\\n```\\n\"}",
+      "expectNudge": false
+    },
+    {
       "id": "inline-code-question-mark-no-nudge",
       "stdin": "{\"prompt\":\"the failing line is `const x = a ? b : c;`\"}",
       "expectNudge": false

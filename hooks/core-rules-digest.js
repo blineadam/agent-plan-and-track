@@ -92,26 +92,56 @@ const ANSWER_SHAPE_NUDGE =
   'proposition it contains. Do not open with "right"/"exactly"/"correct"/"yes" unless every part ' +
   'of your reply confirms that exact claim.';
 
-// The submitted prompt from the UserPromptSubmit payload, or '' when there is
-// nothing to read. A TTY stdin means someone ran the script by hand, where
-// readFileSync(0) would block waiting for EOF, so that case is skipped rather
-// than hanging the terminal.
-function submittedPrompt() {
+// A TTY stdin means someone ran the script by hand, where readFileSync(0)
+// would block waiting for EOF, so that case is skipped rather than hanging the
+// terminal.
+function readStdin() {
   if (process.stdin.isTTY) return '';
   try {
-    const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+    return fs.readFileSync(0, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+// The submitted prompt from the UserPromptSubmit payload, or '' when there is
+// no usable prompt field.
+function submittedPrompt() {
+  try {
+    const payload = JSON.parse(readStdin() || '{}');
     return payload && typeof payload.prompt === 'string' ? payload.prompt : '';
   } catch {
-    return ''; // unreadable stdin or non-JSON payload: print the digest alone
+    return ''; // non-JSON payload: print the digest alone
   }
+}
+
+function stripCode(prompt) {
+  let fence = '';
+  return prompt
+    .split('\n')
+    .map((line) => {
+      const fenceMatch = line.match(/^[ \t]*(`{3,}|~{3,})/);
+      if (fence) {
+        if (fenceMatch && fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length) {
+          fence = '';
+        }
+        return ' ';
+      }
+      if (fenceMatch) {
+        fence = fenceMatch[1];
+        return ' ';
+      }
+      return line.replace(/(`+)[^\n]*?\1/g, ' ');
+    })
+    .join('\n');
 }
 
 // A question mark ending any line, once fenced blocks and inline code spans are
 // removed so a `?` inside pasted code or a quoted error message doesn't count.
 // Matching per line rather than only at the end catches a question followed by
-// context ("does X work? here's the file").
+// context on a later line.
 function isQuestionShaped(prompt) {
-  const prose = prompt.replace(/(`{3,}|~{3,})[\s\S]*?\1/g, ' ').replace(/(`+)[^\n]*?\1/g, ' ');
+  const prose = stripCode(prompt);
   return /\?[ \t]*$/m.test(prose);
 }
 
