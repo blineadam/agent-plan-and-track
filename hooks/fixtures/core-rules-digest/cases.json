@@ -41,6 +41,11 @@
       "expectNudge": false
     },
     {
+      "id": "multiline-inline-span-no-nudge",
+      "stdin": "{\"prompt\":\"the literal I mean is `is this\\nvalid?\\n` in the parser\"}",
+      "expectNudge": false
+    },
+    {
       "id": "missing-stdin-prints-digest-only",
       "expectNudge": false
     },

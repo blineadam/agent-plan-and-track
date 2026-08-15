@@ -135,9 +135,13 @@ function stripCode(prompt) {
         fence = openMatch[1];
         return ' ';
       }
-      return line.replace(/(`+)[^\n]*?\1/g, ' ');
+      return line;
     })
-    .join('\n');
+    .join('\n')
+    // Inline spans are stripped after the rejoin, not per line, because a code
+    // span may legally cross a line break. Blanking each character except the
+    // newlines keeps the line structure the end-of-line question test needs.
+    .replace(/(`+)[\s\S]*?\1/g, (span) => span.replace(/[^\n]/g, ' '));
 }
 
 // A question mark ending any line, once fenced blocks and inline code spans are
