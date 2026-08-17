@@ -60,6 +60,39 @@ One assumption behind the proposal does not hold. The upstream skill ships no sc
 
 Two things would reopen this: evidence that rule wording measurably affects compliance, which this round looked for and did not find, or a digest with enough headroom to absorb STE's expansion without losing inline delivery. The evidence here is directional rather than statistical, at one run per scenario per arm and on Claude only.
 
+## Knowledge-graph memory stays unadopted
+
+Proposed on 2026-08-16 by the repo owner, pointing at [Glitch-Cat-Club/graph-memory-starter](https://github.com/Glitch-Cat-Club/graph-memory-starter) and a companion artifact, and asking:
+
+> does it make sense to add a skill to build a knowledge graph, or maybe roll some of this into the /inherit-legacy-style skill or something similiar?
+
+Both halves were declined, and the owner approved recording the decision here.
+
+The fold into `inherit-legacy-style` fails the same way the `yeet` fold below did: the two load on different triggers. `inherit-legacy-style` captures coding conventions into `.ai-style-rules.md` when onboarding onto a legacy codebase; graph memory builds a SQLite entity/relationship store from a document corpus and recalls from it at prompt time through a hook. Different artifact, different trigger, different consumer.
+
+A standalone skill was declined on redundancy and cost. Session recall is already served by three installed channels: the harness memory directory, whose `[[wiki-link]]` cross-references already give it a lightweight graph shape with recall built into the harness, `tasks/lessons.md` via `capture-lesson`, and checked-in decision records like this file. What the starter genuinely adds, multi-hop traversal over an entity-rich corpus with typed relations, injected at a fixed ~400 tokens per prompt via a UserPromptSubmit hook, has had no triggering use case in this repo's workflow, and per-prompt injection is exactly the always-on cost `context-budget` exists to police. Adopting it would also mean a Python/SQLite build step and a hand-modeled entity and relation vocabulary per corpus, since the starter's link types are domain-specific rather than universal.
+
+One gap in the record: the companion artifact was not readable at decision time (it is served to non-members as a public artifact, which the reading path does not yet support), so its argument is inferred from the repo and the anchor name rather than read directly.
+
+Two things would reopen this: a real need for multi-hop recall over an entity-rich document corpus in a project this setup serves, or the artifact's argument turning out to make a case the repo itself does not.
+
+## `ruvnet/ruflo` stays unadopted
+
+Proposed on 2026-08-16 by the repo owner, who pointed at [ruvnet/ruflo](https://github.com/ruvnet/ruflo) and asked whether anything in it should improve or expand this repo's subagents, parallel work, or anything else.
+
+A `researcher` survey found ruflo (npm `claude-flow`) to be a much heavier thing than a rules/skills/hooks set: a 540MB npm/Rust monorepo that reimplements a multi-agent orchestration runtime, a vector memory store, and swarm-coordinator personas on top of Claude Code. It is actively maintained, but carries a high marketing-to-mechanism ratio, including inconsistent, unbenchmarked performance claims for the same feature (its README claims AgentDB's HNSW index is "1.9x-4.7x faster than brute force," its own memory-management skill doc claims "150x-12,500x faster" for the same mechanism).
+
+Four things ruled out adoption:
+
+- Its swarm/coordinator apparatus (`swarm init`, `task orchestrate --strategy parallel`, eight coordinator personas) duplicates what this repo already gets for free from Claude Code's own Agent and Workflow tools; the queen/scout/hive framing reads as persona dressing over that same underlying mechanism.
+- Its AgentDB vector memory store is the same category of thing as the knowledge-graph memory proposal declined earlier the same day, above: no triggering use case, redundant with the harness memory directory, `tasks/lessons.md`, and checked-in decision records.
+- Its Jujutsu-based lock-free worktree isolation (a `jj` wrapper letting concurrent agents commit/rebase without git's lock contention) is a genuinely different primitive, but disproportionate here: a new binary dependency for a marginal, unverified win on a problem this repo's `migration-discipline` skill and the `Workflow` tool's `isolation: "worktree"` already solve with git worktrees.
+- Its one hook that looked structurally novel, a `PreCompact` hook injecting an agent/strategy reminder right before compaction, doesn't hold up on verification: [Claude Code's own hook docs](https://code.claude.com/docs/en/hooks-reference#exit-code-2-behavior-per-event) confirm `PreCompact` is output/observation-only and can only block via exit code 2, not inject content that survives into the compacted summary. The mechanism doesn't do what ruflo's own doc claims, at least not through the contract Claude Code exposes today.
+
+A fifth item, a SHA256 checksum manifest over ruflo's security-critical config files, is real and independently verifiable rather than marketing, but has no fit here: this repo already regenerates installed copies idempotently from source via `install.sh`, and there is no multi-tenant trust boundary for a tamper-detection layer to protect.
+
+Two things would reopen this: a concrete case where the harness's native Agent/Workflow tools fall short of a parallel-work need this repo actually has, or evidence that a `PreCompact`-timed mechanism can do more than Claude Code's current hook contract allows.
+
 ## `resolving-merge-conflicts` stays its own skill
 
 Proposed on 2026-08-09 by the repo owner, who asked whether `yeet` should reference `resolving-merge-conflicts` and then argued the stronger form:
