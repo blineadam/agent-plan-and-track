@@ -146,10 +146,13 @@ runs, no cost.
 
 For each scenario, read `trace.jsonl` and map its tool events onto the spec
 steps: classification, not regex (a step can be satisfied by different tools).
-Evidence must not overlap: never count one tool event for more than one step.
-A Bash call that applies a change and happens to run the tests satisfies the
-execution step only; the verification step stays missing unless a distinct
-event covers it. (Adapted from HKUDS/OpenSpace's capture contract, whose
+Execution evidence and verification evidence must not overlap: never count
+the same tool event as satisfying both an execution step and a verification
+step. A Bash call that applies a change and happens to run the tests
+satisfies the execution step only; the verification step stays missing
+unless a distinct event covers it. This doesn't reach two execution steps
+sharing one event (a single `MultiEdit` covering both is legitimate
+evidence for both). (Adapted from HKUDS/OpenSpace's capture contract, whose
 captured-skill gate requires execution evidence and validation evidence that
 share no observation.) Then check the `ordered_before` constraints
 deterministically: a step that happened but out of order is a partial pass.
