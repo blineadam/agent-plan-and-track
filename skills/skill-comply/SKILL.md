@@ -47,6 +47,10 @@ checkable against a tool-call trace.
 }
 ```
 
+A verification step belongs in the spec only if a separate trace event could
+satisfy it: the evidence that a step ran cannot double as the evidence it
+worked.
+
 ### 2. Generate scenarios at 3 strictness levels
 
 The point is **prompt independence**: does the behavior survive when the prompt
@@ -142,8 +146,13 @@ runs, no cost.
 
 For each scenario, read `trace.jsonl` and map its tool events onto the spec
 steps: classification, not regex (a step can be satisfied by different tools).
-Then check the `ordered_before` constraints deterministically: a step that
-happened but out of order is a partial pass.
+Evidence must not overlap: never count one tool event for more than one step.
+A Bash call that applies a change and happens to run the tests satisfies the
+execution step only; the verification step stays missing unless a distinct
+event covers it. (Adapted from HKUDS/OpenSpace's capture contract, whose
+captured-skill gate requires execution evidence and validation evidence that
+share no observation.) Then check the `ordered_before` constraints
+deterministically: a step that happened but out of order is a partial pass.
 
 For Codex, classify from the adapter's `summary.json`: completed command
 events, file-change events, the final plan artifact, and the terminal event.
