@@ -11,12 +11,13 @@ does depends on the harness:
 | --- | --- | --- |
 | Claude Code | `model: opusplan` | Opus in Plan mode, Sonnet during execution |
 | Claude Code | `switchModelsOnFlag: true` | Switch models on a safety flag instead of stopping |
+| Claude Code | `outputStyle: Concise` | Trim narration in responses (needs Claude Code v2.1.237+) |
 | Codex | `plan_mode_reasoning_effort: xhigh` | Plan mode: `xhigh`; execution unchanged |
 | Copilot | `model: auto` | Let Copilot choose per task; no fixed phase split |
 
 Install with `PT_KEEP_MODEL=1` to keep a machine's existing Claude and Copilot
-model settings, including `switchModelsOnFlag`, instead of overwriting them.
-The Codex plan-mode effort still updates.
+model and output-style settings, including `switchModelsOnFlag`, instead of
+overwriting them. The Codex plan-mode effort still updates.
 
 ## Tiered subagents
 

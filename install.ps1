@@ -20,10 +20,11 @@
       never modified.
     - hooks are merged only if not already installed (Claude/Codex); the Copilot
       hook files are repo-owned and overwritten, with a *.bak if one differed
-    - managed defaults (Claude model=opusplan + switchModelsOnFlag, Copilot
-      model=auto, Codex plan_mode_reasoning_effort=xhigh) are repo-owned and
-      OVERWRITTEN on every install. PT_KEEP_MODEL=1 keeps an existing per-machine
-      model choice; a Copilot settings.json that isn't plain JSON is left alone.
+    - managed defaults (Claude model=opusplan + switchModelsOnFlag +
+      outputStyle=Concise, Copilot model=auto, Codex
+      plan_mode_reasoning_effort=xhigh) are repo-owned and OVERWRITTEN on every
+      install. PT_KEEP_MODEL=1 keeps an existing per-machine model/output-style
+      choice; a Copilot settings.json that isn't plain JSON is left alone.
     - a bare install never changes Claude's permission posture.
       PT_BYPASS_PERMISSIONS=1 sets permissions.defaultMode to bypassPermissions and
       skipDangerousModePermissionPrompt to true in ~/.claude/settings.json; leaving
@@ -527,7 +528,7 @@ function Set-JsonDefault($file, $key, $value, $label) {
 # string-interpolated into an expression, so a key containing an '@' or a '-' (e.g.
 # "frontend-design@claude-plugins-official") can never be reinterpreted. Missing
 # intermediate objects are created as needed. Not gated by PT_KEEP_MODEL, which
-# covers model settings only.
+# covers model and output-style settings only.
 function Set-JsonPath($file, $path, $value, $label) {
   $json = [System.IO.File]::ReadAllText($file) | ConvertFrom-Json
   $node = $json
@@ -757,6 +758,11 @@ function Install-Claude {
   if (-not (Test-Path -LiteralPath $settings)) { [System.IO.File]::WriteAllText($settings, '{}', $Utf8NoBom) }
   Set-JsonDefault $settings 'model' 'opusplan' 'model default'
   Set-JsonDefault $settings 'switchModelsOnFlag' $true 'safety-switch'
+  # Repo-owned output-style default, re-asserted on every install (PT_KEEP_MODEL=1
+  # keeps an existing per-machine choice): Concise trims narration in responses.
+  # Requires Claude Code v2.1.237 or later; installing over an older CLI leaves
+  # the key set but the style unrecognized until the CLI is upgraded.
+  Set-JsonDefault $settings 'outputStyle' 'Concise' 'output style'
   # Repo-owned plugin disable, re-asserted on every install: this repo ships its
   # own frontend-design skill, and the frontend-design@claude-plugins-official
   # plugin bundles a second skill of the same name, a routing collision.
@@ -898,7 +904,8 @@ function Install-Codex {
   Install-Digest (Join-Path $codex 'core-rules.md')
   Install-Instructions (Join-Path $codex 'AGENTS.md')
   # Plan-mode default, re-asserted each install: raise reasoning effort in Plan
-  # mode only. Not gated by PT_KEEP_MODEL (that opt-out covers model settings).
+  # mode only. Not gated by PT_KEEP_MODEL (that opt-out covers model and
+  # output-style settings only).
   Set-TomlDefault (Join-Path $codex 'config.toml') 'plan_mode_reasoning_effort' 'xhigh'
 
   $hooks = Join-Path $codex 'hooks.json'

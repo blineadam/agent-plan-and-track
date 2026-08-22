@@ -195,11 +195,12 @@ installer takes a `.bak` backup if the existing file differs.
 
 Model defaults are repo-owned and overwritten on each install unless `PT_KEEP_MODEL=1`:
 
-- Claude: `opusplan` + `switchModelsOnFlag`.
+- Claude: `opusplan` + `switchModelsOnFlag` + `outputStyle: Concise` (requires
+  Claude Code v2.1.237 or later).
 - Copilot: `auto`.
 
 Codex's plan-mode reasoning effort is separate and always overwritten,
-regardless of `PT_KEEP_MODEL`, which covers model settings only.
+regardless of `PT_KEEP_MODEL`, which covers model and output-style settings only.
 
 ### Permission posture
 

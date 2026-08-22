@@ -53,6 +53,7 @@ jobs:
             test -f "$f" || { echo "FAIL: missing $f"; exit 1; }
           done
           [ "$(jq -r .model "$HOME/.claude/settings.json")" = "opusplan" ]
+          [ "$(jq -r .outputStyle "$HOME/.claude/settings.json")" = "Concise" ]
           [ "$(jq -r .switchModelsOnFlag "$HOME/.claude/settings.json")" = "true" ]
           assert_bare_permission_posture() {
             local h="$1" dm skip plugin
@@ -717,6 +718,7 @@ jobs:
           foreach ($f in $need) { if (-not (Test-Path -LiteralPath $f)) { throw "missing $f" } }
           $s = Get-Content -Raw "$H\.claude\settings.json" | ConvertFrom-Json
           if ($s.model -ne 'opusplan') { throw "model != opusplan" }
+          if ($s.outputStyle -ne 'Concise') { throw "outputStyle != Concise" }
           if ($s.switchModelsOnFlag -ne $true) { throw "switchModelsOnFlag != true" }
           function Assert-BarePermissionPosture($h) {
             $j = Get-Content -Raw (Join-Path $h '.claude\settings.json') | ConvertFrom-Json
