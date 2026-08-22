@@ -1,11 +1,11 @@
-# Model defaults and subagents
+# Managed defaults and subagents
 
-## Model defaults
+## Managed defaults
 
 The installer sets a model default for each harness so routine work does not
-run at top-tier cost. These settings are repo-owned: every install restores
-the intended default, even on a machine that has drifted. What each default
-does depends on the harness:
+run at top-tier cost, and an output style for Claude Code. These settings are
+repo-owned: every install restores the intended default, even on a machine
+that has drifted. What each default does depends on the harness:
 
 | Harness | Default | Effect |
 | --- | --- | --- |

@@ -189,11 +189,12 @@ Copilot's hook files (`core-rules.json`, `pretooluse-gateguard.json`,
 `pretooluse-git-guard.json`) are repo-owned and overwritten outright. The
 installer takes a `.bak` backup if the existing file differs.
 
-## Model and permission defaults
+## Managed and permission defaults
 
-### Model defaults
+### Managed defaults
 
-Model defaults are repo-owned and overwritten on each install unless `PT_KEEP_MODEL=1`:
+Model and output-style defaults are repo-owned and overwritten on each install
+unless `PT_KEEP_MODEL=1`:
 
 - Claude: `opusplan` + `switchModelsOnFlag` + `outputStyle: Concise` (requires
   Claude Code v2.1.237 or later).
