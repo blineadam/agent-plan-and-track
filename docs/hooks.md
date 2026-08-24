@@ -130,8 +130,9 @@ either. Do not over-trust it as a complete backstop.
   exactly, or `.env.<suffix>` for any suffix except the conventionally-
   committed template variants (`example`, `sample`, `template`, `dist`,
   `default`, `defaults`), backing the standing never-commit-secrets rule with
-  a mechanical check. Scoped to `add` only, not `commit`: see "Why deny-once"
-  above.
+  a mechanical check. Scoped to `add` only, not `commit`: see the hook's own
+  STAGE-ENV-FILE IS A DISCLOSURE TRIPWIRE header note in `git-guard.js`, and
+  the `git commit <pathspec>` entry under Deliberate exclusions below.
 
 `--help`/`-h` on any of the above suppresses the match for that git
 invocation. The `git` executable token itself is matched case-insensitively

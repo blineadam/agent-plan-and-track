@@ -126,10 +126,11 @@
  *     quote characters as part of the token (by design, so a quoted `+` or
  *     separator inside a string is never misread as shell syntax), so a
  *     quoted flag never equals the bare token this classifier matches on.
- *     stage-env-file's own `add` branch strips one pair of surrounding
- *     matched quotes before its basename check (`git add ".env"` and
- *     `git add '.env'` both deny), so this exclusion no longer applies
- *     there; it still applies to every other kind's flag matching.
+ *     stage-env-file's own `add` branch re-joins and strips a quoted span
+ *     before its basename check, including one containing whitespace
+ *     (`git add ".env"`, `git add '.env'`, and `git add "config dir/.env"`
+ *     all deny), so this exclusion no longer applies there; it still
+ *     applies to every other kind's flag matching.
  *   - A backslash-escaped token (`git add .\env`), same shell-quoting-
  *     evasion class as the quote-wrapped-flags gap above: bash's own
  *     escaping rules treat `\e` as a literal `e`, so the shell hands git the
@@ -509,28 +510,58 @@ function hasPushForce(rest) {
   );
 }
 
-// Strips one pair of surrounding matching quotes ('...' or "...") from a
-// token before stage-env-file's own basename check, so `git add ".env"` and
-// `git add '.env'` are still recognized: splitShellSegments (see its header
-// note above) keeps quote characters as part of the token by design, so
-// without this the quoted form never equals the bare basename this
-// classifier matches on. Scoped to this file's own add-branch token
-// reading only; splitShellSegments itself is a byte-parity contract (see
+// Re-joins tokens that were one quoted span containing whitespace before
+// stage-env-file's own basename check. detectDestructiveGit splits each
+// command segment on bare whitespace BEFORE any quote awareness, so
+// `git add "config dir/.env"` becomes the tokens `"config` and `dir/.env"`,
+// neither of which the basename check can recognize; splitShellSegments's
+// own quote tracking (see its header note above) already ran and correctly
+// kept the segment's quote characters intact, but that whitespace split
+// still breaks a quoted span with interior whitespace regardless. Walks the
+// already-whitespace-split `rest` array: a token that opens a quote (starts
+// with a quote character and does not also close it with a matching quote
+// of its own) is joined with following tokens, one space between, until the
+// token that closes the span is found, then the surrounding pair is
+// stripped; a token that both opens and closes its own quote (no interior
+// whitespace) is just stripped in place. An unterminated quote (no closing
+// token among the rest) falls back to leaving that token as-is rather than
+// hanging or throwing. Scoped to this file's own add-branch token reading
+// only; splitShellSegments itself is a byte-parity contract (see
 // .github/scripts/check-split-shell-segments-parity.js) and is not touched.
 // A backslash-escaped token (`.\env`) is a separate, still-open gap (see
 // header's DELIBERATE EXCLUSIONS), not addressed here.
-function stripMatchedQuotes(token) {
-  if (token.length >= 2) {
-    const first = token[0];
-    const last = token[token.length - 1];
-    if ((first === '"' || first === "'") && first === last) return token.slice(1, -1);
+function rejoinQuotedSpans(rest) {
+  const out = [];
+  let i = 0;
+  while (i < rest.length) {
+    const t = rest[i];
+    const quote = t[0] === '"' || t[0] === "'" ? t[0] : null;
+    const closesOwnQuote = quote && t.length >= 2 && t[t.length - 1] === quote;
+    if (quote && !closesOwnQuote) {
+      let j = i;
+      let joined = t;
+      let closed = false;
+      while (j + 1 < rest.length) {
+        j += 1;
+        joined += ' ' + rest[j];
+        if (rest[j][rest[j].length - 1] === quote) {
+          closed = true;
+          break;
+        }
+      }
+      out.push(closed ? joined.slice(1, -1) : t);
+      i = closed ? j + 1 : i + 1;
+      continue;
+    }
+    out.push(quote ? t.slice(1, -1) : t);
+    i += 1;
   }
-  return token;
+  return out;
 }
 
 // The part of a kind string before its first colon. Bare kinds (the four
 // destructive ones) have no colon and return unchanged; stage-env-file's
-// composite kind (`stage-env-file:<basename>`, see detectDestructiveGit)
+// composite kind (`stage-env-file:<full path>`, see detectDestructiveGit)
 // collapses back to its label-lookup and message key this way.
 function baseKind(kind) {
   const idx = kind.indexOf(':');
@@ -621,22 +652,30 @@ function detectDestructiveGit(command) {
       // Any non-option token is a candidate pathspec; option-shaped tokens
       // (start with '-') are skipped rather than paired with a value the way
       // -C/-c are above, since `add` has no flag this classifier needs to
-      // treat specially. Each matching basename becomes its own composite
-      // kind (`stage-env-file:<basename>`, see baseKind above and
-      // markerPath below), so one file's confirmation cannot disarm the
-      // guard for a different file added later the same session.
+      // treat specially. Each matching FULL PATH token becomes its own
+      // composite kind (`stage-env-file:<full path, lowercased>`, see
+      // baseKind above and markerPath below), not just its basename: two
+      // different directories can share a filename (`config/.env` and
+      // `other/.env`), and keying on the basename alone would let a
+      // confirmed retry for one silently disarm the guard for the other.
+      // `./config/.env` and `config/.env` therefore get distinct markers
+      // too; erring toward an extra deny on a path spelled two ways is
+      // correct for this guard. Pattern matching itself still reads only
+      // the basename, via isEnvFilePattern(basenameOf(...)).
       //   - `git add .` / `git add -A` with no explicit path: the hook only
       //     sees argv, not what the sweep would actually stage, so a bare
       //     `.`/`-A` token never matches this pattern (accepted false
       //     negative, git's own .gitignore handling is the real backstop).
-      //   - A quoted token (`git add ".env"` or `git add '.env'`): now
-      //     caught, via stripMatchedQuotes above, before the basename check.
+      //   - A quoted token, with or without interior whitespace
+      //     (`git add ".env"`, `git add '.env'`, `git add "config dir/.env"`):
+      //     now caught, via rejoinQuotedSpans above, before the basename
+      //     check.
       //   - A backslash-escaped token (`git add .\env`): still an accepted
       //     false negative (see header's DELIBERATE EXCLUSIONS).
-      for (const t of rest) {
+      for (const t of rejoinQuotedSpans(rest)) {
         if (t.startsWith('-')) continue;
-        const basename = basenameOf(stripMatchedQuotes(t));
-        if (isEnvFilePattern(basename)) kinds.add('stage-env-file:' + basename.toLowerCase());
+        const basename = basenameOf(t);
+        if (isEnvFilePattern(basename)) kinds.add('stage-env-file:' + t.toLowerCase());
       }
     }
   }
@@ -649,8 +688,8 @@ function detectDestructiveGit(command) {
 // destructive-kind string directly (the kind set is closed and small, so no
 // hashing is needed, the same reasoning plan-gate.js's mutationMarkerPath
 // uses for its own closed kind set). stage-env-file's composite kind
-// (`stage-env-file:<basename>`) is the one exception: it is not closed (a
-// basename is arbitrary text), so markerPath hashes it into a filesystem-
+// (`stage-env-file:<full path>`) is the one exception: it is not closed (a
+// path is arbitrary text), so markerPath hashes it into a filesystem-
 // safe marker name instead of using it verbatim (see markerPath below).
 
 function sessionDir(sessionId, input) {
@@ -670,7 +709,7 @@ function sessionDir(sessionId, input) {
 // (the closed set's four kinds, plus anything else with no colon), so their
 // fixtures keep passing. A composite kind (stage-env-file's own) hashes to a
 // filesystem-safe name: this hook also gates Copilot's `powershell` tool,
-// where a colon in a filename is invalid, and a basename is arbitrary text
+// where a colon in a filename is invalid, and a full path is arbitrary text
 // that could otherwise collide with path separators or reserved characters.
 function markerPath(dir, kind) {
   if (kind.indexOf(':') === -1) return path.join(dir, kind);

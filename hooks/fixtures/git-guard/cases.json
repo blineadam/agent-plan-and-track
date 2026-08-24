@@ -516,7 +516,7 @@
       ]
     },
     {
-      "id": "stage-env-file-commit-denies",
+      "id": "stage-env-file-commit-pathspec-allows",
       "description": "git commit .env -m \"wip\" names .env directly on a commit invocation: stage-env-file is now scoped to add only, a documented accepted false negative, so this allows.",
       "steps": [
         { "dialect": "snake", "command": "git commit .env -m \"wip\"", "expect": "allow" }
@@ -534,13 +534,6 @@
       "description": "git commit -n .env -m \"wip\": on commit, -n means --no-verify, not dry-run, which the pre-dispatch -n suppression used to misread; scoping stage-env-file to add only removes the gated surface entirely, so this allows (documented accepted false negative, same as the commit-pathspec gap).",
       "steps": [
         { "dialect": "snake", "command": "git commit -n .env -m \"wip\"", "expect": "allow" }
-      ]
-    },
-    {
-      "id": "stage-env-file-commit-pathspec-x-allows",
-      "description": "git commit .env -m \"x\" names .env directly on a commit invocation with a different message than stage-env-file-commit-denies; same documented accepted false negative (commit no longer gated).",
-      "steps": [
-        { "dialect": "snake", "command": "git commit .env -m \"x\"", "expect": "allow" }
       ]
     },
     {
@@ -587,12 +580,12 @@
     },
     {
       "id": "stage-env-file-add-double-quoted-denies",
-      "description": "git add \".env\": stripMatchedQuotes strips the surrounding double quotes before the basename check, so a quoted .env still denies.",
+      "description": "git add \".env\": rejoinQuotedSpans strips the surrounding double quotes before the basename check, so a quoted .env still denies.",
       "steps": [{ "dialect": "snake", "command": "git add \".env\"", "expect": "deny", "expectContains": ["stage-env-file"] }]
     },
     {
       "id": "stage-env-file-add-single-quoted-denies",
-      "description": "git add '.env': stripMatchedQuotes strips the surrounding single quotes before the basename check, so a quoted .env still denies.",
+      "description": "git add '.env': rejoinQuotedSpans strips the surrounding single quotes before the basename check, so a quoted .env still denies.",
       "steps": [{ "dialect": "snake", "command": "git add '.env'", "expect": "deny", "expectContains": ["stage-env-file"] }]
     },
     {
@@ -627,6 +620,44 @@
           "expect": "deny",
           "expectContains": ["stage-env-file"]
         }
+      ]
+    },
+    {
+      "id": "stage-env-file-directory-marker-collision-denies",
+      "description": "Regression for fix 1 (full-path marker keying, not basename): git add config/.env denies and its marker is backdated past the race window so the retry of config/.env allows (a genuine model-turn-later retry of THAT path), but a subsequent git add other/.env in the SAME session still denies, since two different directories sharing a basename must not share a marker.",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git add config/.env",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        },
+        {
+          "dialect": "snake",
+          "command": "git add config/.env",
+          "backdateMarkersMs": 5000,
+          "expect": "allow"
+        },
+        {
+          "dialect": "snake",
+          "command": "git add other/.env",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-quoted-path-with-space-denies",
+      "description": "Regression for fix 2 (quoted-span rejoining): git add \"config dir/.env\" is one quoted pathspec containing whitespace, which the whitespace split at the top of detectDestructiveGit breaks into two tokens before rejoinQuotedSpans repairs it; denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git add \"config dir/.env\"", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-quoted-nested-path-no-space-denies",
+      "description": "git add \"config/.env\": a quoted nested path with no interior whitespace, still denies via the quoted-span rejoin's single-token strip path.",
+      "steps": [
+        { "dialect": "snake", "command": "git add \"config/.env\"", "expect": "deny", "expectContains": ["stage-env-file"] }
       ]
     },
     {
