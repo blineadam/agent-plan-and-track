@@ -166,12 +166,24 @@ hook also gates Copilot's `powershell` tool, where those spellings are valid.
   characters as part of the token, so a quoted flag never equals the bare
   token the classifier matches on. `stage-env-file`'s own `add` branch reads
   its pathspecs with a real quote-aware word splitter (`shellWords`) instead,
-  which strips quote characters wherever they appear in a word and unescapes
-  a backslash the way a real shell does (`git add .e"nv"`,
-  `git add config/".env"`, `git add .\env`, `git add ".env"`,
-  `git add '.env'`, and `git add "config dir/.env"` all deny), so this
-  exclusion no longer applies there; it still applies to every other kind's
-  flag matching.
+  which strips quote characters wherever they appear in a word (`git add
+  .e"nv"`, `git add config/".env"`, `git add ".env"`, `git add '.env'`, and
+  `git add "config dir/.env"` all deny), so this exclusion no longer applies
+  there; it still applies to every other kind's flag matching.
+- Backslash ambiguity in `stage-env-file`'s own `add` branch: a backslash
+  outside single quotes means two different things depending on which shell
+  produced the command text, bash's escape-the-next-character rule or
+  PowerShell's ordinary path-separator rule, and this hook cannot know which
+  one from the command text alone (it gates Copilot's `powershell` tool too,
+  see the PowerShell-specific-syntax entry below). `shellWords` takes a
+  `backslashEscapes` parameter for this, and the `add` branch reads pathspecs
+  under BOTH conventions, matching if either yields a `.env`-pattern
+  basename: `git add .\env`, `git add config\.env`, and `git add .\.env` all
+  deny under at least one parse. This deliberately over-matches rather than
+  under-matches, not chased: a bash command staging a file literally named
+  `.\env` (an escaped backslash) also denies. For a secrets tripwire this is
+  the correct error direction: an extra deny costs one confirmation, a missed
+  one puts a credential in history.
 - `git add .` or `git add -A` with no explicit path: the hook sees only argv
   and cannot know what the sweep would actually stage, so it cannot be gated;
   git's own `.gitignore` handling is the real protection there. `git add -f

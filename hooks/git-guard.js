@@ -129,12 +129,25 @@
  *     stage-env-file's own `add` branch reads its pathspecs with a real
  *     quote-aware word splitter instead (shellWords, see its own header),
  *     which strips quote characters wherever they appear in a word, not
- *     only at the word's start, and also unescapes a backslash the way a
- *     real shell does; `git add .e"nv"`, `git add config/".env"`,
- *     `git add .\env`, `git add ".env"`, `git add '.env'`, and
- *     `git add "config dir/.env"` all deny. This exclusion no longer
- *     applies to stage-env-file; it still applies to every other kind's
- *     flag matching.
+ *     only at the word's start; `git add .e"nv"`, `git add config/".env"`,
+ *     `git add ".env"`, `git add '.env'`, and `git add "config dir/.env"`
+ *     all deny. This exclusion no longer applies to stage-env-file; it still
+ *     applies to every other kind's flag matching.
+ *   - Backslash ambiguity in stage-env-file's own `add` branch: a backslash
+ *     outside single quotes means two different things depending on which
+ *     shell produced the command text, bash's escape-the-next-character rule
+ *     or PowerShell's ordinary path-separator rule, and this hook cannot
+ *     know which one from the command text alone (see ONE SCRIPT, THREE
+ *     HARNESSES above). shellWords is parameterized on this
+ *     (`backslashEscapes`, see its own header) and the `add` branch reads
+ *     pathspecs under BOTH conventions, matching if either yields a
+ *     `.env`-pattern basename: `git add .\env`, `git add config\.env`, and
+ *     `git add .\.env` all deny under at least one parse. This deliberately
+ *     over-matches rather than under-matches, not chased: a bash command
+ *     staging a file literally named `.\env` (an escaped backslash) will
+ *     also deny. For a secrets tripwire this is the correct error direction:
+ *     an extra deny costs one confirmation, a missed one puts a credential
+ *     in history.
  *   - An environment-assignment prefix whose value is itself quoted and
  *     contains a space (`GIT_AUTHOR_NAME="John Doe" git reset --hard`):
  *     whitespace token splitting breaks the assignment into two tokens
@@ -517,12 +530,17 @@ function hasPushForce(rest) {
 // `.e"nv"` and `config/".env"` defeat, since neither carries a quote
 // character in token-initial position. Quote
 // characters are removed from the output, so `.e"nv"` becomes `.env` and
-// `config/".env"` becomes `config/.env`. A backslash outside single quotes
-// escapes the next character literally (real shell behavior), so `.\env`
-// becomes `.env` too: unlike splitShellSegments (a byte-parity contract, not
-// touched here), this function is scoped to this branch's own pathspec
-// reading and is free to unescape.
-function shellWords(segment) {
+// `config/".env"` becomes `config/.env`.
+//
+// backslashEscapes controls whether a backslash outside single quotes
+// escapes the next character (Bash behavior, `.\env` -> `.env`) or is kept
+// as an ordinary literal character (PowerShell behavior, where `\` is a path
+// separator, not an escape). Quote detection and stripping is identical in
+// both modes; only the backslash handling, in both the unquoted branch and
+// inside a double-quoted span, changes. Unlike splitShellSegments (a byte-
+// parity contract, not touched here), this function is scoped to this
+// branch's own pathspec reading and is free to unescape.
+function shellWords(segment, { backslashEscapes } = {}) {
   const words = [];
   let current = '';
   let hasContent = false;
@@ -539,7 +557,7 @@ function shellWords(segment) {
     if (inDouble) {
       if (ch === '"') {
         inDouble = false;
-      } else if (ch === '\\' && i + 1 < text.length) {
+      } else if (backslashEscapes && ch === '\\' && i + 1 < text.length) {
         current += text[i + 1];
         i += 1;
       } else {
@@ -563,7 +581,7 @@ function shellWords(segment) {
       hasContent = true;
       continue;
     }
-    if (ch === '\\' && i + 1 < text.length) {
+    if (backslashEscapes && ch === '\\' && i + 1 < text.length) {
       current += text[i + 1];
       hasContent = true;
       i += 1;
@@ -574,6 +592,45 @@ function shellWords(segment) {
   }
   if (hasContent) words.push(current);
   return words;
+}
+
+// Given a quote-aware word array covering a WHOLE segment (as produced by
+// shellWords over the segment's full text, not just a tail slice), locates
+// the `git add` subcommand within THAT array and returns the words that
+// follow it, or null if this array does not resolve to a `git add`
+// invocation. Re-derives the same normalization the outer whitespace-
+// tokenized loop above applies (skip leading VAR=value assignments, skip a
+// leading literal `command`, skip git global options where -C/-c each
+// consume the next word and any other option-shaped word is self-
+// contained), but walks THIS word array's own indices rather than reusing
+// the outer loop's index `i`. That index was computed by walking a plain
+// whitespace split, and whitespace split's length can differ from a quote-
+// aware split's length whenever a quoted argument contains whitespace
+// (`git -C "work tree" add .env`), so slicing a quote-aware array at the
+// whitespace-split's index can drop or duplicate words. This local helper
+// exists so the `add` branch's own reading stays self-consistent against
+// whichever word array it is given; it does not change how the outer loop
+// computes `i` for the other four kinds.
+function addSubcommandTail(words) {
+  let j = 0;
+  while (j < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[j])) j += 1;
+  if (words[j] === 'command') j += 1;
+  if (!isGitExecutable(words[j])) return null;
+  j += 1;
+  while (j < words.length) {
+    const t = words[j];
+    if (t === '-C' || t === '-c') {
+      j += 2;
+      continue;
+    }
+    if (t.startsWith('-')) {
+      j += 1;
+      continue;
+    }
+    break;
+  }
+  if (words[j] !== 'add') return null;
+  return words.slice(j + 1);
 }
 
 // The part of a kind string before its first colon. Bare kinds (the four
@@ -657,50 +714,81 @@ function detectDestructiveGit(command) {
       // hasForceFlag's -f/cluster checks still apply, --discard-changes is
       // checked directly.
       if (hasForceFlag(rest) || rest.includes('--discard-changes')) kinds.add('discard-worktree');
-    } else if (subcommand === 'add') {
-      // Scoped to `add` only, not `commit`: see the header's STAGE-ENV-FILE
-      // IS A DISCLOSURE TRIPWIRE note for why (a bare `git commit <path>`
-      // naming a `.env` file with no prior `git add` is an accepted false
-      // negative, alongside the bare-sweep gap below) and for the false
-      // positive removing `commit` fixes (a commit MESSAGE's interior word
-      // matching `.env` is not a pathspec, but this same loop over `commit`'s
-      // own token stream used to read it as one).
-      //
-      // Any non-option token is a candidate pathspec; option-shaped tokens
-      // (start with '-') are skipped rather than paired with a value the way
-      // -C/-c are above, since `add` has no flag this classifier needs to
-      // treat specially. Each matching FULL PATH token becomes its own
-      // composite kind (`stage-env-file:<full path, exact case>`, see
-      // baseKind above and markerPath below), not just its basename: two
-      // different directories can share a filename (`config/.env` and
-      // `other/.env`), and keying on the basename alone would let a
-      // confirmed retry for one silently disarm the guard for the other.
-      // `./config/.env` and `config/.env` therefore get distinct markers
-      // too; erring toward an extra deny on a path spelled two ways is
-      // correct for this guard. Pattern matching itself still reads only
-      // the basename, via isEnvFilePattern(basenameOf(...)).
-      //   - `git add .` / `git add -A` with no explicit path: the hook only
-      //     sees argv, not what the sweep would actually stage, so a bare
-      //     `.`/`-A` token never matches this pattern (accepted false
-      //     negative, git's own .gitignore handling is the real backstop).
-      //   - A quote appearing anywhere in a word, or a backslash-escaped
-      //     character (`git add ".env"`, `git add '.env'`,
-      //     `git add "config dir/.env"`, `git add .e"nv"`,
-      //     `git add config/".env"`, `git add .\env`): all now caught, via
-      //     shellWords below, before the basename check.
-      //
-      // shellWords re-splits THIS SEGMENT'S OWN TEXT (`trimmed`) with real
-      // shell word-splitting rules rather than reusing the outer whitespace
-      // split (`rest`), since that split already broke a quoted span
-      // containing whitespace into multiple tokens before any quote
-      // awareness ran. The outer whitespace tokenization above is still what
-      // finds the subcommand and governs every other kind's flag matching;
-      // slicing shellWords's result at the same index (`i + 1`) that
-      // produced `rest` lines the two splits up, since nothing before the
-      // subcommand realistically contains a quoted span with interior
-      // whitespace.
-      for (const t of shellWords(trimmed).slice(i + 1)) {
-        if (t.startsWith('-')) continue;
+    }
+
+    // stage-env-file: `git add` naming a `.env`-pattern file. Scoped to
+    // `add` only, not `commit`: see the header's STAGE-ENV-FILE IS A
+    // DISCLOSURE TRIPWIRE note for why (a bare `git commit <path>` naming a
+    // `.env` file with no prior `git add` is an accepted false negative,
+    // alongside the bare-sweep gap below) and for the false positive
+    // removing `commit` fixes (a commit MESSAGE's interior word matching
+    // `.env` is not a pathspec, but reading `commit`'s own token stream the
+    // same way used to misread it as one).
+    //
+    // Deliberately NOT gated behind `subcommand === 'add'` (the outer
+    // `subcommand`/`i` above, used by the five kinds handled in the if/else
+    // chain): that pair is computed by walking a plain whitespace split of
+    // `trimmed`, and a plain whitespace split's token count can differ from
+    // a quote-aware split's whenever a global option's value is quoted and
+    // contains whitespace (`git -C "work tree" add .env`, `git -c
+    // user.name="A B" add .env`), which desynchronizes `i` against any
+    // quote-aware array sliced at the same index and can misidentify the
+    // subcommand entirely (a git-guard regression this rewrite fixes).
+    // addSubcommandTail instead re-walks a quote-aware word array from the
+    // START of this segment, independently confirming (or rejecting) that
+    // this segment is a `git add` invocation, so this block never depends
+    // on the outer `i`/`subcommand` at all. It is a no-op (returns null,
+    // adds nothing) whenever the segment is not actually `git add`, so
+    // running it unconditionally alongside the if/else chain above is safe:
+    // the two never both match the same segment.
+    //
+    // Any non-option token is a candidate pathspec; option-shaped tokens
+    // (start with '-') are skipped rather than paired with a value the way
+    // -C/-c are above, since `add` has no flag this classifier needs to
+    // treat specially. Each matching FULL PATH token becomes its own
+    // composite kind (`stage-env-file:<full path, exact case>`, see
+    // baseKind above and markerPath below), not just its basename: two
+    // different directories can share a filename (`config/.env` and
+    // `other/.env`), and keying on the basename alone would let a
+    // confirmed retry for one silently disarm the guard for the other.
+    // `./config/.env` and `config/.env` therefore get distinct markers
+    // too; erring toward an extra deny on a path spelled two ways is
+    // correct for this guard. Pattern matching itself still reads only
+    // the basename, via isEnvFilePattern(basenameOf(...)).
+    //   - `git add .` / `git add -A` with no explicit path: the hook only
+    //     sees argv, not what the sweep would actually stage, so a bare
+    //     `.`/`-A` token never matches this pattern (accepted false
+    //     negative, git's own .gitignore handling is the real backstop).
+    //   - A quote appearing anywhere in a word, or a backslash-escaped
+    //     character (`git add ".env"`, `git add '.env'`,
+    //     `git add "config dir/.env"`, `git add .e"nv"`,
+    //     `git add config/".env"`, `git add .\env`): all now caught, via
+    //     shellWords below, before the basename check.
+    //
+    // Read pathspecs under BOTH backslash conventions, bash-style
+    // (backslash escapes the next character) and PowerShell-style
+    // (backslash is an ordinary path-separator character), and match if
+    // EITHER parse yields a `.env`-pattern candidate. This hook gates one
+    // script across three harnesses/shells (see the header's ONE SCRIPT,
+    // THREE HARNESSES note) and cannot know from the command text alone
+    // which dialect actually produced it, so for a secrets tripwire the
+    // correct error direction is to over-match rather than under-match: an
+    // extra deny costs one confirmation, a missed one puts a credential in
+    // history. This deliberately over-matches one concrete shape: a bash
+    // command staging a file literally named `.\env` (a real escaped
+    // backslash, not a PowerShell path separator) also denies, since its
+    // bash-style parse unescapes it to the literal basename `.env`.
+    {
+      const candidates = new Set();
+      for (const backslashEscapes of [true, false]) {
+        const tail = addSubcommandTail(shellWords(trimmed, { backslashEscapes }));
+        if (!tail) continue;
+        for (const t of tail) {
+          if (t.startsWith('-')) continue;
+          candidates.add(t);
+        }
+      }
+      for (const t of candidates) {
         const basename = basenameOf(t);
         if (isEnvFilePattern(basename)) kinds.add('stage-env-file:' + t);
       }

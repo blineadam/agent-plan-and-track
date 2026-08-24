@@ -712,6 +712,55 @@
       ]
     },
     {
+      "id": "stage-env-file-powershell-backslash-nested-denies",
+      "description": "Regression A: powershell git add config\\.env names a real .env file by PowerShell path rules (backslash is a path separator); the PowerShell-style parse alone must catch this, since shellWords's bash-style parse (backslash escapes the next char) collapses it to a different, non-matching basename.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add config\\.env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-powershell-backslash-dot-denies",
+      "description": "Regression A: powershell git add .\\.env names a real .env file one directory down by PowerShell path rules; denies via the PowerShell-style parse.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add .\\.env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-powershell-bare-denies",
+      "description": "powershell git add .env, no backslash involved, denies the same as the snake dialect: baseline PowerShell coverage for the bare .env case.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add .env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-powershell-example-template-allowed",
+      "description": "powershell git add .env.example is the conventionally-committed template suffix; allows the same as the snake dialect: baseline PowerShell coverage for the template-suffix exclusion.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add .env.example", "expect": "allow" }
+      ]
+    },
+    {
+      "id": "stage-env-file-global-option-quoted-value-with-space-denies",
+      "description": "Regression B: git -C \"work tree\" add .env quotes -C's value with interior whitespace, which desynchronizes the outer whitespace-split subcommand index against the quote-aware word array; the add branch's own self-consistent (addSubcommandTail) reading is unaffected and still denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git -C \"work tree\" add .env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-global-option-c-quoted-value-with-space-denies",
+      "description": "Regression B, the -c form: git -c user.name=\"A B\" add .env quotes -c's value with interior whitespace, the same desync shape as the -C case; denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git -c user.name=\"A B\" add .env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-literal-backslash-filename-accepted-overmatch-denies",
+      "description": "Accepted over-match from fix A, not a bug: git add .\\env (one real backslash before env) denies even though a PowerShell reading of this same text would name a file called env, not .env. This hook cannot know which shell produced the command (see ONE SCRIPT, THREE HARNESSES in the header), so the add branch tests both a bash-style parse (backslash escapes the next character, unescaping this token to the literal basename .env) and a PowerShell-style parse (backslash stays literal, basename env) and denies on a match from either; for a secrets tripwire, the extra deny is the correct error direction over a missed one.",
+      "steps": [
+        { "dialect": "snake", "command": "git add .\\env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
       "id": "copilot-toolargs-neither-string-nor-object-allowed",
       "description": "A Copilot toolArgs that is neither a string nor an object (e.g. a number) has no command to extract, so it allows.",
       "steps": [
