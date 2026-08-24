@@ -100,6 +100,15 @@ through. Deny-once forces one conscious re-assertion instead: the same
 epistemic position, and the same fix, that `plan-gate.js`'s attribution guard
 already uses for its own unverifiable claim.
 
+Four of the five blocked kinds are strictly destructive. `stage-env-file` is
+different: it is a disclosure tripwire on an explicitly-named `.env`-pattern
+path, not a backstop. `git add .` and `git add -A` are unclosable from
+argv, the common accident vector, since the hook sees only the tokens typed,
+not what the sweep would actually stage; `.gitignore` plus the standing
+never-commit-secrets rule text remain the primary protection, and this hook
+is a second check on the narrower explicit-path case, not a substitute for
+either. Do not over-trust it as a complete backstop.
+
 ### Blocked set
 
 - `reset-hard`: `git reset --hard`.
@@ -117,6 +126,12 @@ already uses for its own unverifiable claim.
   `--discard-changes`, and `git restore <path>` unless `--staged`/`-S` is
   present without `--worktree`/`-W` (a staged-only restore unstages but never
   touches the worktree).
+- `stage-env-file`: `git add` naming a `.env`-pattern file by basename: `.env`
+  exactly, or `.env.<suffix>` for any suffix except the conventionally-
+  committed template variants (`example`, `sample`, `template`, `dist`,
+  `default`, `defaults`), backing the standing never-commit-secrets rule with
+  a mechanical check. Scoped to `add` only, not `commit`: see "Why deny-once"
+  above.
 
 `--help`/`-h` on any of the above suppresses the match for that git
 invocation. The `git` executable token itself is matched case-insensitively
@@ -135,6 +150,10 @@ hook also gates Copilot's `powershell` tool, where those spellings are valid.
   which is also unobservable from the command text, and routine locally.
 - `git branch -D`: in upstream's blocked list but not in our rule, and
   reflog-recoverable.
+- `git commit <pathspec>` naming a `.env`-pattern file with no prior `git add`
+  of that file this session: `stage-env-file` is scoped to `add` only, so a
+  bare `commit` naming a path directly is an accepted false negative,
+  alongside the `git add .` / `-A` bare-sweep gap below.
 - `git restore --staged <path>` (unstages only, worktree untouched) and a
   bare `git checkout <branchname>` / `git checkout -b <name>` (branch
   checkout, not a worktree discard; branch-vs-path ambiguity from the command
@@ -144,7 +163,20 @@ hook also gates Copilot's `powershell` tool, where those spellings are valid.
   documented conservative posture.
 - Quote-wrapped flags (`git reset '--hard'`): the tokenizer keeps the quote
   characters as part of the token, so a quoted flag never equals the bare
-  token the classifier matches on.
+  token the classifier matches on. `stage-env-file`'s own `add` branch strips
+  one pair of surrounding matched quotes before its basename check
+  (`git add ".env"` and `git add '.env'` both deny), so this exclusion no
+  longer applies there; it still applies to every other kind's flag matching.
+- A backslash-escaped token (`git add .\env`), same shell-quoting-evasion
+  class as the quote-wrapped-flags gap above: bash's own escaping rules treat
+  `\e` as a literal `e`, so the shell hands git the single argument `.env`,
+  but this tokenizer instead keeps the backslash as part of the token and
+  splits the basename on `\` for Windows-path support, so the basename reads
+  as `env`, not `.env`. Accepted false negative, not chased.
+- `git add .` or `git add -A` with no explicit path: the hook sees only argv
+  and cannot know what the sweep would actually stage, so it cannot be gated;
+  git's own `.gitignore` handling is the real protection there. `git add -f
+  .env` IS caught, since the path is explicit.
 - An environment-assignment prefix whose value is itself quoted and contains
   a space (`GIT_AUTHOR_NAME="John Doe" git reset --hard`): whitespace token
   splitting breaks the assignment into two tokens before the leading-
