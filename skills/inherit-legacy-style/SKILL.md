@@ -91,6 +91,20 @@ use Copilot review.
    under the same gate as first-time Step 6, so the generated review files
    refresh against the new rules instead of going stale. Skip the offer when
    nothing review-worthy changed or the project doesn't use Copilot review.
+5. **Compact the log once it's outgrown its purpose.** In a git-tracked
+   project, once the Style Evolution Log holds 10+ entries or exceeds half
+   the file, run a compaction pass: announce it to the user first, never
+   silent. Read every entry; for each convention that lives only in a log
+   entry and is still live (not superseded or reverted by a later entry),
+   promote it into the fitting canonical section (Golden Files / Naming &
+   State-Control Rules / DONTs). Drop superseded and reverted entries
+   outright, and drop every entry older than the newest 2-3, which stay for
+   recency; an entry carrying a still-open deferred conflict stays
+   regardless of age, until the conflict is resolved. Git history is the
+   archive for whatever gets dropped. Restamp
+   the header's commit fingerprint to current HEAD. In a non-git project the
+   log is the only history, so summarize the entries being dropped into a
+   short paragraph instead of deleting them.
 
 ## Per-turn enforcement
 
@@ -103,7 +117,10 @@ DONTs apply.
 - Skipping the scale measurement: sampling a 30-file project starves it;
   close-reading a 5,000-file repo blows the budget.
 - Stacking conflict questions: strictly one at a time.
-- Overwriting rules in incremental mode: always append the evolution log.
+- Overwriting rules during a routine incremental update: always append the
+  evolution log there instead. The announced compaction pass (Incremental
+  update step 5) is the one exception, since rewriting the log is its whole
+  point.
 - Defaulting to hard enforcement: persistence strength is the user's call.
 - Judging syntax or stack quality: this aligns meta-architecture only.
 - Copying bugs from exemplar files: reuse structure, flag defects.
