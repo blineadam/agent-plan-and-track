@@ -100,6 +100,8 @@ through. Deny-once forces one conscious re-assertion instead: the same
 epistemic position, and the same fix, that `plan-gate.js`'s attribution guard
 already uses for its own unverifiable claim.
 
+### stage-env-file is a disclosure tripwire, not a backstop
+
 Four of the five blocked kinds are strictly destructive. `stage-env-file` is
 different: it is a disclosure tripwire on an explicitly-named `.env`-pattern
 path, not a backstop. `git add .` and `git add -A` are unclosable from
@@ -130,9 +132,16 @@ either. Do not over-trust it as a complete backstop.
   exactly, or `.env.<suffix>` for any suffix except the conventionally-
   committed template variants (`example`, `sample`, `template`, `dist`,
   `default`, `defaults`), backing the standing never-commit-secrets rule with
-  a mechanical check. Scoped to `add` only, not `commit`: see the hook's own
-  STAGE-ENV-FILE IS A DISCLOSURE TRIPWIRE header note in `git-guard.js`, and
-  the `git commit <pathspec>` entry under Deliberate exclusions below.
+  a mechanical check. Also matches a basename that starts with `.env`
+  (case-insensitive) and contains a glob metacharacter (`*`, `?`, `[`), such
+  as `.env*` or `.env.*`, without evaluating the glob: git accepts a quoted
+  fileglob and expands it itself, so `git add '.env*'` can genuinely stage a
+  real `.env`. This deliberately over-matches a template glob like
+  `.env.example*` too, since the hook cannot know what the glob would
+  actually expand to and an extra deny costs one confirmation. Scoped to
+  `add` only, not `commit`: see the hook's own STAGE-ENV-FILE IS A
+  DISCLOSURE TRIPWIRE header note in `git-guard.js`, and the
+  `git commit <pathspec>` entry under Deliberate exclusions below.
 
 `--help`/`-h` on any of the above suppresses the match for that git
 invocation. The `git` executable token itself is matched case-insensitively
@@ -194,6 +203,13 @@ hook also gates Copilot's `powershell` tool, where those spellings are valid.
   exotic/uncommon combinations. An unrecognized or malformed magic-looking
   prefix is left as-is and read as ordinary basename text, an accepted gap
   beyond the two common shapes above.
+- A glob pathspec that does not itself begin with `.env`, such as
+  `git add '*.env'`: it could expand to a real file like `prod.env`, but the
+  hook only glob-matches a basename that already starts with `.env` (see
+  `stage-env-file` above), since it never evaluates the glob or touches the
+  filesystem to find out what it would expand to. `prod.env` itself is also
+  outside `isEnvFilePattern`'s scope regardless, since it is not a
+  `.env`-prefixed basename at all.
 - `git add .` or `git add -A` with no explicit path: the hook sees only argv
   and cannot know what the sweep would actually stage, so it cannot be gated;
   git's own `.gitignore` handling is the real protection there. `git add -f

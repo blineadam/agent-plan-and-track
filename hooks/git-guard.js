@@ -70,6 +70,18 @@
  *                        variants (`example`, `sample`, `template`, `dist`,
  *                        `default`, `defaults`), backing the standing
  *                        never-commit-secrets rule with a mechanical check.
+ *                        Also matches a basename starting with `.env`
+ *                        (case-insensitive) that contains a glob
+ *                        metacharacter (`*`, `?`, `[`), such as `.env*` or
+ *                        `.env.*`, without evaluating the glob: git accepts
+ *                        a quoted fileglob and expands it itself, so
+ *                        `git add '.env*'` can genuinely stage a real
+ *                        `.env`. This deliberately over-matches a template
+ *                        glob like `.env.example*` too; see isEnvFilePattern
+ *                        below for the full rationale. It does NOT cover a
+ *                        glob that does not itself start with `.env`, such
+ *                        as `*.env` (could expand to `prod.env`); see
+ *                        DELIBERATE EXCLUSIONS below.
  *                        Scoped to `add` only, not `commit`: see STAGE-ENV-
  *                        FILE IS A DISCLOSURE TRIPWIRE, NOT A BACKSTOP below.
  * `--help`/`-h` on any of the above suppresses the match for that git
@@ -168,6 +180,14 @@
  *     this needs a full global-option table (which options take a value)
  *     that this classifier doesn't carry; the self-contained forms
  *     (`--git-dir=...`, `--no-pager`, `-C.`) are still caught.
+ *   - A glob pathspec that does not itself begin with `.env`, such as
+ *     `git add '*.env'`: it could expand to a real file like `prod.env`,
+ *     but the hook only glob-matches a basename that already starts with
+ *     `.env` (see stage-env-file above and isEnvFilePattern's own comment),
+ *     since it never evaluates the glob or touches the filesystem to find
+ *     out what it would expand to. `prod.env` itself is also outside
+ *     isEnvFilePattern's scope regardless, since it is not a `.env`-
+ *     prefixed basename at all.
  *   - PowerShell-specific syntax: this hook also gates Copilot's
  *     `powershell` tool (see the ONE SCRIPT, THREE HARNESSES note above) but
  *     tokenizes every dialect with bash quoting/separator rules, so a
@@ -502,9 +522,24 @@ function basenameOf(token) {
 // `env.js`, `.environment`, or any name that merely contains "env": the
 // basename must literally start with `.env` followed by either nothing or a
 // `.`, ruling out `.environment` (no separating dot after `.env`).
+//
+// Also matches any basename that starts with `.env` (case-insensitive) and
+// contains a glob metacharacter (`*`, `?`, or `[`), WITHOUT evaluating the
+// glob or touching the filesystem: git accepts a quoted fileglob and expands
+// it itself, so both `git add '.env*'` and unquoted `git add .env*` can
+// stage a real `.env` or `.env.production` even though the literal basename
+// here is `.env*`, not `.env`. This deliberately over-matches: a glob like
+// `.env.example*` also denies even though it targets only the template
+// file, since the hook cannot know what the glob would actually expand to,
+// and an extra deny costs one confirmation while a missed one puts a
+// credential in history. It does NOT cover a glob that does not itself
+// begin with `.env`, such as `*.env`, which could expand to `prod.env`;
+// `prod.env` is outside this pattern's scope regardless, since it is not a
+// `.env`-prefixed basename at all.
 function isEnvFilePattern(basename) {
   const lower = basename.toLowerCase();
   if (lower === '.env') return true;
+  if (lower.startsWith('.env') && /[*?[]/.test(lower)) return true;
   const m = /^\.env\.(.+)$/.exec(lower);
   if (!m) return false;
   return !ENV_TEMPLATE_SUFFIXES.has(m[1]);
@@ -728,7 +763,7 @@ function detectDestructiveGit(command) {
     // quote-aware tail split on `--`, since after `--` every remaining word
     // is a pathspec, never a flag, and `git add -- .env -n` must still deny
     // even though this blanket check alone would (wrongly) suppress it. The
-    // other five kinds' matching below is unchanged from before this split.
+    // other four kinds' matching below is unchanged from before this split.
     const suppressedByHelpOrDryRun =
       rest.some((t) => t === '--help' || t === '-h' || t === '-n' || t === '--dry-run') ||
       hasDryRunCluster(rest);
@@ -768,7 +803,7 @@ function detectDestructiveGit(command) {
     // same way used to misread it as one).
     //
     // Deliberately NOT gated behind `subcommand === 'add'` (the outer
-    // `subcommand`/`i` above, used by the five kinds handled in the if/else
+    // `subcommand`/`i` above, used by the four kinds handled in the if/else
     // chain): that pair is computed by walking a plain whitespace split of
     // `trimmed`, and a plain whitespace split's token count can differ from
     // a quote-aware split's whenever a global option's value is quoted and
@@ -963,7 +998,12 @@ function pruneStaleState() {
 
 function gitGuardReason(kinds, mode) {
   const kindNames = kinds.join(', ');
-  const described = kinds.map((k) => KIND_LABELS[baseKind(k)] || k).join('; ');
+  // De-duplicate the label list: two stage-env-file kinds (one composite kind
+  // per matched path, see detectDestructiveGit) share the same KIND_LABELS
+  // text, so without this the described clause repeats an identical sentence
+  // once per path. kindNames above still lists each distinct kind string,
+  // including its path, so nothing is lost, just not repeated below.
+  const described = [...new Set(kinds.map((k) => KIND_LABELS[baseKind(k)] || k))].join('; ');
   const lines = [`[GitGuard] This command matches ${kindNames}: ${described}.`];
   // stage-env-file is a disclosure tripwire, not a destructive operation: the
   // generic "confirm the user asked for this exact operation, then retry"
@@ -983,12 +1023,18 @@ function gitGuardReason(kinds, mode) {
         : 'This command is proceeding; confirm the user asked for this exact operation.'
     );
   }
-  if (kinds.some((k) => baseKind(k) === 'stage-env-file')) {
+  const envKinds = kinds.filter((k) => baseKind(k) === 'stage-env-file');
+  if (envKinds.length > 0) {
+    // More than one matched path: name every one of them rather than saying
+    // "this file", which reads as if only a single path were in question.
+    const paths = envKinds.map((k) => k.slice(k.indexOf(':') + 1));
+    const subject =
+      envKinds.length > 1 ? `these files (${paths.join(', ')}) hold no secrets` : 'this file holds no secrets';
     lines.push(
       'The same standing rule also states: "Never commit secrets, API keys, credentials, or a .env file; a committed-by-convention template (.env.example, .env.sample) is fine." ' +
         (mode === 'deny'
-          ? 'Confirm this file holds no secrets (a template, dummy test values, or an encrypted-by-design file), then retry: the retry passes.'
-          : 'This command is proceeding; confirm this file holds no secrets (a template, dummy test values, or an encrypted-by-design file).')
+          ? `Confirm ${subject} (a template, dummy test values, or an encrypted-by-design file), then retry: the retry passes.`
+          : `This command is proceeding; confirm ${subject} (a template, dummy test values, or an encrypted-by-design file).`)
     );
   }
   lines.push('(GITGUARD_DISABLED=1 turns this gate off; GITGUARD_WARN=1 demotes deny to a warning.)');

@@ -811,6 +811,51 @@
       ]
     },
     {
+      "id": "stage-env-file-add-quoted-glob-star-denies",
+      "description": "Fix 1: git add '.env*' is a quoted fileglob git expands itself, so it can genuinely stage a real .env; the basename .env* starts with .env and carries a glob metacharacter, so it now denies instead of bypassing the tripwire.",
+      "steps": [{ "dialect": "snake", "command": "git add '.env*'", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-unquoted-glob-star-denies",
+      "description": "Fix 1: git add .env* (unquoted) is the same basename .env* as the quoted form; denies for the same reason.",
+      "steps": [{ "dialect": "snake", "command": "git add .env*", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-quoted-glob-dot-star-denies",
+      "description": "Fix 1 non-regression: git add '.env.*' already denied before fix 1 (its suffix * is simply not a template suffix); must keep denying now that it also matches the new glob-prefix branch.",
+      "steps": [{ "dialect": "snake", "command": "git add '.env.*'", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-quoted-glob-example-star-denies",
+      "description": "Fix 1 accepted over-match: git add '.env.example*' targets a template-shaped name but denies anyway, since the hook cannot evaluate the glob to know it would only expand to .env.example-prefixed files; documented in both the header and docs/hooks.md.",
+      "steps": [{ "dialect": "snake", "command": "git add '.env.example*'", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-quoted-glob-not-env-prefixed-allowed",
+      "description": "Fix 1 documented non-coverage: git add '*.env' could expand to a real file like prod.env, but the glob-prefix match only covers a basename that itself starts with .env; *.env does not, so this allows.",
+      "steps": [{ "dialect": "snake", "command": "git add '*.env'", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-powershell-quoted-glob-star-denies",
+      "description": "Fix 1, copilot-powershell dialect: git add '.env*' denies the same as the snake dialect, since the glob-prefix basename check does not depend on backslash convention.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add '.env*'", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-two-paths-reason-names-both-not-singular",
+      "description": "Fix 2: git add .env .env.production matches stage-env-file twice, once per path; the reason must de-duplicate the described-clause label (not repeat the same sentence twice) and pluralize the secrets prompt to name both paths instead of saying \"this file\".",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git add .env .env.production",
+          "expect": "deny",
+          "expectContains": ["stage-env-file", ".env, .env.production", "hold no secrets"],
+          "expectExcludes": ["this file holds no secrets"]
+        }
+      ]
+    },
+    {
       "id": "copilot-toolargs-neither-string-nor-object-allowed",
       "description": "A Copilot toolArgs that is neither a string nor an object (e.g. a number) has no command to extract, so it allows.",
       "steps": [
