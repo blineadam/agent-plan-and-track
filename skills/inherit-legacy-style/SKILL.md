@@ -101,10 +101,8 @@ use Copilot review.
    outright, and drop every entry older than the newest 2-3, which stay for
    recency; an entry carrying a still-open deferred conflict stays
    regardless of age, until the conflict is resolved. Git history is the
-   archive for whatever gets dropped. Restamp
-   the header's commit fingerprint to current HEAD. In a non-git project the
-   log is the only history, so summarize the entries being dropped into a
-   short paragraph instead of deleting them.
+   archive for whatever gets dropped. Restamp the header's commit
+   fingerprint to current HEAD.
 
 ## Per-turn enforcement
 
