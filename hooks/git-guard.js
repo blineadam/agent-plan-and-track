@@ -148,6 +148,16 @@
  *     also deny. For a secrets tripwire this is the correct error direction:
  *     an extra deny costs one confirmation, a missed one puts a credential
  *     in history.
+ *   - Git pathspec magic in stage-env-file's own `add` branch (stripped
+ *     before the basename check, see stripPathspecMagic) covers only the
+ *     common forms: the long `:(...)pattern` form (the magic list inside
+ *     the parens is skipped, not validated) and the short
+ *     `:[/!^]...pattern` form. It does not implement git's full pathspec
+ *     grammar: no attribute magic (`:(attr:foo)`), no validation of the
+ *     magic keywords, no handling of exotic/uncommon combinations. An
+ *     unrecognized or malformed magic-looking prefix is left as-is and read
+ *     as ordinary basename text, an accepted gap beyond the two common
+ *     shapes above.
  *   - An environment-assignment prefix whose value is itself quoted and
  *     contains a space (`GIT_AUTHOR_NAME="John Doe" git reset --hard`):
  *     whitespace token splitting breaks the assignment into two tokens
@@ -500,6 +510,29 @@ function isEnvFilePattern(basename) {
   return !ENV_TEMPLATE_SUFFIXES.has(m[1]);
 }
 
+// Git pathspec "magic" lets a caller change how a pathspec is interpreted
+// (`:(literal)path` disables glob expansion, `:(glob)path` forces it, the
+// short forms `:/path`, `:!path`, `:^path` do the same for anchoring/
+// exclusion) while still ultimately naming the same file; git strips this
+// prefix before matching, so `git add ':(literal).env'` genuinely stages a
+// real `.env` despite not looking like it lexically. Stripping the same
+// prefix here, before the basename check, keeps the classifier in sync with
+// what git itself does. This covers only the common magic forms actually
+// seen in practice: the long `:(...)pattern` form (the parenthesized magic
+// list itself is not validated, just skipped) and the short
+// `:[/!^]...pattern` form. It does NOT implement git's full pathspec
+// grammar (no attribute magic like `:(attr:foo)`, no validation of the
+// magic keywords, no handling of exotic combinations); a candidate that is
+// only magic with no payload after stripping matches nothing, rather than
+// being treated as a directory-root pathspec.
+function stripPathspecMagic(token) {
+  const long = /^:\([^)]*\)(.*)$/.exec(token);
+  if (long) return long[1];
+  const short = /^:[/!^]+(.*)$/.exec(token);
+  if (short) return short[1];
+  return token;
+}
+
 // `--mirror` force-updates every remote ref and propagates deletions, a
 // forced rewrite of remote history by any reading (see header).
 function hasPushForce(rest) {
@@ -686,34 +719,43 @@ function detectDestructiveGit(command) {
     // --help/-h suppress the match for this git invocation, same exclusion
     // detectOutwardMutations() applies; -n/--dry-run too (git clean -n, git
     // push --dry-run never touch anything), including -n inside a combined
-    // short cluster (git clean -fdn), symmetric with force detection.
-    if (
+    // short cluster (git clean -fdn), symmetric with force detection. This
+    // blanket check gates ONLY the if/else chain below (reset/clean/push/
+    // checkout/restore/switch); it is computed from `rest`, the outer
+    // whitespace-tokenized argument list, which has no notion of git's `--`
+    // end-of-options marker. stage-env-file's own `add` branch further down
+    // does NOT reuse this check: it derives its own suppression from a
+    // quote-aware tail split on `--`, since after `--` every remaining word
+    // is a pathspec, never a flag, and `git add -- .env -n` must still deny
+    // even though this blanket check alone would (wrongly) suppress it. The
+    // other five kinds' matching below is unchanged from before this split.
+    const suppressedByHelpOrDryRun =
       rest.some((t) => t === '--help' || t === '-h' || t === '-n' || t === '--dry-run') ||
-      hasDryRunCluster(rest)
-    )
-      continue;
+      hasDryRunCluster(rest);
 
-    if (subcommand === 'reset') {
-      if (rest.includes('--hard')) kinds.add('reset-hard');
-    } else if (subcommand === 'clean') {
-      if (hasForceFlag(rest)) kinds.add('clean-force');
-    } else if (subcommand === 'push') {
-      if (hasPushForce(rest)) kinds.add('force-push');
-    } else if (subcommand === 'checkout') {
-      const dashIdx = rest.indexOf('--');
-      if (rest.includes('.') || (dashIdx !== -1 && dashIdx < rest.length - 1) || hasForceFlag(rest)) {
-        kinds.add('discard-worktree');
+    if (!suppressedByHelpOrDryRun) {
+      if (subcommand === 'reset') {
+        if (rest.includes('--hard')) kinds.add('reset-hard');
+      } else if (subcommand === 'clean') {
+        if (hasForceFlag(rest)) kinds.add('clean-force');
+      } else if (subcommand === 'push') {
+        if (hasPushForce(rest)) kinds.add('force-push');
+      } else if (subcommand === 'checkout') {
+        const dashIdx = rest.indexOf('--');
+        if (rest.includes('.') || (dashIdx !== -1 && dashIdx < rest.length - 1) || hasForceFlag(rest)) {
+          kinds.add('discard-worktree');
+        }
+      } else if (subcommand === 'restore') {
+        const hasStaged = rest.includes('--staged') || rest.includes('-S');
+        const hasWorktree = rest.includes('--worktree') || rest.includes('-W');
+        const hasTarget = rest.some((t) => !t.startsWith('-'));
+        if (hasTarget && !(hasStaged && !hasWorktree)) kinds.add('discard-worktree');
+      } else if (subcommand === 'switch') {
+        // git switch's own force flag is -f/--discard-changes (no --force);
+        // hasForceFlag's -f/cluster checks still apply, --discard-changes is
+        // checked directly.
+        if (hasForceFlag(rest) || rest.includes('--discard-changes')) kinds.add('discard-worktree');
       }
-    } else if (subcommand === 'restore') {
-      const hasStaged = rest.includes('--staged') || rest.includes('-S');
-      const hasWorktree = rest.includes('--worktree') || rest.includes('-W');
-      const hasTarget = rest.some((t) => !t.startsWith('-'));
-      if (hasTarget && !(hasStaged && !hasWorktree)) kinds.add('discard-worktree');
-    } else if (subcommand === 'switch') {
-      // git switch's own force flag is -f/--discard-changes (no --force);
-      // hasForceFlag's -f/cluster checks still apply, --discard-changes is
-      // checked directly.
-      if (hasForceFlag(rest) || rest.includes('--discard-changes')) kinds.add('discard-worktree');
     }
 
     // stage-env-file: `git add` naming a `.env`-pattern file. Scoped to
@@ -778,18 +820,48 @@ function detectDestructiveGit(command) {
     // command staging a file literally named `.\env` (a real escaped
     // backslash, not a PowerShell path separator) also denies, since its
     // bash-style parse unescapes it to the literal basename `.env`.
+    //
+    // This branch does NOT reuse the outer `suppressedByHelpOrDryRun` check
+    // above (see its own comment): git's `--` end-of-options marker means
+    // every word after it is a pathspec, never a flag, so `git add --
+    // .env -n` must still deny even though a plain "does `rest` contain
+    // -n" check would (wrongly) suppress it, while `git add .env -n` (no
+    // `--`, a real dry run) must still allow. Each backslash-parse's own
+    // tail is split at its first bare `--` token; only the words BEFORE it
+    // are checked for -n/--dry-run/--help/-h (and the -n cluster form), and
+    // only those words are candidate pathspecs conditional on not looking
+    // like a flag. Words AFTER `--` are unconditionally candidate
+    // pathspecs, leading dash or not, since git itself never reads them as
+    // flags.
     {
       const candidates = new Set();
       for (const backslashEscapes of [true, false]) {
         const tail = addSubcommandTail(shellWords(trimmed, { backslashEscapes }));
         if (!tail) continue;
-        for (const t of tail) {
+        const dashDashIdx = tail.indexOf('--');
+        const beforeDashDash = dashDashIdx === -1 ? tail : tail.slice(0, dashDashIdx);
+        const afterDashDash = dashDashIdx === -1 ? [] : tail.slice(dashDashIdx + 1);
+        if (
+          beforeDashDash.some((t) => t === '--help' || t === '-h' || t === '-n' || t === '--dry-run') ||
+          hasDryRunCluster(beforeDashDash)
+        )
+          continue;
+        for (const t of beforeDashDash) {
           if (t.startsWith('-')) continue;
           candidates.add(t);
         }
+        for (const t of afterDashDash) {
+          candidates.add(t);
+        }
       }
+      // Strip git pathspec magic (`:(literal)`, `:(glob)`, `:!`, `:/`, ...,
+      // see stripPathspecMagic above) before the basename check, so
+      // `git add ':(literal).env'` denies the same as `git add .env`; the
+      // composite marker key below still uses the ORIGINAL candidate text
+      // `t`, not the stripped form, consistent with the exact-text keying
+      // this block already documents above.
       for (const t of candidates) {
-        const basename = basenameOf(t);
+        const basename = basenameOf(stripPathspecMagic(t));
         if (isEnvFilePattern(basename)) kinds.add('stage-env-file:' + t);
       }
     }

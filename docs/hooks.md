@@ -184,6 +184,16 @@ hook also gates Copilot's `powershell` tool, where those spellings are valid.
   `.\env` (an escaped backslash) also denies. For a secrets tripwire this is
   the correct error direction: an extra deny costs one confirmation, a missed
   one puts a credential in history.
+- Git pathspec magic in `stage-env-file`'s own `add` branch is stripped
+  before the basename check (`git add ':(literal).env'` and
+  `git add ':(glob).env'` both deny, the same as `git add .env`), but only
+  for the common forms: the long `:(...)pattern` form (the magic list inside
+  the parens is skipped, not validated) and the short `:[/!^]...pattern`
+  form. This does not implement git's full pathspec grammar: no attribute
+  magic (`:(attr:foo)`), no validation of the magic keywords, no handling of
+  exotic/uncommon combinations. An unrecognized or malformed magic-looking
+  prefix is left as-is and read as ordinary basename text, an accepted gap
+  beyond the two common shapes above.
 - `git add .` or `git add -A` with no explicit path: the hook sees only argv
   and cannot know what the sweep would actually stage, so it cannot be gated;
   git's own `.gitignore` handling is the real protection there. `git add -f

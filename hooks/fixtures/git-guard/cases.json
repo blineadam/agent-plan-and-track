@@ -761,6 +761,56 @@
       ]
     },
     {
+      "id": "stage-env-file-add-dash-dash-then-dry-run-flag-denies",
+      "description": "Fix 1 regression: git add -- .env -n uses git's own -- end-of-options marker, so the trailing -n is a second pathspec, not a dry-run flag, and .env is genuinely staged; denies (previously an accepted-but-wrong allow: the blanket pre-dispatch -n suppression used to skip the whole segment).",
+      "steps": [
+        { "dialect": "snake", "command": "git add -- .env -n", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-dry-run-flag-no-dash-dash-allowed",
+      "description": "Companion to the fix 1 regression above: git add .env -n has no -- marker, so -n really is a dry run; must stay allowed.",
+      "steps": [{ "dialect": "snake", "command": "git add .env -n", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-add-dash-dash-no-flag-denies",
+      "description": "Companion to the fix 1 regression above: git add -- .env with no trailing flag must keep denying, same as before the fix.",
+      "steps": [{ "dialect": "snake", "command": "git add -- .env", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-plain-dry-run-flag-allowed",
+      "description": "Companion to the fix 1 regression above: git add --dry-run .env must stay allowed (the add branch's own suppression check, not just the outer blanket one, still catches this).",
+      "steps": [{ "dialect": "snake", "command": "git add --dry-run .env", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-add-literal-magic-denies",
+      "description": "Fix 2 regression: git add ':(literal).env' uses git pathspec magic, which git strips before matching, so this genuinely stages a real .env; denies (previously an accepted-but-wrong allow, since the magic prefix defeated the basename check).",
+      "steps": [
+        { "dialect": "snake", "command": "git add ':(literal).env'", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-glob-magic-denies",
+      "description": "Fix 2 regression, the :(glob) form: git add ':(glob).env' also strips to a real .env; denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git add ':(glob).env'", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-literal-magic-template-suffix-allowed",
+      "description": "Fix 2 regression, template exclusion still applies after magic stripping: git add ':(literal).env.example' strips to the conventionally-committed template suffix, so it still allows.",
+      "steps": [
+        { "dialect": "snake", "command": "git add ':(literal).env.example'", "expect": "allow" }
+      ]
+    },
+    {
+      "id": "stage-env-file-powershell-literal-magic-denies",
+      "description": "Fix 2 regression, copilot-powershell dialect: git add ':(literal).env' denies the same as the snake dialect, since pathspec magic stripping does not depend on backslash convention.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add ':(literal).env'", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
       "id": "copilot-toolargs-neither-string-nor-object-allowed",
       "description": "A Copilot toolArgs that is neither a string nor an object (e.g. a number) has no command to extract, so it allows.",
       "steps": [
