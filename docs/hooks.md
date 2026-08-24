@@ -100,6 +100,17 @@ through. Deny-once forces one conscious re-assertion instead: the same
 epistemic position, and the same fix, that `plan-gate.js`'s attribution guard
 already uses for its own unverifiable claim.
 
+### stage-env-file is a disclosure tripwire, not a backstop
+
+Four of the five blocked kinds are strictly destructive. `stage-env-file` is
+different: it is a disclosure tripwire on an explicitly-named `.env`-pattern
+path, not a backstop. `git add .` and `git add -A` are unclosable from
+argv, the common accident vector, since the hook sees only the tokens typed,
+not what the sweep would actually stage; `.gitignore` plus the standing
+never-commit-secrets rule text remain the primary protection, and this hook
+is a second check on the narrower explicit-path case, not a substitute for
+either. Do not over-trust it as a complete backstop.
+
 ### Blocked set
 
 - `reset-hard`: `git reset --hard`.
@@ -117,6 +128,20 @@ already uses for its own unverifiable claim.
   `--discard-changes`, and `git restore <path>` unless `--staged`/`-S` is
   present without `--worktree`/`-W` (a staged-only restore unstages but never
   touches the worktree).
+- `stage-env-file`: `git add` naming a `.env`-pattern file by basename: `.env`
+  exactly, or `.env.<suffix>` for any suffix except the conventionally-
+  committed template variants (`example`, `sample`, `template`, `dist`,
+  `default`, `defaults`), backing the standing never-commit-secrets rule with
+  a mechanical check. Also matches a basename that starts with `.env`
+  (case-insensitive) and contains a glob metacharacter (`*`, `?`, `[`), such
+  as `.env*` or `.env.*`, without evaluating the glob: git accepts a quoted
+  fileglob and expands it itself, so `git add '.env*'` can genuinely stage a
+  real `.env`. This deliberately over-matches a template glob like
+  `.env.example*` too, since the hook cannot know what the glob would
+  actually expand to and an extra deny costs one confirmation. Scoped to
+  `add` only, not `commit`: see the hook's own STAGE-ENV-FILE IS A
+  DISCLOSURE TRIPWIRE header note in `git-guard.js`, and the
+  `git commit <pathspec>` entry under Deliberate exclusions below.
 
 `--help`/`-h` on any of the above suppresses the match for that git
 invocation. The `git` executable token itself is matched case-insensitively
@@ -135,6 +160,10 @@ hook also gates Copilot's `powershell` tool, where those spellings are valid.
   which is also unobservable from the command text, and routine locally.
 - `git branch -D`: in upstream's blocked list but not in our rule, and
   reflog-recoverable.
+- `git commit <pathspec>` naming a `.env`-pattern file with no prior `git add`
+  of that file this session: `stage-env-file` is scoped to `add` only, so a
+  bare `commit` naming a path directly is an accepted false negative,
+  alongside the `git add .` / `-A` bare-sweep gap below.
 - `git restore --staged <path>` (unstages only, worktree untouched) and a
   bare `git checkout <branchname>` / `git checkout -b <name>` (branch
   checkout, not a worktree discard; branch-vs-path ambiguity from the command
@@ -144,7 +173,47 @@ hook also gates Copilot's `powershell` tool, where those spellings are valid.
   documented conservative posture.
 - Quote-wrapped flags (`git reset '--hard'`): the tokenizer keeps the quote
   characters as part of the token, so a quoted flag never equals the bare
-  token the classifier matches on.
+  token the classifier matches on. `stage-env-file`'s own `add` branch reads
+  its pathspecs with a real quote-aware word splitter (`shellWords`) instead,
+  which strips quote characters wherever they appear in a word (`git add
+  .e"nv"`, `git add config/".env"`, `git add ".env"`, `git add '.env'`, and
+  `git add "config dir/.env"` all deny), so this exclusion no longer applies
+  there; it still applies to every other kind's flag matching.
+- Backslash ambiguity in `stage-env-file`'s own `add` branch: a backslash
+  outside single quotes means two different things depending on which shell
+  produced the command text, bash's escape-the-next-character rule or
+  PowerShell's ordinary path-separator rule, and this hook cannot know which
+  one from the command text alone (it gates Copilot's `powershell` tool too,
+  see the PowerShell-specific-syntax entry below). `shellWords` takes a
+  `backslashEscapes` parameter for this, and the `add` branch reads pathspecs
+  under BOTH conventions, matching if either yields a `.env`-pattern
+  basename: `git add .\env`, `git add config\.env`, and `git add .\.env` all
+  deny under at least one parse. This deliberately over-matches rather than
+  under-matches, not chased: a bash command staging a file literally named
+  `.\env` (an escaped backslash) also denies. For a secrets tripwire this is
+  the correct error direction: an extra deny costs one confirmation, a missed
+  one puts a credential in history.
+- Git pathspec magic in `stage-env-file`'s own `add` branch is stripped
+  before the basename check (`git add ':(literal).env'` and
+  `git add ':(glob).env'` both deny, the same as `git add .env`), but only
+  for the common forms: the long `:(...)pattern` form (the magic list inside
+  the parens is skipped, not validated) and the short `:[/!^]...pattern`
+  form. This does not implement git's full pathspec grammar: no attribute
+  magic (`:(attr:foo)`), no validation of the magic keywords, no handling of
+  exotic/uncommon combinations. An unrecognized or malformed magic-looking
+  prefix is left as-is and read as ordinary basename text, an accepted gap
+  beyond the two common shapes above.
+- A glob pathspec that does not itself begin with `.env`, such as
+  `git add '*.env'`: it could expand to a real file like `prod.env`, but the
+  hook only glob-matches a basename that already starts with `.env` (see
+  `stage-env-file` above), since it never evaluates the glob or touches the
+  filesystem to find out what it would expand to. `prod.env` itself is also
+  outside `isEnvFilePattern`'s scope regardless, since it is not a
+  `.env`-prefixed basename at all.
+- `git add .` or `git add -A` with no explicit path: the hook sees only argv
+  and cannot know what the sweep would actually stage, so it cannot be gated;
+  git's own `.gitignore` handling is the real protection there. `git add -f
+  .env` IS caught, since the path is explicit.
 - An environment-assignment prefix whose value is itself quoted and contains
   a space (`GIT_AUTHOR_NAME="John Doe" git reset --hard`): whitespace token
   splitting breaks the assignment into two tokens before the leading-

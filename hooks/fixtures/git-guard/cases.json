@@ -504,6 +504,358 @@
       ]
     },
     {
+      "id": "stage-env-file-add-bare-denies",
+      "description": "git add .env stages a bare .env file, denies as stage-env-file.",
+      "steps": [{ "dialect": "snake", "command": "git add .env", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-nested-suffix-denies",
+      "description": "git add config/.env.production, a nested path with a non-template suffix, denies by basename.",
+      "steps": [
+        { "dialect": "snake", "command": "git add config/.env.production", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-commit-pathspec-allows",
+      "description": "git commit .env -m \"wip\" names .env directly on a commit invocation: stage-env-file is now scoped to add only, a documented accepted false negative, so this allows.",
+      "steps": [
+        { "dialect": "snake", "command": "git commit .env -m \"wip\"", "expect": "allow" }
+      ]
+    },
+    {
+      "id": "stage-env-file-commit-message-false-positive-allows",
+      "description": "git commit -m \"add .env to .gitignore\" is an ordinary commit message whose interior word matches .env; scoping stage-env-file to add only removes the surface that misread it as a pathspec.",
+      "steps": [
+        { "dialect": "snake", "command": "git commit -m \"add .env to .gitignore\"", "expect": "allow" }
+      ]
+    },
+    {
+      "id": "stage-env-file-commit-dash-n-no-verify-allows",
+      "description": "git commit -n .env -m \"wip\": on commit, -n means --no-verify, not dry-run, which the pre-dispatch -n suppression used to misread; scoping stage-env-file to add only removes the gated surface entirely, so this allows (documented accepted false negative, same as the commit-pathspec gap).",
+      "steps": [
+        { "dialect": "snake", "command": "git commit -n .env -m \"wip\"", "expect": "allow" }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-flag-suffix-denies",
+      "description": "git add -A .env.local: a non-template suffix behind an unrelated -A flag still denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git add -A .env.local", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-example-template-allowed",
+      "description": "git add .env.example is the conventionally-committed template suffix; allows.",
+      "steps": [{ "dialect": "snake", "command": "git add .env.example", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-sample-template-allowed",
+      "description": "git add .env.sample is a conventionally-committed template suffix; allows.",
+      "steps": [{ "dialect": "snake", "command": "git add .env.sample", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-env-js-allowed",
+      "description": "git add src/env.js does not match the .env pattern (no leading dot); allows.",
+      "steps": [{ "dialect": "snake", "command": "git add src/env.js", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-environment-ts-allowed",
+      "description": "git add environment.ts merely contains \"env\" and does not match; allows.",
+      "steps": [{ "dialect": "snake", "command": "git add environment.ts", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-commit-message-only-allowed",
+      "description": "git commit -m \"wip\" with no path argument has nothing to classify; allows.",
+      "steps": [{ "dialect": "snake", "command": "git commit -m \"wip\"", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-add-dot-allowed",
+      "description": "git add . is a bare sweep with no explicit path; the hook can't see what it would stage, accepted false negative.",
+      "steps": [{ "dialect": "snake", "command": "git add .", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-add-dry-run-allowed",
+      "description": "git add --dry-run .env: the existing --dry-run suppression (checked before subcommand dispatch) applies to stage-env-file too.",
+      "steps": [{ "dialect": "snake", "command": "git add --dry-run .env", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-add-double-quoted-denies",
+      "description": "git add \".env\": shellWords strips the surrounding double quotes before the basename check, so a quoted .env still denies.",
+      "steps": [{ "dialect": "snake", "command": "git add \".env\"", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-single-quoted-denies",
+      "description": "git add '.env': shellWords strips the surrounding single quotes before the basename check, so a quoted .env still denies.",
+      "steps": [{ "dialect": "snake", "command": "git add '.env'", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-backslash-escaped-denies",
+      "description": "git add .\\env: shellWords unescapes \\e to a literal e the same way a real shell does, handing the basename check .env, so this now denies (previously an accepted false negative under the old token-preserving tokenizer).",
+      "steps": [{ "dialect": "snake", "command": "git add .\\env", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-defaults-template-allowed",
+      "description": "git add .env.defaults is the dotenv-defaults conventionally-committed template suffix; allows.",
+      "steps": [{ "dialect": "snake", "command": "git add .env.defaults", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-per-file-marker-burn-scenario",
+      "description": "Regression for fix 3 (per-file marker keying): git add .env.test denies and its marker is backdated past the race window so the retry of .env.test allows (a genuine model-turn-later retry of THAT file), but a subsequent git add .env in the SAME session still denies, since one file's confirmation must not disarm the guard for a different file.",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git add .env.test",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        },
+        {
+          "dialect": "snake",
+          "command": "git add .env.test",
+          "backdateMarkersMs": 5000,
+          "expect": "allow"
+        },
+        {
+          "dialect": "snake",
+          "command": "git add .env",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        }
+      ]
+    },
+    {
+      "id": "stage-env-file-directory-marker-collision-denies",
+      "description": "Regression for fix 1 (full-path marker keying, not basename): git add config/.env denies and its marker is backdated past the race window so the retry of config/.env allows (a genuine model-turn-later retry of THAT path), but a subsequent git add other/.env in the SAME session still denies, since two different directories sharing a basename must not share a marker.",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git add config/.env",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        },
+        {
+          "dialect": "snake",
+          "command": "git add config/.env",
+          "backdateMarkersMs": 5000,
+          "expect": "allow"
+        },
+        {
+          "dialect": "snake",
+          "command": "git add other/.env",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-quoted-path-with-space-denies",
+      "description": "Regression for fix 2 (shellWords word splitting): git add \"config dir/.env\" is one quoted pathspec containing whitespace, which the whitespace split at the top of detectDestructiveGit breaks into two tokens before shellWords repairs it; denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git add \"config dir/.env\"", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-quoted-nested-path-no-space-denies",
+      "description": "git add \"config/.env\": a quoted nested path with no interior whitespace, still denies via shellWords's quote-stripping.",
+      "steps": [
+        { "dialect": "snake", "command": "git add \"config/.env\"", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-mid-word-quote-denies",
+      "description": "Regression for fix A: git add .e\"nv\" has a quote appearing mid-word rather than at the token's start, so any check keyed on a token-initial quote misses it; shellWords catches it and denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git add .e\"nv\"", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-mid-path-quote-denies",
+      "description": "Regression for fix A: git add config/\".env\" wraps only the basename in quotes, mid-token, not the whole word; shellWords catches it and denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git add config/\".env\"", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-marker-key-case-sensitive",
+      "description": "Regression for fix C: git add .ENV denies and its marker is backdated past the race window so the retry of .ENV allows, but a subsequent git add .env in the SAME session (a different file on a case-sensitive filesystem) still denies, since the composite marker key must preserve exact case rather than collapsing both onto one lowercased marker.",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git add .ENV",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        },
+        {
+          "dialect": "snake",
+          "command": "git add .ENV",
+          "backdateMarkersMs": 5000,
+          "expect": "allow"
+        },
+        {
+          "dialect": "snake",
+          "command": "git add .env",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        }
+      ]
+    },
+    {
+      "id": "stage-env-file-only-message-omits-generic-retry-line",
+      "description": "Regression for fix B: an env-only git add .env deny should not carry the generic protect-the-working-tree retry line, which is the wrong (bypass-coaching) instruction for a disclosure risk; only the secrets-specific rationale and its own retry instruction should be present. expectExcludes is the negative-assertion mechanism this runner supports; there is no mechanism here to assert the generic RULE SENTENCE itself is absent beyond this exact retry-instruction string, so that stronger claim is not mechanically covered by this fixture.",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git add .env",
+          "expect": "deny",
+          "expectContains": ["stage-env-file", "Never commit secrets"],
+          "expectExcludes": ["Confirm the user asked for this exact operation"]
+        }
+      ]
+    },
+    {
+      "id": "stage-env-file-powershell-backslash-nested-denies",
+      "description": "Regression A: powershell git add config\\.env names a real .env file by PowerShell path rules (backslash is a path separator); the PowerShell-style parse alone must catch this, since shellWords's bash-style parse (backslash escapes the next char) collapses it to a different, non-matching basename.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add config\\.env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-powershell-backslash-dot-denies",
+      "description": "Regression A: powershell git add .\\.env names a real .env file one directory down by PowerShell path rules; denies via the PowerShell-style parse.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add .\\.env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-powershell-bare-denies",
+      "description": "powershell git add .env, no backslash involved, denies the same as the snake dialect: baseline PowerShell coverage for the bare .env case.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add .env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-powershell-example-template-allowed",
+      "description": "powershell git add .env.example is the conventionally-committed template suffix; allows the same as the snake dialect: baseline PowerShell coverage for the template-suffix exclusion.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add .env.example", "expect": "allow" }
+      ]
+    },
+    {
+      "id": "stage-env-file-global-option-quoted-value-with-space-denies",
+      "description": "Regression B: git -C \"work tree\" add .env quotes -C's value with interior whitespace, which desynchronizes the outer whitespace-split subcommand index against the quote-aware word array; the add branch's own self-consistent (addSubcommandTail) reading is unaffected and still denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git -C \"work tree\" add .env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-global-option-c-quoted-value-with-space-denies",
+      "description": "Regression B, the -c form: git -c user.name=\"A B\" add .env quotes -c's value with interior whitespace, the same desync shape as the -C case; denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git -c user.name=\"A B\" add .env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-literal-backslash-filename-accepted-overmatch-denies",
+      "description": "Accepted over-match from fix A, not a bug: git add .\\env (one real backslash before env) denies even though a PowerShell reading of this same text would name a file called env, not .env. This hook cannot know which shell produced the command (see ONE SCRIPT, THREE HARNESSES in the header), so the add branch tests both a bash-style parse (backslash escapes the next character, unescaping this token to the literal basename .env) and a PowerShell-style parse (backslash stays literal, basename env) and denies on a match from either; for a secrets tripwire, the extra deny is the correct error direction over a missed one.",
+      "steps": [
+        { "dialect": "snake", "command": "git add .\\env", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-dash-dash-then-dry-run-flag-denies",
+      "description": "Fix 1 regression: git add -- .env -n uses git's own -- end-of-options marker, so the trailing -n is a second pathspec, not a dry-run flag, and .env is genuinely staged; denies (previously an accepted-but-wrong allow: the blanket pre-dispatch -n suppression used to skip the whole segment).",
+      "steps": [
+        { "dialect": "snake", "command": "git add -- .env -n", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-dry-run-flag-no-dash-dash-allowed",
+      "description": "Companion to the fix 1 regression above: git add .env -n has no -- marker, so -n really is a dry run; must stay allowed.",
+      "steps": [{ "dialect": "snake", "command": "git add .env -n", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-add-dash-dash-no-flag-denies",
+      "description": "Companion to the fix 1 regression above: git add -- .env with no trailing flag must keep denying, same as before the fix.",
+      "steps": [{ "dialect": "snake", "command": "git add -- .env", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-plain-dry-run-flag-allowed",
+      "description": "Companion to the fix 1 regression above: git add --dry-run .env must stay allowed (the add branch's own suppression check, not just the outer blanket one, still catches this).",
+      "steps": [{ "dialect": "snake", "command": "git add --dry-run .env", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-add-literal-magic-denies",
+      "description": "Fix 2 regression: git add ':(literal).env' uses git pathspec magic, which git strips before matching, so this genuinely stages a real .env; denies (previously an accepted-but-wrong allow, since the magic prefix defeated the basename check).",
+      "steps": [
+        { "dialect": "snake", "command": "git add ':(literal).env'", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-glob-magic-denies",
+      "description": "Fix 2 regression, the :(glob) form: git add ':(glob).env' also strips to a real .env; denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git add ':(glob).env'", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-literal-magic-template-suffix-allowed",
+      "description": "Fix 2 regression, template exclusion still applies after magic stripping: git add ':(literal).env.example' strips to the conventionally-committed template suffix, so it still allows.",
+      "steps": [
+        { "dialect": "snake", "command": "git add ':(literal).env.example'", "expect": "allow" }
+      ]
+    },
+    {
+      "id": "stage-env-file-powershell-literal-magic-denies",
+      "description": "Fix 2 regression, copilot-powershell dialect: git add ':(literal).env' denies the same as the snake dialect, since pathspec magic stripping does not depend on backslash convention.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add ':(literal).env'", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-quoted-glob-star-denies",
+      "description": "Fix 1: git add '.env*' is a quoted fileglob git expands itself, so it can genuinely stage a real .env; the basename .env* starts with .env and carries a glob metacharacter, so it now denies instead of bypassing the tripwire.",
+      "steps": [{ "dialect": "snake", "command": "git add '.env*'", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-unquoted-glob-star-denies",
+      "description": "Fix 1: git add .env* (unquoted) is the same basename .env* as the quoted form; denies for the same reason.",
+      "steps": [{ "dialect": "snake", "command": "git add .env*", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-quoted-glob-dot-star-denies",
+      "description": "Fix 1 non-regression: git add '.env.*' already denied before fix 1 (its suffix * is simply not a template suffix); must keep denying now that it also matches the new glob-prefix branch.",
+      "steps": [{ "dialect": "snake", "command": "git add '.env.*'", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-quoted-glob-example-star-denies",
+      "description": "Fix 1 accepted over-match: git add '.env.example*' targets a template-shaped name but denies anyway, since the hook cannot evaluate the glob to know it would only expand to .env.example-prefixed files; documented in both the header and docs/hooks.md.",
+      "steps": [{ "dialect": "snake", "command": "git add '.env.example*'", "expect": "deny", "expectContains": ["stage-env-file"] }]
+    },
+    {
+      "id": "stage-env-file-add-quoted-glob-not-env-prefixed-allowed",
+      "description": "Fix 1 documented non-coverage: git add '*.env' could expand to a real file like prod.env, but the glob-prefix match only covers a basename that itself starts with .env; *.env does not, so this allows.",
+      "steps": [{ "dialect": "snake", "command": "git add '*.env'", "expect": "allow" }]
+    },
+    {
+      "id": "stage-env-file-powershell-quoted-glob-star-denies",
+      "description": "Fix 1, copilot-powershell dialect: git add '.env*' denies the same as the snake dialect, since the glob-prefix basename check does not depend on backslash convention.",
+      "steps": [
+        { "dialect": "copilot-powershell", "command": "git add '.env*'", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-two-paths-reason-names-both-not-singular",
+      "description": "Fix 2: git add .env .env.production matches stage-env-file twice, once per path; the reason must de-duplicate the described-clause label (not repeat the same sentence twice) and pluralize the secrets prompt to name both paths instead of saying \"this file\".",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git add .env .env.production",
+          "expect": "deny",
+          "expectContains": ["stage-env-file", ".env, .env.production", "hold no secrets"],
+          "expectExcludes": ["this file holds no secrets"]
+        }
+      ]
+    },
+    {
       "id": "copilot-toolargs-neither-string-nor-object-allowed",
       "description": "A Copilot toolArgs that is neither a string nor an object (e.g. a number) has no command to extract, so it allows.",
       "steps": [

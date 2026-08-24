@@ -42,8 +42,10 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   on Copilot, since Copilot's `PreToolUse` has no soft-warn channel). A
   variant keys the same mark-at-deny-time machinery on a destructive-command
   *kind* rather than a gated file path (`git-guard.js`: deny-once per kind
-  per session, e.g. `reset-hard`/`clean-force`/`force-push`/
-  `discard-worktree`), reusing the shape rather than inventing new state.
+  per session for four of its five kinds, `reset-hard`/`clean-force`/
+  `force-push`/`discard-worktree`; the fifth, `stage-env-file`, keys on the
+  candidate path instead, since two directories can share a filename),
+  reusing the shape rather than inventing new state.
   The exception is a hook that intentionally gates on an external unlock
   event outside its own control, in which case repeated denial is by design
   and must say so explicitly in the hook's own header comment (`plan-gate.js`,
