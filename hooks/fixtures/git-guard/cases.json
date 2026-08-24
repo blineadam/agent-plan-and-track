@@ -580,18 +580,18 @@
     },
     {
       "id": "stage-env-file-add-double-quoted-denies",
-      "description": "git add \".env\": rejoinQuotedSpans strips the surrounding double quotes before the basename check, so a quoted .env still denies.",
+      "description": "git add \".env\": shellWords strips the surrounding double quotes before the basename check, so a quoted .env still denies.",
       "steps": [{ "dialect": "snake", "command": "git add \".env\"", "expect": "deny", "expectContains": ["stage-env-file"] }]
     },
     {
       "id": "stage-env-file-add-single-quoted-denies",
-      "description": "git add '.env': rejoinQuotedSpans strips the surrounding single quotes before the basename check, so a quoted .env still denies.",
+      "description": "git add '.env': shellWords strips the surrounding single quotes before the basename check, so a quoted .env still denies.",
       "steps": [{ "dialect": "snake", "command": "git add '.env'", "expect": "deny", "expectContains": ["stage-env-file"] }]
     },
     {
-      "id": "stage-env-file-add-backslash-escaped-allowed",
-      "description": "git add .\\env: bash unescapes \\e to a literal e, handing git the argument .env, but this tokenizer keeps the backslash as part of the token and basenameOf splits on \\ for Windows-path support, so the basename reads as env, not .env. Documented accepted shell-escape gap.",
-      "steps": [{ "dialect": "snake", "command": "git add .\\env", "expect": "allow" }]
+      "id": "stage-env-file-add-backslash-escaped-denies",
+      "description": "git add .\\env: shellWords unescapes \\e to a literal e the same way a real shell does, handing the basename check .env, so this now denies (previously an accepted false negative under the old token-preserving tokenizer).",
+      "steps": [{ "dialect": "snake", "command": "git add .\\env", "expect": "deny", "expectContains": ["stage-env-file"] }]
     },
     {
       "id": "stage-env-file-defaults-template-allowed",
@@ -648,16 +648,67 @@
     },
     {
       "id": "stage-env-file-add-quoted-path-with-space-denies",
-      "description": "Regression for fix 2 (quoted-span rejoining): git add \"config dir/.env\" is one quoted pathspec containing whitespace, which the whitespace split at the top of detectDestructiveGit breaks into two tokens before rejoinQuotedSpans repairs it; denies.",
+      "description": "Regression for fix 2 (shellWords word splitting): git add \"config dir/.env\" is one quoted pathspec containing whitespace, which the whitespace split at the top of detectDestructiveGit breaks into two tokens before shellWords repairs it; denies.",
       "steps": [
         { "dialect": "snake", "command": "git add \"config dir/.env\"", "expect": "deny", "expectContains": ["stage-env-file"] }
       ]
     },
     {
       "id": "stage-env-file-add-quoted-nested-path-no-space-denies",
-      "description": "git add \"config/.env\": a quoted nested path with no interior whitespace, still denies via the quoted-span rejoin's single-token strip path.",
+      "description": "git add \"config/.env\": a quoted nested path with no interior whitespace, still denies via shellWords's quote-stripping.",
       "steps": [
         { "dialect": "snake", "command": "git add \"config/.env\"", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-mid-word-quote-denies",
+      "description": "Regression for fix A: git add .e\"nv\" has a quote appearing mid-word rather than at the token's start, so any check keyed on a token-initial quote misses it; shellWords catches it and denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git add .e\"nv\"", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-add-mid-path-quote-denies",
+      "description": "Regression for fix A: git add config/\".env\" wraps only the basename in quotes, mid-token, not the whole word; shellWords catches it and denies.",
+      "steps": [
+        { "dialect": "snake", "command": "git add config/\".env\"", "expect": "deny", "expectContains": ["stage-env-file"] }
+      ]
+    },
+    {
+      "id": "stage-env-file-marker-key-case-sensitive",
+      "description": "Regression for fix C: git add .ENV denies and its marker is backdated past the race window so the retry of .ENV allows, but a subsequent git add .env in the SAME session (a different file on a case-sensitive filesystem) still denies, since the composite marker key must preserve exact case rather than collapsing both onto one lowercased marker.",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git add .ENV",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        },
+        {
+          "dialect": "snake",
+          "command": "git add .ENV",
+          "backdateMarkersMs": 5000,
+          "expect": "allow"
+        },
+        {
+          "dialect": "snake",
+          "command": "git add .env",
+          "expect": "deny",
+          "expectContains": ["stage-env-file"]
+        }
+      ]
+    },
+    {
+      "id": "stage-env-file-only-message-omits-generic-retry-line",
+      "description": "Regression for fix B: an env-only git add .env deny should not carry the generic protect-the-working-tree retry line, which is the wrong (bypass-coaching) instruction for a disclosure risk; only the secrets-specific rationale and its own retry instruction should be present. expectExcludes is the negative-assertion mechanism this runner supports; there is no mechanism here to assert the generic RULE SENTENCE itself is absent beyond this exact retry-instruction string, so that stronger claim is not mechanically covered by this fixture.",
+      "steps": [
+        {
+          "dialect": "snake",
+          "command": "git add .env",
+          "expect": "deny",
+          "expectContains": ["stage-env-file", "Never commit secrets"],
+          "expectExcludes": ["Confirm the user asked for this exact operation"]
+        }
       ]
     },
     {

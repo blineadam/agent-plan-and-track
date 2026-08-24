@@ -126,19 +126,15 @@
  *     quote characters as part of the token (by design, so a quoted `+` or
  *     separator inside a string is never misread as shell syntax), so a
  *     quoted flag never equals the bare token this classifier matches on.
- *     stage-env-file's own `add` branch re-joins and strips a quoted span
- *     before its basename check, including one containing whitespace
- *     (`git add ".env"`, `git add '.env'`, and `git add "config dir/.env"`
- *     all deny), so this exclusion no longer applies there; it still
- *     applies to every other kind's flag matching.
- *   - A backslash-escaped token (`git add .\env`), same shell-quoting-
- *     evasion class as the quote-wrapped-flags gap above: bash's own
- *     escaping rules treat `\e` as a literal `e`, so the shell hands git the
- *     single argument `.env`, but this tokenizer instead keeps the
- *     backslash as part of the token (see splitShellSegments's header note)
- *     and basenameOf splits on `\` for Windows-path support, so the token's
- *     basename reads as `env`, not `.env`. Accepted false negative, not
- *     chased.
+ *     stage-env-file's own `add` branch reads its pathspecs with a real
+ *     quote-aware word splitter instead (shellWords, see its own header),
+ *     which strips quote characters wherever they appear in a word, not
+ *     only at the word's start, and also unescapes a backslash the way a
+ *     real shell does; `git add .e"nv"`, `git add config/".env"`,
+ *     `git add .\env`, `git add ".env"`, `git add '.env'`, and
+ *     `git add "config dir/.env"` all deny. This exclusion no longer
+ *     applies to stage-env-file; it still applies to every other kind's
+ *     flag matching.
  *   - An environment-assignment prefix whose value is itself quoted and
  *     contains a space (`GIT_AUTHOR_NAME="John Doe" git reset --hard`):
  *     whitespace token splitting breaks the assignment into two tokens
@@ -510,53 +506,74 @@ function hasPushForce(rest) {
   );
 }
 
-// Re-joins tokens that were one quoted span containing whitespace before
-// stage-env-file's own basename check. detectDestructiveGit splits each
-// command segment on bare whitespace BEFORE any quote awareness, so
-// `git add "config dir/.env"` becomes the tokens `"config` and `dir/.env"`,
-// neither of which the basename check can recognize; splitShellSegments's
-// own quote tracking (see its header note above) already ran and correctly
-// kept the segment's quote characters intact, but that whitespace split
-// still breaks a quoted span with interior whitespace regardless. Walks the
-// already-whitespace-split `rest` array: a token that opens a quote (starts
-// with a quote character and does not also close it with a matching quote
-// of its own) is joined with following tokens, one space between, until the
-// token that closes the span is found, then the surrounding pair is
-// stripped; a token that both opens and closes its own quote (no interior
-// whitespace) is just stripped in place. An unterminated quote (no closing
-// token among the rest) falls back to leaving that token as-is rather than
-// hanging or throwing. Scoped to this file's own add-branch token reading
-// only; splitShellSegments itself is a byte-parity contract (see
-// .github/scripts/check-split-shell-segments-parity.js) and is not touched.
-// A backslash-escaped token (`.\env`) is a separate, still-open gap (see
-// header's DELIBERATE EXCLUSIONS), not addressed here.
-function rejoinQuotedSpans(rest) {
-  const out = [];
-  let i = 0;
-  while (i < rest.length) {
-    const t = rest[i];
-    const quote = t[0] === '"' || t[0] === "'" ? t[0] : null;
-    const closesOwnQuote = quote && t.length >= 2 && t[t.length - 1] === quote;
-    if (quote && !closesOwnQuote) {
-      let j = i;
-      let joined = t;
-      let closed = false;
-      while (j + 1 < rest.length) {
-        j += 1;
-        joined += ' ' + rest[j];
-        if (rest[j][rest[j].length - 1] === quote) {
-          closed = true;
-          break;
-        }
-      }
-      out.push(closed ? joined.slice(1, -1) : t);
-      i = closed ? j + 1 : i + 1;
+// Real shell word-splitting of one `add` segment's tail text, used ONLY to
+// derive stage-env-file's candidate pathspecs. detectDestructiveGit's outer
+// whitespace tokenization (used to find the subcommand and for every other
+// kind's flag matching) stays untouched; this function re-splits the raw
+// segment text for the `add` branch alone, character by character, so a
+// quote appearing anywhere in a word (start, middle, or wrapping an interior
+// space) is handled the same way a real shell handles it, instead of only
+// the "quote at the start of a whitespace-split token" shape, which both
+// `.e"nv"` and `config/".env"` defeat, since neither carries a quote
+// character in token-initial position. Quote
+// characters are removed from the output, so `.e"nv"` becomes `.env` and
+// `config/".env"` becomes `config/.env`. A backslash outside single quotes
+// escapes the next character literally (real shell behavior), so `.\env`
+// becomes `.env` too: unlike splitShellSegments (a byte-parity contract, not
+// touched here), this function is scoped to this branch's own pathspec
+// reading and is free to unescape.
+function shellWords(segment) {
+  const words = [];
+  let current = '';
+  let hasContent = false;
+  let inSingle = false;
+  let inDouble = false;
+  const text = String(segment || '');
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inSingle) {
+      if (ch === "'") inSingle = false;
+      else current += ch;
       continue;
     }
-    out.push(quote ? t.slice(1, -1) : t);
-    i += 1;
+    if (inDouble) {
+      if (ch === '"') {
+        inDouble = false;
+      } else if (ch === '\\' && i + 1 < text.length) {
+        current += text[i + 1];
+        i += 1;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (hasContent) words.push(current);
+      current = '';
+      hasContent = false;
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      hasContent = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      hasContent = true;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < text.length) {
+      current += text[i + 1];
+      hasContent = true;
+      i += 1;
+      continue;
+    }
+    current += ch;
+    hasContent = true;
   }
-  return out;
+  if (hasContent) words.push(current);
+  return words;
 }
 
 // The part of a kind string before its first colon. Bare kinds (the four
@@ -653,7 +670,7 @@ function detectDestructiveGit(command) {
       // (start with '-') are skipped rather than paired with a value the way
       // -C/-c are above, since `add` has no flag this classifier needs to
       // treat specially. Each matching FULL PATH token becomes its own
-      // composite kind (`stage-env-file:<full path, lowercased>`, see
+      // composite kind (`stage-env-file:<full path, exact case>`, see
       // baseKind above and markerPath below), not just its basename: two
       // different directories can share a filename (`config/.env` and
       // `other/.env`), and keying on the basename alone would let a
@@ -666,16 +683,26 @@ function detectDestructiveGit(command) {
       //     sees argv, not what the sweep would actually stage, so a bare
       //     `.`/`-A` token never matches this pattern (accepted false
       //     negative, git's own .gitignore handling is the real backstop).
-      //   - A quoted token, with or without interior whitespace
-      //     (`git add ".env"`, `git add '.env'`, `git add "config dir/.env"`):
-      //     now caught, via rejoinQuotedSpans above, before the basename
-      //     check.
-      //   - A backslash-escaped token (`git add .\env`): still an accepted
-      //     false negative (see header's DELIBERATE EXCLUSIONS).
-      for (const t of rejoinQuotedSpans(rest)) {
+      //   - A quote appearing anywhere in a word, or a backslash-escaped
+      //     character (`git add ".env"`, `git add '.env'`,
+      //     `git add "config dir/.env"`, `git add .e"nv"`,
+      //     `git add config/".env"`, `git add .\env`): all now caught, via
+      //     shellWords below, before the basename check.
+      //
+      // shellWords re-splits THIS SEGMENT'S OWN TEXT (`trimmed`) with real
+      // shell word-splitting rules rather than reusing the outer whitespace
+      // split (`rest`), since that split already broke a quoted span
+      // containing whitespace into multiple tokens before any quote
+      // awareness ran. The outer whitespace tokenization above is still what
+      // finds the subcommand and governs every other kind's flag matching;
+      // slicing shellWords's result at the same index (`i + 1`) that
+      // produced `rest` lines the two splits up, since nothing before the
+      // subcommand realistically contains a quoted span with interior
+      // whitespace.
+      for (const t of shellWords(trimmed).slice(i + 1)) {
         if (t.startsWith('-')) continue;
         const basename = basenameOf(t);
-        if (isEnvFilePattern(basename)) kinds.add('stage-env-file:' + t.toLowerCase());
+        if (isEnvFilePattern(basename)) kinds.add('stage-env-file:' + t);
       }
     }
   }
@@ -777,19 +804,25 @@ function pruneStaleState() {
 function gitGuardReason(kinds, mode) {
   const kindNames = kinds.join(', ');
   const described = kinds.map((k) => KIND_LABELS[baseKind(k)] || k).join('; ');
-  const lines = [
-    `[GitGuard] This command matches ${kindNames}: ${described}.`,
-    'The standing protect-the-working-tree rule forbids destructive or history-altering git operations, or discarding uncommitted changes, unless the user explicitly asked for that exact operation.',
-    mode === 'deny'
-      ? 'Confirm the user asked for this exact operation, then retry the same command: the retry passes.'
-      : 'This command is proceeding; confirm the user asked for this exact operation.',
-  ];
+  const lines = [`[GitGuard] This command matches ${kindNames}: ${described}.`];
   // stage-env-file is a disclosure tripwire, not a destructive operation: the
-  // generic "confirm the user asked for this" re-check above is the wrong
-  // question for it, and on its own would coach the exact bypass (retry the
-  // same command) without ever asking whether the file is actually safe. A
-  // command can match this kind alongside a destructive kind via `&&`, so
-  // this adds a line rather than replacing the ones above.
+  // generic "confirm the user asked for this exact operation, then retry"
+  // line below is the wrong question for it (an intentional-repeat check),
+  // since it says nothing about whether the file is actually safe and, on
+  // its own, would coach exactly the bypass this file exists to prevent
+  // (retry the same command unchanged). So the generic rationale and its
+  // retry line are emitted only when at least one matched kind is NOT
+  // stage-env-file; a command that matches this kind alongside a destructive
+  // kind via `&&` still needs both, since the destructive kind's own retry
+  // instruction still applies to it.
+  if (kinds.some((k) => baseKind(k) !== 'stage-env-file')) {
+    lines.push(
+      'The standing protect-the-working-tree rule forbids destructive or history-altering git operations, or discarding uncommitted changes, unless the user explicitly asked for that exact operation.',
+      mode === 'deny'
+        ? 'Confirm the user asked for this exact operation, then retry the same command: the retry passes.'
+        : 'This command is proceeding; confirm the user asked for this exact operation.'
+    );
+  }
   if (kinds.some((k) => baseKind(k) === 'stage-env-file')) {
     lines.push(
       'The same standing rule also states: "Never commit secrets, API keys, credentials, or a .env file; a committed-by-convention template (.env.example, .env.sample) is fine." ' +

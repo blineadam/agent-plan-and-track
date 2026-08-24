@@ -164,16 +164,14 @@ hook also gates Copilot's `powershell` tool, where those spellings are valid.
   documented conservative posture.
 - Quote-wrapped flags (`git reset '--hard'`): the tokenizer keeps the quote
   characters as part of the token, so a quoted flag never equals the bare
-  token the classifier matches on. `stage-env-file`'s own `add` branch strips
-  one pair of surrounding matched quotes before its basename check
-  (`git add ".env"` and `git add '.env'` both deny), so this exclusion no
-  longer applies there; it still applies to every other kind's flag matching.
-- A backslash-escaped token (`git add .\env`), same shell-quoting-evasion
-  class as the quote-wrapped-flags gap above: bash's own escaping rules treat
-  `\e` as a literal `e`, so the shell hands git the single argument `.env`,
-  but this tokenizer instead keeps the backslash as part of the token and
-  splits the basename on `\` for Windows-path support, so the basename reads
-  as `env`, not `.env`. Accepted false negative, not chased.
+  token the classifier matches on. `stage-env-file`'s own `add` branch reads
+  its pathspecs with a real quote-aware word splitter (`shellWords`) instead,
+  which strips quote characters wherever they appear in a word and unescapes
+  a backslash the way a real shell does (`git add .e"nv"`,
+  `git add config/".env"`, `git add .\env`, `git add ".env"`,
+  `git add '.env'`, and `git add "config dir/.env"` all deny), so this
+  exclusion no longer applies there; it still applies to every other kind's
+  flag matching.
 - `git add .` or `git add -A` with no explicit path: the hook sees only argv
   and cannot know what the sweep would actually stage, so it cannot be gated;
   git's own `.gitignore` handling is the real protection there. `git add -f
