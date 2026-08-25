@@ -191,6 +191,22 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   outside its fence. Flag any other `*`-marked bullet outside a fenced block in
   `docs/*.md`, `README.md`, or `AGENTS.md`; don't re-flag that known one.
 
+## Style Evolution Log
+
+- `.ai-style-rules.md`'s Style Evolution Log is append-only during a routine
+  incremental update: a new dated entry gets appended, existing entries are
+  never rewritten. Flag a diff that edits or removes an existing log entry
+  outside an announced compaction pass.
+- A compaction pass (triggered once the log holds 10+ entries or exceeds half
+  the file) is the one exception: it promotes any convention that still lives
+  only in an older, still-live entry into the Golden Files/Naming &
+  State-Control/DONTs sections, drops superseded or reverted entries, keeps
+  only the newest 2-3 entries for recency (an entry with an unresolved
+  deferred conflict stays regardless of age), and restamps the header's
+  commit fingerprint to current HEAD. Flag a compaction that silently drops a
+  still-live convention without promoting it first, or one not announced as
+  a compaction.
+
 ## Out-of-scope decisions
 
 - `docs/out-of-scope.md` records a decision not to build something (a
