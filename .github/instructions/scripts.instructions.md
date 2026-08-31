@@ -143,10 +143,16 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   displays one command while running another.
 - Use `mktemp -d` for scratch space with a matching `trap ... EXIT` cleanup.
 - Build JSON via `jq -n --arg` / `--argjson`, not string concatenation.
-- When a script shells out to a third-party CLI via `npx`, pin its exact
-  version (`skills@1.5.19`, not `skills@latest`) and check the CLI's own
-  minimum-runtime requirement before invoking it. Flag an unpinned `npx
-  <tool>@latest` in a new script.
+- When a script shells out to a third-party CLI via `npx` itself, pin its
+  exact version (`skills@1.5.19`, not `skills@latest`) and check the CLI's
+  own minimum-runtime requirement before invoking it. Flag an unpinned `npx
+  <tool>@latest` where the script itself is the one running `npx`.
+  This doesn't cover an `npx ...@latest` string that a script only writes as
+  config data for another program to launch later, never running it itself
+  (`install-mcp-servers.sh`/`.ps1` hand each harness's own CLI a command line
+  naming `npx -y chrome-devtools-mcp@latest` for that harness to invoke, and
+  never invoke `npx` in the installer script itself): don't flag that case as
+  an unpinned dependency.
 - `snake_case` for local variables and functions. Top-level script
   constants (computed-once paths, thresholds, config arrays) use
   `SCREAMING_SNAKE_CASE`, matching env-var-tunable settings.
