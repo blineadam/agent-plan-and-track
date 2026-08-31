@@ -44,6 +44,7 @@ There is no build/lint/test suite in the traditional sense. The relevant command
 - `node .github/scripts/check-split-shell-segments-parity.js`: verify the three standalone `splitShellSegments` copies (`hooks/claude/plan-gate.js`, `hooks/codex/plan-gate-pilot.js`, `hooks/git-guard.js`) are still byte-identical before pushing an edit to any of them (free).
 - To sanity-check a change by hand: install it, start a fresh session in the target harness, and ask "what are your standing rules?"
 - `./install-office-skills.sh [install|uninstall]` (or `install-office-skills.ps1` on Windows; install by default): opt-in, detects which of Claude Code, Codex, and Copilot are present and installs the `docx`/`pdf`/`pptx`/`xlsx` skills via `npx skills add`, or removes them (install needs network/npx). Separate from `install.sh` because these 4 skills' upstream license forbids vendoring them in this repo.
+- `./install-mcp-servers.sh [install|uninstall]` (or `install-mcp-servers.ps1` on Windows; install by default): opt-in, installs the chrome-devtools MCP server (github.com/ChromeDevTools/chrome-devtools-mcp) for whichever of Claude Code, Codex, and Copilot are present and removes it again, skipping any harness that already has a server by that name (install needs Node.js and Chrome). Separate from `install.sh` because this script drives each harness through its own CLI (`mcp add`/`mcp get`/`mcp remove`) rather than the shared JSON/TOML merge machinery.
 
 ## Architecture
 
