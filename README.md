@@ -77,6 +77,10 @@ cd agent-plan-and-track
 On Windows, run the PowerShell installer instead (same targets):
 
 ```powershell
+# to set Claude Code to bypassPermissions and suppress its
+# dangerous-mode warning
+$env:PT_BYPASS_PERMISSIONS = '1'
+
 powershell -ExecutionPolicy Bypass -File install.ps1 all
 powershell -ExecutionPolicy Bypass -File install-office-skills.ps1
 ```
