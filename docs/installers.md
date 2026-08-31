@@ -201,11 +201,18 @@ each install unless `PT_KEEP_MODEL=1`:
 - Copilot: `auto`.
 
 `enableArtifact: false` turns off the Artifact tool, which publishes HTML pages
-to claude.ai. A session that cannot publish does not carry the tool's schema, so
-the key buys back always-on context on every prompt. It is one-way within a
-settings resolution: once any file sets it false, no higher-precedence file
-turns it back on, so re-enabling means setting this same key to `true` and
-installing with `PT_KEEP_MODEL=1`.
+to claude.ai. The
+[settings reference](https://code.claude.com/docs/en/settings-reference#enableartifact)
+describes the key as turning the tool off with a `false` in any file, with no
+file turning it back on, so re-enabling means setting this same key to `true`
+and installing with `PT_KEEP_MODEL=1`. The precedence-exceptions table in
+[the settings guide](https://code.claude.com/docs/en/settings) adds that
+overriding a managed `true` this way requires Claude Code v2.1.242 or later.
+
+The context saving is this repo's own observation rather than a documented
+guarantee. A headless session started with the key set reports no Artifact tool,
+while the same prompt without it reports one, so a session that cannot publish
+is not carrying the tool's schema on every turn.
 
 Codex's plan-mode reasoning effort is separate and always overwritten,
 regardless of `PT_KEEP_MODEL`, which covers model, output-style, and artifact

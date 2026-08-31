@@ -704,11 +704,14 @@ install_claude() {
   set_json_default "$settings" outputStyle '"Concise"' "output style"
   # Repo-owned artifact toggle, re-asserted on every install (PT_KEEP_MODEL=1
   # keeps an existing per-machine choice): enableArtifact=false turns off the
-  # Artifact tool (publishing HTML pages to claude.ai), whose tool schema
-  # otherwise costs always-on context in every session. This is one-way within
-  # a settings resolution: once a file sets it false, no higher-precedence file
-  # can turn it back on, so turning artifacts back on means setting this same
-  # key to true and installing with PT_KEEP_MODEL=1.
+  # Artifact tool, which publishes HTML pages to claude.ai. Per
+  # https://code.claude.com/docs/en/settings-reference#enableartifact a false in
+  # any file turns the tool off and no file turns it back on, so re-enabling
+  # means setting this same key to true and installing with PT_KEEP_MODEL=1.
+  # The precedence-exceptions table at https://code.claude.com/docs/en/settings
+  # adds that overriding a managed true this way needs Claude Code v2.1.242 or
+  # later. docs/installers.md carries the context rationale and how it was
+  # tested.
   set_json_default "$settings" enableArtifact false "artifact toggle"
   # Repo-owned plugin disable, re-asserted on every install: this repo ships its
   # own frontend-design skill, and the frontend-design@claude-plugins-official

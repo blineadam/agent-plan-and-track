@@ -17,6 +17,10 @@ the harness:
 | Codex | `plan_mode_reasoning_effort: xhigh` | Plan mode: `xhigh`; execution unchanged |
 | Copilot | `model: auto` | Let Copilot choose per task; no fixed phase split |
 
+[The installers reference](installers.md#managed-defaults) sources the artifact
+toggle against the Claude Code settings documentation and covers what turning
+artifacts back on takes.
+
 Install with `PT_KEEP_MODEL=1` to keep a machine's existing Claude and Copilot
 model, output-style, and artifact settings, including `switchModelsOnFlag`,
 instead of overwriting them. The Codex plan-mode effort still updates.
