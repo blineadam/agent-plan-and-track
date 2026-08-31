@@ -630,6 +630,122 @@ jobs:
           test -d "$HOME/.claude/skills/.plan-and-track-pruned" \
             || { echo "FAIL: uninstall deleted .plan-and-track-pruned"; exit 1; }
           ./install-office-skills.sh uninstall   # rerun: must exit 0
+      - name: MCP servers installer (stubbed CLIs, no network)
+        run: |
+          set -euo pipefail
+          stub_bin="$RUNNER_TEMP/mcp-stub-bin"
+          mkdir -p "$stub_bin"
+          export MCP_LOG="$RUNNER_TEMP/mcp-invocations.log"
+          export MCP_STATE_DIR="$RUNNER_TEMP/mcp-state"
+          rm -f "$MCP_LOG"
+          rm -rf "$MCP_STATE_DIR"; mkdir -p "$MCP_STATE_DIR"
+          # Fakes `<cli> mcp get/add/remove chrome-devtools` without hitting the
+          # network or npx, so this test exercises install-mcp-servers.sh's own
+          # detection/presence/dispatch logic deterministically. `mcp get`
+          # reports present/absent from a small per-harness state file; `mcp add`
+          # and `mcp remove` write/clear that file. Every invocation is also
+          # logged, so a silently-dropped dispatch branch fails the assertions
+          # below on the log, not just on state.
+          cat > "$stub_bin/claude" <<'STUB'
+          #!/usr/bin/env bash
+          echo "claude $* [cwd=$PWD]" >> "$MCP_LOG"
+          case "$1 $2" in
+            "mcp get")    [ -f "$MCP_STATE_DIR/claude" ] && exit 0 || exit 1 ;;
+            "mcp add")    touch "$MCP_STATE_DIR/claude"; exit 0 ;;
+            "mcp remove") rm -f "$MCP_STATE_DIR/claude"; exit 0 ;;
+          esac
+          exit 1
+          STUB
+          chmod +x "$stub_bin/claude"
+          cat > "$stub_bin/codex" <<'STUB'
+          #!/usr/bin/env bash
+          echo "codex $* [cwd=$PWD]" >> "$MCP_LOG"
+          case "$1 $2" in
+            "mcp get")    [ -f "$MCP_STATE_DIR/codex" ] && exit 0 || exit 1 ;;
+            "mcp add")    touch "$MCP_STATE_DIR/codex"; exit 0 ;;
+            "mcp remove") rm -f "$MCP_STATE_DIR/codex"; exit 0 ;;
+          esac
+          exit 1
+          STUB
+          chmod +x "$stub_bin/codex"
+          cat > "$stub_bin/copilot" <<'STUB'
+          #!/usr/bin/env bash
+          echo "copilot $* [cwd=$PWD]" >> "$MCP_LOG"
+          case "$1 $2" in
+            "mcp get")    [ -f "$MCP_STATE_DIR/copilot" ] && exit 0 || exit 1 ;;
+            "mcp add")    touch "$MCP_STATE_DIR/copilot"; exit 0 ;;
+            "mcp remove") rm -f "$MCP_STATE_DIR/copilot"; exit 0 ;;
+          esac
+          exit 1
+          STUB
+          chmod +x "$stub_bin/copilot"
+          export HOME="$RUNNER_TEMP/scratch-home-mcp"; mkdir -p "$HOME"
+          export PATH="$stub_bin:$PATH"
+          expect_line() { printf "  %-11s -- %s" "$1" "$2"; }
+
+          out1="$(./install-mcp-servers.sh)"
+          echo "$out1"
+          for label in "Claude Code" "Codex" "Copilot"; do
+            echo "$out1" | grep -qF "$(expect_line "$label" "added")" \
+              || { echo "FAIL: $label was not reported as added on first run"; exit 1; }
+          done
+          for h in claude codex copilot; do
+            [ "$(grep -c "^$h mcp add " "$MCP_LOG")" -eq 1 ] \
+              || { echo "FAIL: $h mcp add was not invoked exactly once on first run"; cat "$MCP_LOG"; exit 1; }
+          done
+
+          out2="$(./install-mcp-servers.sh)"
+          echo "$out2"
+          for label in "Claude Code" "Codex" "Copilot"; do
+            echo "$out2" | grep -qF "$(expect_line "$label" "already configured, skipped")" \
+              || { echo "FAIL: $label was not reported as already configured on rerun"; exit 1; }
+          done
+          [ "$(grep -c ' mcp add ' "$MCP_LOG")" -eq 3 ] \
+            || { echo "FAIL: rerun issued a second mcp add"; cat "$MCP_LOG"; exit 1; }
+      - name: MCP servers uninstall (stubbed CLIs, no network)
+        run: |
+          set -euo pipefail
+          export MCP_LOG="$RUNNER_TEMP/mcp-invocations.log"
+          export MCP_STATE_DIR="$RUNNER_TEMP/mcp-state"
+          export HOME="$RUNNER_TEMP/scratch-home-mcp"
+          export PATH="$RUNNER_TEMP/mcp-stub-bin:$PATH"
+          expect_line() { printf "  %-11s -- %s" "$1" "$2"; }
+
+          out3="$(./install-mcp-servers.sh uninstall)"
+          echo "$out3"
+          for label in "Claude Code" "Codex" "Copilot"; do
+            echo "$out3" | grep -qF "$(expect_line "$label" "removed")" \
+              || { echo "FAIL: $label was not reported as removed"; exit 1; }
+          done
+          for h in claude codex copilot; do
+            [ "$(grep -c "^$h mcp remove " "$MCP_LOG")" -eq 1 ] \
+              || { echo "FAIL: $h mcp remove was not invoked exactly once"; cat "$MCP_LOG"; exit 1; }
+            [ ! -e "$MCP_STATE_DIR/$h" ] \
+              || { echo "FAIL: $MCP_STATE_DIR/$h survived uninstall"; exit 1; }
+          done
+
+          set +e
+          out4="$(./install-mcp-servers.sh uninstall 2>&1)"
+          code=$?
+          set -e
+          [ "$code" -eq 0 ] || { echo "FAIL: rerun of uninstall exited $code"; echo "$out4"; exit 1; }
+          echo "$out4"
+          for label in "Claude Code" "Codex" "Copilot"; do
+            echo "$out4" | grep -qF "$(expect_line "$label" "not configured, skipped")" \
+              || { echo "FAIL: $label was not reported as not configured on the uninstall rerun"; exit 1; }
+          done
+
+          # Every harness CLI call, across both this step and the installer step
+          # above (they share one log), must have run from $HOME. Claude Code and
+          # Copilot resolve project-scoped MCP config from the working directory
+          # and expose no scope flag on `mcp get`, so a cwd-sensitive script run
+          # from a repo whose .mcp.json declares this server would report it
+          # already configured and skip the user-scope install it exists to do.
+          if grep -v "\[cwd=$HOME\]\$" "$MCP_LOG" | grep -q .; then
+            echo "FAIL: a harness CLI was invoked from outside \$HOME:"
+            grep -v "\[cwd=$HOME\]\$" "$MCP_LOG"
+            exit 1
+          fi
       - name: Stale prune quarantines removed repo copies, never non-repo content
         run: |
           set -euo pipefail
@@ -1283,6 +1399,131 @@ jobs:
           if (-not (Test-Path -LiteralPath (Join-Path $H '.claude\skills\.plan-and-track-pruned'))) { throw "uninstall deleted .plan-and-track-pruned" }
           .\install-office-skills.ps1 uninstall   # rerun: must exit 0
           if ($LASTEXITCODE -ne 0) { throw "install-office-skills.ps1 (rerun uninstall) failed with exit code $LASTEXITCODE" }
+      - name: MCP servers installer (stubbed CLIs, no network)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stubBin = Join-Path $env:RUNNER_TEMP 'mcp-stub-bin'
+          New-Item -ItemType Directory -Force -Path $stubBin | Out-Null
+          $env:MCP_LOG = Join-Path $env:RUNNER_TEMP 'mcp-invocations.log'
+          $env:MCP_STATE_DIR = Join-Path $env:RUNNER_TEMP 'mcp-state'
+          Remove-Item -LiteralPath $env:MCP_LOG -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $env:MCP_STATE_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $env:MCP_STATE_DIR | Out-Null
+          # Fakes `<cli> mcp get/add/remove chrome-devtools` without hitting the
+          # network or npx, so this test exercises install-mcp-servers.ps1's own
+          # detection/presence/dispatch logic deterministically. Each stub CLI is
+          # a .cmd launcher (only .cmd/.exe are resolved via PATH by default)
+          # that hands off to its own PowerShell logic, same shape as the office
+          # skills npx.cmd/npx-stub.ps1 pair above. `mcp get` reports
+          # present/absent from a small per-harness state file; `mcp add`/`mcp
+          # remove` write/clear that file. Every invocation is also logged, so a
+          # silently-dropped dispatch branch fails the assertions below on the
+          # log, not just on state.
+          @'
+          @echo off
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0mcp-stub-claude.ps1" %*
+          '@ | Set-Content -Path (Join-Path $stubBin 'claude.cmd') -Encoding ascii
+          @'
+          Add-Content -Path $env:MCP_LOG -Value ("claude " + ($args -join " ") + " [cwd=" + (Get-Location).Path + "]")
+          $sub = $args[0] + " " + $args[1]
+          switch ($sub) {
+            "mcp get"    { if (Test-Path -LiteralPath (Join-Path $env:MCP_STATE_DIR "claude")) { exit 0 } else { exit 1 } }
+            "mcp add"    { New-Item -ItemType File -Force -Path (Join-Path $env:MCP_STATE_DIR "claude") | Out-Null; exit 0 }
+            "mcp remove" { Remove-Item -LiteralPath (Join-Path $env:MCP_STATE_DIR "claude") -Force -ErrorAction SilentlyContinue; exit 0 }
+            default      { exit 1 }
+          }
+          '@ | Set-Content -Path (Join-Path $stubBin 'mcp-stub-claude.ps1') -Encoding ascii
+          @'
+          @echo off
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0mcp-stub-codex.ps1" %*
+          '@ | Set-Content -Path (Join-Path $stubBin 'codex.cmd') -Encoding ascii
+          @'
+          Add-Content -Path $env:MCP_LOG -Value ("codex " + ($args -join " ") + " [cwd=" + (Get-Location).Path + "]")
+          $sub = $args[0] + " " + $args[1]
+          switch ($sub) {
+            "mcp get"    { if (Test-Path -LiteralPath (Join-Path $env:MCP_STATE_DIR "codex")) { exit 0 } else { exit 1 } }
+            "mcp add"    { New-Item -ItemType File -Force -Path (Join-Path $env:MCP_STATE_DIR "codex") | Out-Null; exit 0 }
+            "mcp remove" { Remove-Item -LiteralPath (Join-Path $env:MCP_STATE_DIR "codex") -Force -ErrorAction SilentlyContinue; exit 0 }
+            default      { exit 1 }
+          }
+          '@ | Set-Content -Path (Join-Path $stubBin 'mcp-stub-codex.ps1') -Encoding ascii
+          @'
+          @echo off
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0mcp-stub-copilot.ps1" %*
+          '@ | Set-Content -Path (Join-Path $stubBin 'copilot.cmd') -Encoding ascii
+          @'
+          Add-Content -Path $env:MCP_LOG -Value ("copilot " + ($args -join " ") + " [cwd=" + (Get-Location).Path + "]")
+          $sub = $args[0] + " " + $args[1]
+          switch ($sub) {
+            "mcp get"    { if (Test-Path -LiteralPath (Join-Path $env:MCP_STATE_DIR "copilot")) { exit 0 } else { exit 1 } }
+            "mcp add"    { New-Item -ItemType File -Force -Path (Join-Path $env:MCP_STATE_DIR "copilot") | Out-Null; exit 0 }
+            "mcp remove" { Remove-Item -LiteralPath (Join-Path $env:MCP_STATE_DIR "copilot") -Force -ErrorAction SilentlyContinue; exit 0 }
+            default      { exit 1 }
+          }
+          '@ | Set-Content -Path (Join-Path $stubBin 'mcp-stub-copilot.ps1') -Encoding ascii
+          $env:PATH = "$stubBin;$env:PATH"
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-mcp"
+          New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null
+          function Expect-Line($label, $message) { return ("  {0,-11} -- {1}" -f $label, $message) }
+
+          $out1 = (.\install-mcp-servers.ps1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "install-mcp-servers.ps1 failed with exit code $LASTEXITCODE" }
+          Write-Host $out1
+          foreach ($label in @('Claude Code', 'Codex', 'Copilot')) {
+            if ($out1 -notmatch [regex]::Escape((Expect-Line $label 'added'))) { throw "$label was not reported as added on first run" }
+          }
+          foreach ($h in @('claude', 'codex', 'copilot')) {
+            $addLines = Get-Content $env:MCP_LOG | Where-Object { $_ -match "^$h mcp add " }
+            if (@($addLines).Count -ne 1) { throw "$h mcp add was not invoked exactly once on first run" }
+          }
+
+          $out2 = (.\install-mcp-servers.ps1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "install-mcp-servers.ps1 (rerun) failed with exit code $LASTEXITCODE" }
+          Write-Host $out2
+          foreach ($label in @('Claude Code', 'Codex', 'Copilot')) {
+            if ($out2 -notmatch [regex]::Escape((Expect-Line $label 'already configured, skipped'))) { throw "$label was not reported as already configured on rerun" }
+          }
+          $addLinesAll = Get-Content $env:MCP_LOG | Where-Object { $_ -match ' mcp add ' }
+          if (@($addLinesAll).Count -ne 3) { throw "rerun issued a second mcp add" }
+      - name: MCP servers uninstall (stubbed CLIs, no network)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:MCP_LOG = Join-Path $env:RUNNER_TEMP 'mcp-invocations.log'
+          $env:MCP_STATE_DIR = Join-Path $env:RUNNER_TEMP 'mcp-state'
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-mcp"
+          $env:PATH = "$env:RUNNER_TEMP\mcp-stub-bin;$env:PATH"
+          function Expect-Line($label, $message) { return ("  {0,-11} -- {1}" -f $label, $message) }
+
+          $out3 = (.\install-mcp-servers.ps1 uninstall | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "install-mcp-servers.ps1 uninstall failed with exit code $LASTEXITCODE" }
+          Write-Host $out3
+          foreach ($label in @('Claude Code', 'Codex', 'Copilot')) {
+            if ($out3 -notmatch [regex]::Escape((Expect-Line $label 'removed'))) { throw "$label was not reported as removed" }
+          }
+          foreach ($h in @('claude', 'codex', 'copilot')) {
+            $removeLines = Get-Content $env:MCP_LOG | Where-Object { $_ -match "^$h mcp remove " }
+            if (@($removeLines).Count -ne 1) { throw "$h mcp remove was not invoked exactly once" }
+            if (Test-Path -LiteralPath (Join-Path $env:MCP_STATE_DIR $h)) { throw "$env:MCP_STATE_DIR\$h survived uninstall" }
+          }
+
+          $out4 = (.\install-mcp-servers.ps1 uninstall | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "rerun of uninstall exited $LASTEXITCODE" }
+          Write-Host $out4
+          foreach ($label in @('Claude Code', 'Codex', 'Copilot')) {
+            if ($out4 -notmatch [regex]::Escape((Expect-Line $label 'not configured, skipped'))) { throw "$label was not reported as not configured on the uninstall rerun" }
+          }
+
+          # Every harness CLI call, across both this step and the installer step
+          # above (they share one log), must have run from %USERPROFILE%. Claude
+          # Code and Copilot resolve project-scoped MCP config from the working
+          # directory and expose no scope flag on `mcp get`, so a cwd-sensitive
+          # script run from a repo whose .mcp.json declares this server would
+          # report it already configured and skip the user-scope install it
+          # exists to do.
+          $strayCwd = Get-Content $env:MCP_LOG | Where-Object { $_ -notmatch ([regex]::Escape("[cwd=$env:USERPROFILE]") + '$') }
+          if (@($strayCwd).Count -gt 0) { throw "a harness CLI was invoked from outside %USERPROFILE%: $($strayCwd -join '; ')" }
       - name: Stale prune quarantines removed repo copies, never non-repo content
         shell: powershell
         run: |

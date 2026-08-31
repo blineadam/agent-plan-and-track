@@ -72,6 +72,9 @@ cd agent-plan-and-track
 
 # Optional docx, pdf, pptx, and xlsx skills
 ./install-office-skills.sh
+
+# Optional chrome-devtools MCP server, for whichever harnesses lack it
+./install-mcp-servers.sh
 ```
 
 On Windows, run the PowerShell installer instead (same targets):
@@ -83,6 +86,7 @@ $env:PT_BYPASS_PERMISSIONS = '1'
 
 powershell -ExecutionPolicy Bypass -File install.ps1 all
 powershell -ExecutionPolicy Bypass -File install-office-skills.ps1
+powershell -ExecutionPolicy Bypass -File install-mcp-servers.ps1
 ```
 
 Re-running is safe: each run updates the files this repo manages and leaves
