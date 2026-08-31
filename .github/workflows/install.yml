@@ -1466,6 +1466,7 @@ jobs:
           $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-mcp"
           New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null
           function Expect-Line($label, $message) { return ("  {0,-11} -- {1}" -f $label, $message) }
+          $repoRoot = (Get-Location).Path
 
           $out1 = (.\install-mcp-servers.ps1 | Out-String)
           if ($LASTEXITCODE -ne 0) { throw "install-mcp-servers.ps1 failed with exit code $LASTEXITCODE" }
@@ -1477,6 +1478,20 @@ jobs:
             $addLines = Get-Content $env:MCP_LOG | Where-Object { $_ -match "^$h mcp add " }
             if (@($addLines).Count -ne 1) { throw "$h mcp add was not invoked exactly once on first run" }
           }
+          # Codex on Windows must be registered with the upstream README's
+          # Windows 11 form: npx launched through cmd, with SystemRoot and
+          # PROGRAMFILES in the server's environment. The plain Unix form would
+          # store a server Codex cannot start on Windows.
+          # The two env patterns require a non-empty value, so an unset
+          # variable silently producing "SystemRoot=" cannot pass.
+          $codexAdd = @(Get-Content $env:MCP_LOG | Where-Object { $_ -match '^codex mcp add ' })[0]
+          foreach ($pattern in @([regex]::Escape('cmd /c npx'), 'SystemRoot=\S', 'PROGRAMFILES=\S')) {
+            if ($codexAdd -notmatch $pattern) { throw "codex mcp add does not match '$pattern': $codexAdd" }
+          }
+          # A script run in the caller's runspace must not leave it relocated:
+          # the second invocation below resolves .\install-mcp-servers.ps1
+          # relative to wherever the first one left the runspace.
+          if ((Get-Location).Path -ne $repoRoot) { throw "install-mcp-servers.ps1 left the caller in $((Get-Location).Path), not $repoRoot" }
 
           $out2 = (.\install-mcp-servers.ps1 | Out-String)
           if ($LASTEXITCODE -ne 0) { throw "install-mcp-servers.ps1 (rerun) failed with exit code $LASTEXITCODE" }

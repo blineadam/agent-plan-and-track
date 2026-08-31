@@ -70,7 +70,12 @@
 # ~/.copilot/mcp-config.json; each harness's own CLI is the only writer of
 # its own config.
 #
-# PARITY: this script and install-mcp-servers.ps1 must stay in lockstep.
+# PARITY: this script and install-mcp-servers.ps1 must stay in lockstep, with
+# one deliberate behavioral divergence. The .ps1 registers Codex with the
+# Windows form the upstream README documents in its Windows 11 section
+# (launching npx through cmd, with SystemRoot and PROGRAMFILES in the server's
+# environment). That guidance is Windows-only and Codex-only, so it has no
+# counterpart here and its absence is not drift.
 set -euo pipefail
 
 MCP_NAME="chrome-devtools"

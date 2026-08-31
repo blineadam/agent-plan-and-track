@@ -34,7 +34,19 @@
   install this script exists to perform, and `mcp remove -s user` would then
   fail on a server that was never in user scope. Codex is unaffected (its
   MCP config is ~/.codex/config.toml only), but the location change covers
-  all three so the script behaves the same wherever it is invoked from.
+  all three so the script behaves the same wherever it is invoked from. It is
+  a Push-Location inside a try/finally rather than the .sh's plain cd,
+  because a PowerShell script runs in its caller's runspace and would
+  otherwise leave that caller sitting in the home directory.
+
+  One behavioral divergence from install-mcp-servers.sh, and the only one:
+  Codex is registered with the Windows form the upstream README documents in
+  its Windows 11 section, launching npx through cmd with SystemRoot and
+  PROGRAMFILES in the server's environment. That guidance is Codex-only, so
+  Claude Code and Copilot take the same plain form here as on Unix. Upstream
+  also raises the server's startup timeout, which `codex mcp add` exposes no
+  flag for, so that one part is left to a hand edit of the Codex config file
+  and is not applied here.
 
   Uninstall also gates each harness on the same Get-Command detection,
   rather than sweeping known destinations unconditionally the way
@@ -98,7 +110,6 @@ if ($Action -notin @('install', 'uninstall')) { Usage }
 # install-office-skills.ps1 use. Note that $HOME is an automatic variable fixed
 # at session start, so it does not track a later %USERPROFILE% override.
 $HomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
-Set-Location -LiteralPath $HomeDir
 
 $haveClaude = [bool](Get-Command claude -ErrorAction SilentlyContinue)
 $haveCodex = [bool](Get-Command codex -ErrorAction SilentlyContinue)
@@ -117,7 +128,13 @@ function Test-McpPresent($cli) {
 function Add-Mcp($cli) {
   switch ($cli) {
     'claude'  { & claude mcp add $McpName --scope user -- npx -y $McpPackage *> $null }
-    'codex'   { & codex mcp add $McpName -- npx -y $McpPackage *> $null }
+    # Codex gets the Windows form the upstream README's Windows 11 section
+    # documents: npx launched through cmd, with SystemRoot and PROGRAMFILES in
+    # the server's environment. That section is Codex-only, so Claude Code and
+    # Copilot keep the plain form. Upstream also raises the startup timeout,
+    # which `codex mcp add` exposes no flag for, so the server keeps Codex's
+    # default; raise it by hand in the config file if Chrome is slow to start.
+    'codex'   { & codex mcp add $McpName --env "SystemRoot=$env:SystemRoot" --env "PROGRAMFILES=$env:ProgramFiles" -- cmd /c npx -y $McpPackage *> $null }
     'copilot' { & copilot mcp add $McpName -- npx -y $McpPackage *> $null }
   }
   if ($LASTEXITCODE -ne 0) { throw "mcp add failed for '$cli' with exit code $LASTEXITCODE" }
@@ -159,8 +176,22 @@ function Invoke-Dispatch($cli, $label, $detected) {
   }
 }
 
-Invoke-Dispatch 'claude' 'Claude Code' $haveClaude
-Invoke-Dispatch 'codex' 'Codex' $haveCodex
-Invoke-Dispatch 'copilot' 'Copilot' $haveCopilot
+# Push-Location rather than Set-Location: a script run in the caller's runspace
+# leaves that runspace wherever it lands, so a bare Set-Location would strand an
+# interactive caller in their home directory and break the very next relative
+# path the caller resolves. The finally restores the location on every path,
+# including a throw out of Add-Mcp or Remove-Mcp.
+Push-Location -LiteralPath $HomeDir
+try {
+  Invoke-Dispatch 'claude' 'Claude Code' $haveClaude
+  Invoke-Dispatch 'codex' 'Codex' $haveCodex
+  Invoke-Dispatch 'copilot' 'Copilot' $haveCopilot
+} finally {
+  Pop-Location
+}
 
 Write-Host "done."
+# The last thing this script runs is usually a harness CLI, and a `mcp get` that
+# correctly reports "absent" exits 1. Without this the caller would read that as
+# the script itself failing, which is exactly what a no-op uninstall looks like.
+exit 0
