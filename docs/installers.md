@@ -193,15 +193,30 @@ installer takes a `.bak` backup if the existing file differs.
 
 ### Managed defaults
 
-Model and output-style defaults are repo-owned and overwritten on each install
-unless `PT_KEEP_MODEL=1`:
+Model, output-style, and artifact defaults are repo-owned and overwritten on
+each install unless `PT_KEEP_MODEL=1`:
 
 - Claude: `opusplan` + `switchModelsOnFlag` + `outputStyle: Concise` (requires
-  Claude Code v2.1.237 or later).
+  Claude Code v2.1.237 or later) + `enableArtifact: false`.
 - Copilot: `auto`.
 
+`enableArtifact: false` turns off the Artifact tool, which publishes HTML pages
+to claude.ai. The
+[settings reference](https://code.claude.com/docs/en/settings-reference#enableartifact)
+describes the key as turning the tool off with a `false` in any file, with no
+file turning it back on, so re-enabling means setting this same key to `true`
+and installing with `PT_KEEP_MODEL=1`. The precedence-exceptions table in
+[the settings guide](https://code.claude.com/docs/en/settings) adds that
+overriding a managed `true` this way requires Claude Code v2.1.242 or later.
+
+The context saving is this repo's own observation rather than a documented
+guarantee. A headless session started with the key set reports no Artifact tool,
+while the same prompt without it reports one, so a session that cannot publish
+is not carrying the tool's schema on every turn.
+
 Codex's plan-mode reasoning effort is separate and always overwritten,
-regardless of `PT_KEEP_MODEL`, which covers model and output-style settings only.
+regardless of `PT_KEEP_MODEL`, which covers model, output-style, and artifact
+settings only.
 
 ### Permission posture
 

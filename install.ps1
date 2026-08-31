@@ -21,10 +21,11 @@
     - hooks are merged only if not already installed (Claude/Codex); the Copilot
       hook files are repo-owned and overwritten, with a *.bak if one differed
     - managed defaults (Claude model=opusplan + switchModelsOnFlag +
-      outputStyle=Concise, Copilot model=auto, Codex
+      outputStyle=Concise + enableArtifact=false, Copilot model=auto, Codex
       plan_mode_reasoning_effort=xhigh) are repo-owned and OVERWRITTEN on every
-      install. PT_KEEP_MODEL=1 keeps an existing per-machine model/output-style
-      choice; a Copilot settings.json that isn't plain JSON is left alone.
+      install. PT_KEEP_MODEL=1 keeps an existing per-machine model,
+      output-style, or artifact choice; a Copilot settings.json that isn't
+      plain JSON is left alone.
     - a bare install never changes Claude's permission posture.
       PT_BYPASS_PERMISSIONS=1 sets permissions.defaultMode to bypassPermissions and
       skipDangerousModePermissionPrompt to true in ~/.claude/settings.json; leaving
@@ -528,7 +529,7 @@ function Set-JsonDefault($file, $key, $value, $label) {
 # string-interpolated into an expression, so a key containing an '@' or a '-' (e.g.
 # "frontend-design@claude-plugins-official") can never be reinterpreted. Missing
 # intermediate objects are created as needed. Not gated by PT_KEEP_MODEL, which
-# covers model and output-style settings only.
+# covers model, output-style, and artifact settings only.
 function Set-JsonPath($file, $path, $value, $label) {
   $json = [System.IO.File]::ReadAllText($file) | ConvertFrom-Json
   $node = $json
@@ -763,6 +764,17 @@ function Install-Claude {
   # Requires Claude Code v2.1.237 or later; installing over an older CLI leaves
   # the key set but the style unrecognized until the CLI is upgraded.
   Set-JsonDefault $settings 'outputStyle' 'Concise' 'output style'
+  # Repo-owned artifact toggle, re-asserted on every install (PT_KEEP_MODEL=1
+  # keeps an existing per-machine choice): enableArtifact=false turns off the
+  # Artifact tool, which publishes HTML pages to claude.ai. Per
+  # https://code.claude.com/docs/en/settings-reference#enableartifact a false in
+  # any file turns the tool off and no file turns it back on, so re-enabling
+  # means setting this same key to true and installing with PT_KEEP_MODEL=1.
+  # The precedence-exceptions table at https://code.claude.com/docs/en/settings
+  # adds that overriding a managed true this way needs Claude Code v2.1.242 or
+  # later. docs/installers.md carries the context rationale and how it was
+  # tested.
+  Set-JsonDefault $settings 'enableArtifact' $false 'artifact toggle'
   # Repo-owned plugin disable, re-asserted on every install: this repo ships its
   # own frontend-design skill, and the frontend-design@claude-plugins-official
   # plugin bundles a second skill of the same name, a routing collision.
@@ -904,8 +916,8 @@ function Install-Codex {
   Install-Digest (Join-Path $codex 'core-rules.md')
   Install-Instructions (Join-Path $codex 'AGENTS.md')
   # Plan-mode default, re-asserted each install: raise reasoning effort in Plan
-  # mode only. Not gated by PT_KEEP_MODEL (that opt-out covers model and
-  # output-style settings only).
+  # mode only. Not gated by PT_KEEP_MODEL (that opt-out covers model,
+  # output-style, and artifact settings only).
   Set-TomlDefault (Join-Path $codex 'config.toml') 'plan_mode_reasoning_effort' 'xhigh'
 
   $hooks = Join-Path $codex 'hooks.json'
