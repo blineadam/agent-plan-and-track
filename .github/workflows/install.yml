@@ -1604,15 +1604,28 @@ jobs:
           # the process stderr handle and so is invisible to PowerShell's own
           # stream redirection; only a real child process has a stderr pipe to
           # capture. It is also the entry point the docs actually publish.
-          $out = (& $powershellExe -NoProfile -ExecutionPolicy Bypass -File .\install-mcp-servers.ps1 2>&1 | Out-String)
-          if ($LASTEXITCODE -ne 1) { throw "install exited $LASTEXITCODE with npx absent, expected 1`n$out" }
+          #
+          # ErrorActionPreference drops to Continue around both child calls:
+          # Windows PowerShell 5.1 raises a terminating NativeCommandError when
+          # a native command writes to stderr under Stop, so the gate firing
+          # correctly would abort this step before any assertion ran.
+          $prevEap = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            $out = (& $powershellExe -NoProfile -ExecutionPolicy Bypass -File .\install-mcp-servers.ps1 2>&1 | Out-String)
+            $installCode = $LASTEXITCODE
+            # Uninstall never runs npx, so it must stay usable without it.
+            $out2 = (& $powershellExe -NoProfile -ExecutionPolicy Bypass -File .\install-mcp-servers.ps1 uninstall 2>&1 | Out-String)
+            $uninstallCode = $LASTEXITCODE
+          } finally {
+            $ErrorActionPreference = $prevEap
+          }
+          if ($installCode -ne 1) { throw "install exited $installCode with npx absent, expected 1`n$out" }
           if ($out -notmatch 'npx is required') { throw "no npx diagnostic in: $out" }
           foreach ($h in @('claude', 'codex', 'copilot')) {
             if (Test-Path -LiteralPath (Join-Path $env:MCP_STATE_DIR $h)) { throw "$h was configured even though the npx gate should have stopped the run" }
           }
-          # Uninstall never runs npx, so it must stay usable without it.
-          $out2 = (& $powershellExe -NoProfile -ExecutionPolicy Bypass -File .\install-mcp-servers.ps1 uninstall 2>&1 | Out-String)
-          if ($LASTEXITCODE -ne 0) { throw "uninstall exited $LASTEXITCODE with npx absent`n$out2" }
+          if ($uninstallCode -ne 0) { throw "uninstall exited $uninstallCode with npx absent`n$out2" }
           if ($out2 -notmatch 'not configured, skipped') { throw "uninstall did not run with npx absent: $out2" }
       - name: Stale prune quarantines removed repo copies, never non-repo content
         shell: powershell
