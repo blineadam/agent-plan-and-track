@@ -20,10 +20,11 @@
 #   - hooks are merged only if not already installed (Claude/Codex); the Copilot hook
 #     files are repo-owned and overwritten, with a *.bak backup if one differed
 #   - managed defaults (Claude model=opusplan + switchModelsOnFlag +
-#     outputStyle=Concise, Copilot model=auto, Codex
+#     outputStyle=Concise + enableArtifact=false, Copilot model=auto, Codex
 #     plan_mode_reasoning_effort=xhigh) are repo-owned and OVERWRITTEN on every
-#     install. PT_KEEP_MODEL=1 keeps an existing per-machine model/output-style
-#     choice; a Copilot settings.json jq can't round-trip is left untouched.
+#     install. PT_KEEP_MODEL=1 keeps an existing per-machine model,
+#     output-style, or artifact choice; a Copilot settings.json jq can't
+#     round-trip is left untouched.
 #   - a bare install never changes Claude's permission posture.
 #     PT_BYPASS_PERMISSIONS=1 sets permissions.defaultMode to bypassPermissions and
 #     skipDangerousModePermissionPrompt to true in ~/.claude/settings.json; leaving
@@ -537,7 +538,7 @@ set_json_default() {
 # an '@' (e.g. "frontend-design@claude-plugins-official") can never be
 # reinterpreted as a path expression. $3 is a JSON value literal
 # ('"bypassPermissions"', false). Not gated by PT_KEEP_MODEL, which covers
-# model and output-style settings only.
+# model, output-style, and artifact settings only.
 set_json_path() {
   local file="$1" path="$2" jqval="$3" label="$4" tmp prev
   prev="$(jq -r --argjson p "$path" 'getpath($p) as $v | if $v == null then "unset" else ($v|tostring) end' "$file")"
@@ -701,6 +702,14 @@ install_claude() {
   # Requires Claude Code v2.1.237 or later; installing over an older CLI leaves
   # the key set but the style unrecognized until the CLI is upgraded.
   set_json_default "$settings" outputStyle '"Concise"' "output style"
+  # Repo-owned artifact toggle, re-asserted on every install (PT_KEEP_MODEL=1
+  # keeps an existing per-machine choice): enableArtifact=false turns off the
+  # Artifact tool (publishing HTML pages to claude.ai), whose tool schema
+  # otherwise costs always-on context in every session. This is one-way within
+  # a settings resolution: once a file sets it false, no higher-precedence file
+  # can turn it back on, so turning artifacts back on means setting this same
+  # key to true and installing with PT_KEEP_MODEL=1.
+  set_json_default "$settings" enableArtifact false "artifact toggle"
   # Repo-owned plugin disable, re-asserted on every install: this repo ships its
   # own frontend-design skill, and the frontend-design@claude-plugins-official
   # plugin bundles a second skill of the same name, a routing collision.
@@ -881,8 +890,8 @@ install_codex() {
   # Plan-mode default, re-asserted on every install: raise reasoning effort in
   # Plan mode only, leaving the execution model and effort untouched. Codex has no
   # plan-mode model swap (no opusplan analog), so effort is the only phase-specific
-  # lever. Not gated by PT_KEEP_MODEL (that opt-out covers model and output-style
-  # settings only).
+  # lever. Not gated by PT_KEEP_MODEL (that opt-out covers model, output-style, and
+  # artifact settings only).
   upsert_toml_default "$HOME/.codex/config.toml" "plan_mode_reasoning_effort" "xhigh"
   need_jq
   local hooks="$HOME/.codex/hooks.json" cscripts="$HOME/.codex/scripts" tmp

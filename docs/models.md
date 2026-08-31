@@ -3,21 +3,23 @@
 ## Managed defaults
 
 The installer sets a model default for each harness so routine work does not
-run at top-tier cost, and an output style for Claude Code. These settings are
-repo-owned: every install restores the intended default, even on a machine
-that has drifted. What each default does depends on the harness:
+run at top-tier cost, plus an output style and an artifact toggle for Claude
+Code. These settings are repo-owned: every install restores the intended
+default, even on a machine that has drifted. What each default does depends on
+the harness:
 
 | Harness | Default | Effect |
 | --- | --- | --- |
 | Claude Code | `model: opusplan` | Opus in Plan mode, Sonnet during execution |
 | Claude Code | `switchModelsOnFlag: true` | Switch models on a safety flag instead of stopping |
 | Claude Code | `outputStyle: Concise` | Trim narration in responses (needs Claude Code v2.1.237+) |
+| Claude Code | `enableArtifact: false` | Drop the Artifact tool, and its always-on schema, from sessions |
 | Codex | `plan_mode_reasoning_effort: xhigh` | Plan mode: `xhigh`; execution unchanged |
 | Copilot | `model: auto` | Let Copilot choose per task; no fixed phase split |
 
 Install with `PT_KEEP_MODEL=1` to keep a machine's existing Claude and Copilot
-model and output-style settings, including `switchModelsOnFlag`, instead of
-overwriting them. The Codex plan-mode effort still updates.
+model, output-style, and artifact settings, including `switchModelsOnFlag`,
+instead of overwriting them. The Codex plan-mode effort still updates.
 
 ## Tiered subagents
 
