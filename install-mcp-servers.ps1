@@ -26,18 +26,23 @@
   directly, so a harness whose CLI isn't on PATH is unusable here regardless
   of whether its config directory exists.
 
-  Every harness CLI call is made from $HOME, because Claude Code and GitHub
-  Copilot both resolve project-scoped MCP config relative to the working
-  directory and neither exposes a scope flag on `mcp get`. Run from a repo
-  carrying a .mcp.json that declares this server and an unscoped presence
-  check would report it already configured, silently skipping the user-scope
-  install this script exists to perform, and `mcp remove -s user` would then
-  fail on a server that was never in user scope. Codex is unaffected (its
-  MCP config is ~/.codex/config.toml only), but the location change covers
-  all three so the script behaves the same wherever it is invoked from. It is
-  a Push-Location inside a try/finally rather than the .sh's plain cd,
+  Every harness CLI call is made from a fresh empty temporary directory that
+  is removed on exit, because Claude Code and GitHub Copilot both resolve
+  project-scoped MCP config relative to the working directory and neither
+  exposes a scope flag on `mcp get`. Run from a repo carrying a .mcp.json
+  that declares this server and an unscoped presence check would report it
+  already configured, silently skipping the user-scope install this script
+  exists to perform, and `mcp remove -s user` would then fail on a server
+  that was never in user scope. Codex is unaffected (its MCP config is
+  ~/.codex/config.toml only), but the location change covers all three so the
+  script behaves the same wherever it is invoked from. The home directory is
+  not a safe choice here: a user who has run an agent from it can have a
+  ~/.mcp.json, which would shadow the user-scope entry exactly the way a
+  repository's does. A directory this script just created cannot.
+
+  It is a Push-Location inside a try/finally rather than the .sh's plain cd,
   because a PowerShell script runs in its caller's runspace and would
-  otherwise leave that caller sitting in the home directory.
+  otherwise leave that caller relocated after the script returned.
 
   One behavioral divergence from install-mcp-servers.sh, and the only one:
   Codex is registered with the Windows form the upstream README documents in
@@ -56,12 +61,16 @@
   orphaned-directory case to sweep the way there is for the office skills
   (whose uninstall deletes on-disk skill directories directly).
 
-  This script never runs npx itself and so never gates on it existing: the
-  add commands below hand `npx -y chrome-devtools-mcp@latest` to the harness
-  as the command it should launch its MCP server with, and npx only
-  actually runs later, when that harness starts the server over piped
-  stdio. Compare install-office-skills.ps1, which does gate on npx because
-  it shells out to it directly, itself, at install time.
+  This script never runs npx itself; the add commands below hand
+  `npx -y chrome-devtools-mcp@latest` to the harness as the command it should
+  launch its MCP server with, and npx only actually runs later, when that
+  harness starts the server over piped stdio. The install path still gates on
+  npx existing, because a config naming a command the machine does not have
+  is an unusable server that fails at first use with the harness's own error
+  rather than this script's. Uninstall does not gate: making a cleanup depend
+  on a toolchain it never uses would strand anyone whose Node install is
+  gone. Node is not implied by a harness being present, since not every
+  harness CLI is itself a Node program.
 
   All three harnesses' add commands pass -y to npx, even though upstream
   documents -y only for Copilot: a harness launches an MCP server over
@@ -105,11 +114,10 @@ function Usage {
 if ($args.Count -gt 0) { Usage }
 if ($Action -notin @('install', 'uninstall')) { Usage }
 
-# Home base: %USERPROFILE% on Windows; fall back to $HOME so the script is
-# testable on non-Windows PowerShell builds. Same resolution install.ps1 and
-# install-office-skills.ps1 use. Note that $HOME is an automatic variable fixed
-# at session start, so it does not track a later %USERPROFILE% override.
-$HomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
+if ($Action -eq 'install' -and -not (Get-Command npx -ErrorAction SilentlyContinue)) {
+  [Console]::Error.WriteLine("error: npx is required (install Node.js); every harness launches this server through npx")
+  exit 1
+}
 
 $haveClaude = [bool](Get-Command claude -ErrorAction SilentlyContinue)
 $haveCodex = [bool](Get-Command codex -ErrorAction SilentlyContinue)
@@ -177,17 +185,20 @@ function Invoke-Dispatch($cli, $label, $detected) {
 }
 
 # Push-Location rather than Set-Location: a script run in the caller's runspace
-# leaves that runspace wherever it lands, so a bare Set-Location would strand an
-# interactive caller in their home directory and break the very next relative
-# path the caller resolves. The finally restores the location on every path,
+# leaves that runspace wherever it lands, so a bare Set-Location would relocate
+# an interactive caller and break the very next relative path they resolve. The
+# finally restores the location and removes the scratch directory on every path,
 # including a throw out of Add-Mcp or Remove-Mcp.
-Push-Location -LiteralPath $HomeDir
+$workDir = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName())
+New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+Push-Location -LiteralPath $workDir
 try {
   Invoke-Dispatch 'claude' 'Claude Code' $haveClaude
   Invoke-Dispatch 'codex' 'Codex' $haveCodex
   Invoke-Dispatch 'copilot' 'Copilot' $haveCopilot
 } finally {
   Pop-Location
+  Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "done."

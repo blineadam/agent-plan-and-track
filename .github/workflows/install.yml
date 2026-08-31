@@ -736,16 +736,49 @@ jobs:
           done
 
           # Every harness CLI call, across both this step and the installer step
-          # above (they share one log), must have run from $HOME. Claude Code and
-          # Copilot resolve project-scoped MCP config from the working directory
-          # and expose no scope flag on `mcp get`, so a cwd-sensitive script run
-          # from a repo whose .mcp.json declares this server would report it
-          # already configured and skip the user-scope install it exists to do.
-          if grep -v "\[cwd=$HOME\]\$" "$MCP_LOG" | grep -q .; then
-            echo "FAIL: a harness CLI was invoked from outside \$HOME:"
-            grep -v "\[cwd=$HOME\]\$" "$MCP_LOG"
-            exit 1
+          # above (they share one log), must have run from an isolated scratch
+          # directory that no longer exists. Claude Code and Copilot resolve
+          # project-scoped MCP config from the working directory and expose no
+          # scope flag on `mcp get`, so a cwd-sensitive script run from a repo
+          # whose .mcp.json declares this server would report it already
+          # configured and skip the user-scope install it exists to do. $HOME is
+          # rejected too, since it can carry a .mcp.json of its own.
+          for d in $(sed -n 's/.*\[cwd=\(.*\)\]$/\1/p' "$MCP_LOG" | sort -u); do
+            case "$d" in
+              "$PWD"|"$HOME")
+                echo "FAIL: a harness CLI ran from $d, not an isolated scratch directory"; exit 1 ;;
+            esac
+            [ ! -e "$d" ] \
+              || { echo "FAIL: scratch directory $d survived the run"; exit 1; }
+          done
+      - name: MCP servers installer refuses to install without npx
+        run: |
+          set -euo pipefail
+          export MCP_LOG="$RUNNER_TEMP/mcp-nonpx.log"
+          export MCP_STATE_DIR="$RUNNER_TEMP/mcp-state-nonpx"
+          rm -f "$MCP_LOG"; rm -rf "$MCP_STATE_DIR"; mkdir -p "$MCP_STATE_DIR"
+          export HOME="$RUNNER_TEMP/scratch-home-mcp-nonpx"; mkdir -p "$HOME"
+          # Harness stubs present, no Node toolchain: /usr/bin and /bin carry
+          # coreutils and the bash the stubs need, but not npx.
+          export PATH="$RUNNER_TEMP/mcp-stub-bin:/usr/bin:/bin"
+          if command -v npx >/dev/null 2>&1; then
+            echo "FAIL: npx is still on PATH; the assertions below would be vacuous"; exit 1
           fi
+          set +e
+          out="$(./install-mcp-servers.sh 2>&1)"; code=$?
+          set -e
+          [ "$code" -eq 1 ] \
+            || { echo "FAIL: install exited $code with npx absent, expected 1"; echo "$out"; exit 1; }
+          echo "$out" | grep -q 'npx is required' \
+            || { echo "FAIL: no npx diagnostic in: $out"; exit 1; }
+          for h in claude codex copilot; do
+            [ ! -e "$MCP_STATE_DIR/$h" ] \
+              || { echo "FAIL: $h was configured even though the npx gate should have stopped the run"; exit 1; }
+          done
+          # Uninstall never runs npx, so it must stay usable without it.
+          out2="$(./install-mcp-servers.sh uninstall 2>&1)"
+          echo "$out2" | grep -q 'not configured, skipped' \
+            || { echo "FAIL: uninstall did not run with npx absent: $out2"; exit 1; }
       - name: Stale prune quarantines removed repo copies, never non-repo content
         run: |
           set -euo pipefail
@@ -1535,14 +1568,46 @@ jobs:
           }
 
           # Every harness CLI call, across both this step and the installer step
-          # above (they share one log), must have run from %USERPROFILE%. Claude
-          # Code and Copilot resolve project-scoped MCP config from the working
-          # directory and expose no scope flag on `mcp get`, so a cwd-sensitive
-          # script run from a repo whose .mcp.json declares this server would
-          # report it already configured and skip the user-scope install it
-          # exists to do.
-          $strayCwd = Get-Content $env:MCP_LOG | Where-Object { $_ -notmatch ([regex]::Escape("[cwd=$env:USERPROFILE]") + '$') }
-          if (@($strayCwd).Count -gt 0) { throw "a harness CLI was invoked from outside %USERPROFILE%: $($strayCwd -join '; ')" }
+          # above (they share one log), must have run from an isolated scratch
+          # directory that no longer exists. Claude Code and Copilot resolve
+          # project-scoped MCP config from the working directory and expose no
+          # scope flag on `mcp get`, so a cwd-sensitive script run from a repo
+          # whose .mcp.json declares this server would report it already
+          # configured and skip the user-scope install it exists to do.
+          # %USERPROFILE% is rejected too, since it can carry a .mcp.json.
+          $repoRoot = (Get-Location).Path
+          $cwds = Get-Content $env:MCP_LOG | ForEach-Object { if ($_ -match '\[cwd=(.*)\]$') { $Matches[1] } } | Sort-Object -Unique
+          if (@($cwds).Count -eq 0) { throw "no working directories were logged; the check below would be vacuous" }
+          foreach ($d in $cwds) {
+            if ($d -eq $repoRoot -or $d -eq $env:USERPROFILE) { throw "a harness CLI ran from $d, not an isolated scratch directory" }
+            if (Test-Path -LiteralPath $d) { throw "scratch directory $d survived the run" }
+          }
+      - name: MCP servers installer refuses to install without npx
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:MCP_LOG = Join-Path $env:RUNNER_TEMP 'mcp-nonpx.log'
+          $env:MCP_STATE_DIR = Join-Path $env:RUNNER_TEMP 'mcp-state-nonpx'
+          Remove-Item -LiteralPath $env:MCP_LOG -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $env:MCP_STATE_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $env:MCP_STATE_DIR | Out-Null
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-mcp-nonpx"
+          New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null
+          # Harness stubs present, no Node toolchain. System32 and the Windows
+          # PowerShell directory stay on PATH because the stub .cmd launchers
+          # shell out to powershell; neither carries npx.
+          $env:PATH = "$env:RUNNER_TEMP\mcp-stub-bin;$env:SystemRoot\System32;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
+          if (Get-Command npx -ErrorAction SilentlyContinue) { throw "npx is still on PATH; the assertions below would be vacuous" }
+          $out = (.\install-mcp-servers.ps1 2>&1 6>&1 | Out-String)
+          if ($LASTEXITCODE -ne 1) { throw "install exited $LASTEXITCODE with npx absent, expected 1`n$out" }
+          if ($out -notmatch 'npx is required') { throw "no npx diagnostic in: $out" }
+          foreach ($h in @('claude', 'codex', 'copilot')) {
+            if (Test-Path -LiteralPath (Join-Path $env:MCP_STATE_DIR $h)) { throw "$h was configured even though the npx gate should have stopped the run" }
+          }
+          # Uninstall never runs npx, so it must stay usable without it.
+          $out2 = (.\install-mcp-servers.ps1 uninstall 6>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "uninstall exited $LASTEXITCODE with npx absent`n$out2" }
+          if ($out2 -notmatch 'not configured, skipped') { throw "uninstall did not run with npx absent: $out2" }
       - name: Stale prune quarantines removed repo copies, never non-repo content
         shell: powershell
         run: |
