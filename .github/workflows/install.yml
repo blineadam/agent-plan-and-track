@@ -1467,8 +1467,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null
           function Expect-Line($label, $message) { return ("  {0,-11} -- {1}" -f $label, $message) }
           $repoRoot = (Get-Location).Path
+          # 6>&1 is load-bearing: the script reports through Write-Host, which
+          # writes to the information stream, so a bare pipe captures nothing
+          # and every output assertion below would pass vacuously on an empty
+          # string. It does not; it throws, which is how this was caught.
 
-          $out1 = (.\install-mcp-servers.ps1 | Out-String)
+          $out1 = (.\install-mcp-servers.ps1 6>&1 | Out-String)
           if ($LASTEXITCODE -ne 0) { throw "install-mcp-servers.ps1 failed with exit code $LASTEXITCODE" }
           Write-Host $out1
           foreach ($label in @('Claude Code', 'Codex', 'Copilot')) {
@@ -1493,7 +1497,7 @@ jobs:
           # relative to wherever the first one left the runspace.
           if ((Get-Location).Path -ne $repoRoot) { throw "install-mcp-servers.ps1 left the caller in $((Get-Location).Path), not $repoRoot" }
 
-          $out2 = (.\install-mcp-servers.ps1 | Out-String)
+          $out2 = (.\install-mcp-servers.ps1 6>&1 | Out-String)
           if ($LASTEXITCODE -ne 0) { throw "install-mcp-servers.ps1 (rerun) failed with exit code $LASTEXITCODE" }
           Write-Host $out2
           foreach ($label in @('Claude Code', 'Codex', 'Copilot')) {
@@ -1511,7 +1515,7 @@ jobs:
           $env:PATH = "$env:RUNNER_TEMP\mcp-stub-bin;$env:PATH"
           function Expect-Line($label, $message) { return ("  {0,-11} -- {1}" -f $label, $message) }
 
-          $out3 = (.\install-mcp-servers.ps1 uninstall | Out-String)
+          $out3 = (.\install-mcp-servers.ps1 uninstall 6>&1 | Out-String)
           if ($LASTEXITCODE -ne 0) { throw "install-mcp-servers.ps1 uninstall failed with exit code $LASTEXITCODE" }
           Write-Host $out3
           foreach ($label in @('Claude Code', 'Codex', 'Copilot')) {
@@ -1523,7 +1527,7 @@ jobs:
             if (Test-Path -LiteralPath (Join-Path $env:MCP_STATE_DIR $h)) { throw "$env:MCP_STATE_DIR\$h survived uninstall" }
           }
 
-          $out4 = (.\install-mcp-servers.ps1 uninstall | Out-String)
+          $out4 = (.\install-mcp-servers.ps1 uninstall 6>&1 | Out-String)
           if ($LASTEXITCODE -ne 0) { throw "rerun of uninstall exited $LASTEXITCODE" }
           Write-Host $out4
           foreach ($label in @('Claude Code', 'Codex', 'Copilot')) {
