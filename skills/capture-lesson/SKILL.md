@@ -16,17 +16,9 @@ It also fires without a user correction: the second time you or a subagent you d
 ## Steps
 
 1. Open (or create) `tasks/lessons.md` in the active project.
-2. Append an entry in this format:
-
-   ```markdown
-   ## <short title> (<YYYY-MM-DD>)
-   - **What happened**: <the mistake or corrected behavior, one or two lines>
-   - **Rule**: <imperative rule for future-you that prevents recurrence>
-   - **Scope**: <where the rule applies, and the boundary where it stops>
-   ```
-
-3. Write the rule so it's checkable before acting (e.g. "Before editing X, always check Y"), not a vague aspiration. Scope it to the context the correction actually covered: a correction about one file, register, or situation becomes a global rule only when the user says so or the same mistake recurs elsewhere. Over-generalizing a scoped correction is itself a mistake the user then has to correct.
-4. If a similar lesson already exists, strengthen or generalize the existing entry instead of duplicating it: iterate until the mistake rate drops.
+2. Read the full index before writing. If an applicable standing rule or skill already fully encodes the correction, do not add a local lesson.
+3. If a matching bullet exists, strengthen it in place. Otherwise insert exactly one concise, checkable imperative bullet under the closest topical H2, creating one topical H2 only when none fits. Scope it to the correction actually covered: a correction about one file, register, or situation becomes a global rule only when the user says so or the same mistake recurs elsewhere. Preserve a narrower scope unless the correction itself broadens it. Over-generalizing a scoped correction is itself a mistake the user then has to correct.
+4. Do not add dates, incident-field labels, duplicate lessons, unrelated rewrites, or periodic compaction. Normalize each capture when you write it; this index holds durable rules, not incident narratives.
 5. If the resulting fix is systemic (a rule, template, or check that addresses a class of problem at its source), re-verify every previously flagged instance of the problem too: a class-level fix doesn't prove each instance actually got fixed.
 
 ## At session start
