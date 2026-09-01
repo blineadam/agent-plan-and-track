@@ -24,6 +24,7 @@ Verified locally.
 
 # Completed batches (newest first)
 
+Batch 4: Evict this completed summary despite its position.
 Batch 23: Retained completed summary.
 Batch 22: Retained completed summary.
 Batch 21: Retained completed summary.
@@ -46,12 +47,13 @@ Batch 8: Retained completed summary.
 Batch 7: Retained completed summary.
 Batch 6: Retained completed summary.
 Batch 5: Retained completed summary.
-Batch 4: Evict this completed summary.
 Batch 3: Evict this completed summary.
 Batch 2: Evict this completed summary.
 Batch 1: Evict this completed summary.
 
 # Open and parked
+
+Batch 4: Preserve this parked low-number record.
 
 - PARKED-SENTINEL: preserve this entire parked record.
 - PARKED-DETAIL: preserve this second parked line too.
