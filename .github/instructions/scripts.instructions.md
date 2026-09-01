@@ -198,6 +198,14 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   should be overwritten on every install run, not guarded by
   set-if-absent, unless the target write is genuinely unsafe to clobber
   (e.g. a config file a JSON tool can't round-trip losslessly).
+- A new Claude managed default (`model`, `switchModelsOnFlag`,
+  `outputStyle`, `enableArtifact`, the plugin disable) is preceded by a
+  comment following the existing "Repo-owned `<name>`, re-asserted on every
+  install" template, adding the `PT_KEEP_MODEL=1` parenthetical when the
+  setting is gated by it, plus rationale citing an external doc when the
+  key's semantics aren't obvious from its name alone. Flag a new
+  `set_json_default`/`Set-JsonDefault` call for a managed default with no
+  such comment.
 - `install.sh` (bash + jq) and `install.ps1` (PowerShell, jq-free) are kept
   in lockstep, each with a parity note in its header listing the managed
   surface. Flag a PR that changes one installer's managed surface (a skill,
