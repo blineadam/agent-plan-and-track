@@ -139,6 +139,45 @@ dropped language or directory can't leave stale directives behind. If an
 existing `.github/instructions/*.instructions.md` file lacks that marker, treat
 it as hand-authored: don't overwrite it silently, flag it to the user instead.
 
+## Step 6: Own the `# Code reviews` section of `.github/copilot-instructions.md`
+
+Copilot reads `.github/copilot-instructions.md` as repo-wide instructions for
+both its coding agent and its PR reviewer, and it has no import syntax: a line
+like `@../AGENTS.md` is read as a literal string, not followed. So the file
+should not try to pull the conventions in. It tells the reviewer where they
+live and how to review, in a `# Code reviews` section this skill owns.
+
+Create the file if it is missing. If it exists, replace only the `# Code
+reviews` section (from that H1 to the next H1 or end of file) and leave any
+other content alone: there is no marker comment here, the heading is the
+ownership boundary. The section is four prose paragraphs, in this order,
+following this repo's own `.github/copilot-instructions.md` as the reference
+rendering:
+
+1. **Where the conventions live.** A relative link to the project's
+   instructions file (`[AGENTS.md](../AGENTS.md)`, or `CLAUDE.md`),
+   `.ai-style-rules.md` at the repo root, and the path-scoped files under
+   `.github/instructions/`, naming each bucket from Step 2 by its file stem in
+   parentheses and saying they are generated from `.ai-style-rules.md`. Close
+   with: this file covers how to review, not what the conventions are.
+2. **What CI already blocks**, so the reviewer does not duplicate it. Name each
+   check that actually runs on a pull request: the workflows with a
+   `pull_request` trigger, plus any check GitHub runs from its default setup
+   with no workflow file (CodeQL here), which a grep of the repo misses, so
+   confirm the list against a recent PR's checks. Then say that everything
+   else in the instruction files is enforced only by review, so the reviewer
+   should comment on it.
+3. **Review order and finding shape.** Correctness first, then readability,
+   then maintainability; say plainly which findings block a merge and which
+   are suggestions; give the reason a finding matters rather than asserting
+   it.
+4. **The bar.** "Better", not "perfect": a PR that improves the codebase is not
+   held up over style preferences no written convention supports.
+
+Verify the CI list the same way Step 4 verifies every other asserted rule:
+name only checks that really run in this project, not a generic set. Apply
+the project's writing-voice rules to the prose, as in Step 3.
+
 ## Anti-patterns
 
 All of these are real issues a three-round Copilot review caught in this
@@ -166,6 +205,10 @@ skill's own origin PR:
   previous project happened to have.
 - **Silently overwriting a hand-edited instructions file.** Check for the
   marker comment first.
+- **Importing conventions into `.github/copilot-instructions.md` with an
+  `@path` line.** Copilot has no import syntax and reads that line as its
+  entire repo-wide instruction set, so nothing arrives. Point at the sources
+  from the `# Code reviews` section (Step 6) instead.
 
 ## Portability
 

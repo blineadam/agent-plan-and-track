@@ -38,8 +38,9 @@ name: nightly style refresh
 # Claude session hands its output to the next mechanical step as a plain
 # file under $RUNNER_TEMP (outside the git working tree, so it can never
 # land in a commit) rather than acting on GitHub directly. The
-# diff-allowlist guard -- the PR may only touch .ai-style-rules.md and
-# .github/instructions/*.instructions.md -- is a second, independent
+# diff-allowlist guard -- the PR may only touch .ai-style-rules.md,
+# .github/instructions/*.instructions.md, and .github/copilot-instructions.md
+# -- is a second, independent
 # backstop on top of that token scoping.
 #
 # Reply to and resolve Copilot review threads runs before the merge
@@ -187,7 +188,7 @@ jobs:
 
           Run /inherit-legacy-style. It will detect incremental-update mode itself. If a strong-signal conflict would normally trigger its one-question-at-a-time protocol, do not guess: leave that convention uncaptured and note it as a 'Deferred conflict:' bullet you'll include in the PR body's '## Summary' section below. Decline its offer to add soft/hard persistence wiring (this repo already references .ai-style-rules.md from AGENTS.md). If it offers to invoke /copilot-review-instructions, accept; otherwise run /copilot-review-instructions yourself afterward -- both of its preconditions already hold in this repo.
 
-          Hard boundary: only .ai-style-rules.md and .github/instructions/*.instructions.md may change. If anything else changed, revert it before finishing.
+          Hard boundary: only .ai-style-rules.md, .github/instructions/*.instructions.md, and .github/copilot-instructions.md may change. If anything else changed, revert it before finishing.
 
           If \`git status --porcelain\` is empty when both skills are done, print the single line NO_CHANGES and stop -- do not write a summary file.
 
@@ -212,7 +213,7 @@ jobs:
           fi
           title="$(head -n1 "$summary")"
           git checkout -b "$BRANCH"
-          git add .ai-style-rules.md .github/instructions/*.instructions.md
+          git add .ai-style-rules.md .github/instructions/*.instructions.md .github/copilot-instructions.md
           git commit -m "$title"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
           gh pr create --base main --head "$BRANCH" --title "$title" --body-file <(tail -n +2 "$summary")
@@ -290,7 +291,7 @@ jobs:
 
           Read Copilot's completed review from the file \"$RUNNER_TEMP/copilot-review.json\" (already fetched: a JSON dump of the PR's reviews, then its review comments). Judge each finding against this repo's real conventions (.ai-style-rules.md, AGENTS.md, and whatever source the finding concerns), not generic style preference.
 
-          Fix the valid findings by editing files directly. Hard boundary: only .ai-style-rules.md and .github/instructions/*.instructions.md may change.
+          Fix the valid findings by editing files directly. Hard boundary: only .ai-style-rules.md, .github/instructions/*.instructions.md, and .github/copilot-instructions.md may change.
 
           Write a file at \"$RUNNER_TEMP/thread-replies.json\": a JSON array with one entry per top-level Copilot review comment (the review-comments entries with no in_reply_to_id), each shaped {\"comment_id\": <that comment's numeric id field>, \"reply\": \"<one or two sentences stating your triage verdict: what you confirmed and changed, or why you deferred it>\"}. Where a reply refers to the commit containing your fixes, write the literal placeholder {FIX_COMMIT}; a later step substitutes the real short SHA after committing. Each reply is posted verbatim onto its review thread before the thread is resolved, so a human reading the PR sees the reasoning.
 
@@ -304,7 +305,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$(git status --porcelain)" ]; then
-            git add .ai-style-rules.md .github/instructions/*.instructions.md
+            git add .ai-style-rules.md .github/instructions/*.instructions.md .github/copilot-instructions.md
             git commit -m "Address Copilot review feedback on PR #$PR_NUMBER"
             git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
           fi
@@ -404,7 +405,7 @@ jobs:
           set -euo pipefail
           git fetch origin "$BRANCH"
           bad="$(git diff --name-only "origin/main...origin/$BRANCH" \
-            | grep -Ev '^(\.ai-style-rules\.md|\.github/instructions/[^/]+\.instructions\.md)$' || true)"
+            | grep -Ev '^(\.ai-style-rules\.md|\.github/instructions/[^/]+\.instructions\.md|\.github/copilot-instructions\.md)$' || true)"
           if [ -n "$bad" ]; then
             echo "PR touches files outside the style allowlist:" >&2
             echo "$bad" >&2
