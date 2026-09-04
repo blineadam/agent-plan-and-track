@@ -7,9 +7,10 @@ This file covers how to review, not what the conventions are.
 
 Do not comment on what CI already blocks: the installer smoke test (install
 layout, hook wiring, the digest-preview and shell-segment parity guards, the
-script fixture runners) and the PR body lint (heading set, em dashes, emoji).
-Everything else in the instruction files is enforced only by review, so do
-comment on it.
+script fixture runners), the PR body lint (heading set, em dashes, emoji), and
+CodeQL, which runs from GitHub's default setup rather than a workflow file in
+this repo. Everything else in the instruction files is enforced only by review,
+so do comment on it.
 
 Review correctness first, then readability, then maintainability. Say plainly
 which findings block a merge and which are suggestions, and give the reason a
