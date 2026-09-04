@@ -141,25 +141,37 @@ it as hand-authored: don't overwrite it silently, flag it to the user instead.
 
 ## Step 6: Own the `# Code reviews` section of `.github/copilot-instructions.md`
 
-Copilot reads `.github/copilot-instructions.md` as repo-wide instructions for
-both its coding agent and its PR reviewer, and it has no import syntax: a line
-like `@../AGENTS.md` is read as a literal string, not followed. So the file
-should not try to pull the conventions in. It tells the reviewer where they
-live and how to review, in a `# Code reviews` section this skill owns.
+Copilot reads `.github/copilot-instructions.md` as repository-wide custom
+instructions, applied to requests made in the context of the repository and
+[enabled for Copilot code review by default](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions).
+Those docs describe the file's contents as natural-language Markdown and
+document no inclusion directive. Instructions are combined by Copilot reading
+each recognized file on its own, the path-scoped files from Step 3 among them,
+rather than by one file importing another. A line like `@../AGENTS.md` is
+therefore inert text, so this file should not try to pull the conventions in.
+It tells the reviewer where they live and how to review, in a `# Code reviews`
+section this skill owns.
 
-Create the file if it is missing. If it exists, replace only the `# Code
-reviews` section (from that H1 to the next H1 or end of file) and leave any
-other content alone: there is no marker comment here, the heading is the
-ownership boundary. The section is four prose paragraphs, in this order,
-following this repo's own `.github/copilot-instructions.md` as the reference
-rendering:
+Create the file if it is missing. If it exists and already carries a `# Code
+reviews` H1, replace just that section, from the heading to the next H1 or the
+end of the file. If it exists without one, append the section at the end. Leave
+the rest of the file alone either way: there is no marker comment here, so the
+heading is the ownership boundary, and what sits outside it is usually
+hand-authored guidance for Copilot's coding agent.
 
-1. **Where the conventions live.** A relative link to the project's
-   instructions file (`[AGENTS.md](../AGENTS.md)`, or `CLAUDE.md`),
-   `.ai-style-rules.md` at the repo root, and the path-scoped files under
-   `.github/instructions/`, naming each bucket from Step 2 by its file stem in
-   parentheses and saying they are generated from `.ai-style-rules.md`. Close
-   with: this file covers how to review, not what the conventions are.
+The section is four prose paragraphs, in this order, following this repo's own
+`.github/copilot-instructions.md` as the reference rendering:
+
+1. **Where the conventions live.** Relative links to the sources Step 1
+   actually found, and only those: the project's instructions file
+   (`[AGENTS.md](../AGENTS.md)`, or `CLAUDE.md`), `.ai-style-rules.md` at the
+   repo root, a `CONTRIBUTING.md`. Never link a file this project does not
+   have, since Step 1 accepts a project whose conventions live only in its
+   README. Then the path-scoped files under `.github/instructions/`, naming
+   each bucket from Step 2 by its file stem in parentheses and saying which of
+   the gathered sources back them, the same pointer Step 3 puts inside each
+   bucket. Close with: this file covers how to review, not what the
+   conventions are.
 2. **What CI already blocks**, so the reviewer does not duplicate it. Name each
    check that actually runs on a pull request: the workflows with a
    `pull_request` trigger, plus any check GitHub runs from its default setup
@@ -206,9 +218,9 @@ skill's own origin PR:
 - **Silently overwriting a hand-edited instructions file.** Check for the
   marker comment first.
 - **Importing conventions into `.github/copilot-instructions.md` with an
-  `@path` line.** Copilot has no import syntax and reads that line as its
-  entire repo-wide instruction set, so nothing arrives. Point at the sources
-  from the `# Code reviews` section (Step 6) instead.
+  `@path` line.** No inclusion directive is documented for this file, so the
+  line stays inert text and becomes the whole repository-wide instruction set.
+  Point at the sources from the `# Code reviews` section (Step 6) instead.
 
 ## Portability
 

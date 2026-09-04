@@ -412,6 +412,33 @@ jobs:
             exit 1
           fi
 
+      - name: Guard -- the Copilot instructions file only changed inside its owned section
+        if: steps.pr.outputs.has_pr == '1'
+        run: |
+          set -euo pipefail
+          f=.github/copilot-instructions.md
+          # The allowlist above is file-level, but copilot-review-instructions
+          # owns only this file's `# Code reviews` H1 section; the rest is
+          # hand-authored and also steers Copilot's coding agent. Strip the
+          # owned section from both sides and require the remainder to match,
+          # so an unattended session cannot rewrite the unowned part.
+          strip_owned() {
+            git show "$1:$f" 2>/dev/null | awk '
+              /^# / { owned = ($0 == "# Code reviews") }
+              !owned { print }
+            '
+          }
+          if git cat-file -e "origin/main:$f" 2>/dev/null \
+            && ! git cat-file -e "origin/$BRANCH:$f" 2>/dev/null; then
+            echo "$f was deleted; the skill only rewrites its own section" >&2
+            exit 1
+          fi
+          if ! diff <(strip_owned origin/main) <(strip_owned "origin/$BRANCH") >/dev/null; then
+            echo 'PR changes .github/copilot-instructions.md outside its `# Code reviews` section:' >&2
+            diff <(strip_owned origin/main) <(strip_owned "origin/$BRANCH") >&2 || true
+            exit 1
+          fi
+
       - name: Wait for required checks, then squash-merge and delete the branch
         if: steps.pr.outputs.has_pr == '1'
         env:
