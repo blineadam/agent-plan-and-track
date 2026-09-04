@@ -58,11 +58,11 @@ function writeEvent(session, filePath, content) {
   return { session_id: session, tool_name: 'Write', tool_input: { file_path: filePath, content } };
 }
 
-// Real on-disk tasks/todo.md under the case's own scratch root: the
+// Real on-disk .tasks/todo.md under the case's own scratch root: the
 // main-attribution guard's simulateResult() reads the baseline off disk, so
 // there is no shortcut around writing one.
 function todoPath(root) {
-  return path.join(root, 'tasks', 'todo.md');
+  return path.join(root, '.tasks', 'todo.md');
 }
 
 function writeTodo(root, content) {
@@ -295,7 +295,7 @@ async function commentStripsFollowingCommand() {
 
 // --- Main-attribution guard cases ---
 //
-// Each case stamps the session (Skill event) before touching tasks/todo.md,
+// Each case stamps the session (Skill event) before touching .tasks/todo.md,
 // since maybeGuardMainAttribution only runs once the session is already
 // stamped, then issues a Write event carrying the full post-edit content
 // (simulateResult() reads the pre-edit baseline straight off disk, so the

@@ -10,4 +10,5 @@ graphify-out/
 /.codex/
 /AGENTS.local.md
 /CLAUDE.local.md
-/tasks/
+/.tasks/
+!skills/skill-activation/fixtures/behavioral/*/.tasks/

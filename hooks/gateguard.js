@@ -51,7 +51,7 @@
  *
  * Skipped: subagent tool calls (the parent session owns the gate),
  * `.claude/settings*.json` (hook repair must never be blocked), and
- * `tasks/todo.md` / `tasks/lessons.md` (our own rules force frequent edits
+ * `.tasks/todo.md` / `.tasks/lessons.md` (our own rules force frequent edits
  * there; they have no importers or schemas to investigate).
  *
  * DEFAULT POSTURE: warn, not deny, on Claude and Codex (GATEGUARD_DENY=1
@@ -174,7 +174,7 @@ function isBuiltinExempt(filePath) {
   const norm = normalizeForMatch(filePath);
   return (
     /(^|\/)\.claude\/settings(?:\.[^/]+)?\.json$/.test(norm) ||
-    /(^|\/)tasks\/(?:todo|lessons)\.md$/.test(norm)
+    /(^|\/)\.tasks\/(?:todo|lessons)\.md$/.test(norm)
   );
 }
 

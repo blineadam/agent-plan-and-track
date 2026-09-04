@@ -101,7 +101,7 @@ function commit(message, dateIso) {
 run('git', ['init', '-b', 'main']);
 
 // Commit 1: the child-process wrapper without any deadline path, plus
-// tasks/todo.md, matching Batch 1.
+// .tasks/todo.md, matching Batch 1.
 run('git', ['add', '-A']);
 commit('Add the child-process spawn wrapper', '2026-07-30T09:00:00+00:00');
 

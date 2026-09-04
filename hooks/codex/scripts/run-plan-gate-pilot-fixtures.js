@@ -41,7 +41,7 @@ function hash(parts) {
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-gate-pilot-'));
-  fs.mkdirSync(path.join(root, 'tasks'), { recursive: true });
+  fs.mkdirSync(path.join(root, '.tasks'), { recursive: true });
   const env = { ...process.env, TEMP: root, TMP: root, TMPDIR: root };
   for (const key of Object.keys(env)) {
     if (key.startsWith('PLANGATE_')) delete env[key];
@@ -129,10 +129,10 @@ function replacementPatch(file, baseline, result) {
 
 async function fresh() {
   const f = fixture();
-  source(f.root, 'tasks/todo.md', '# Start\n');
-  const input = event(f.root, 'tasks/todo.md');
+  source(f.root, '.tasks/todo.md', '# Start\n');
+  const input = event(f.root, '.tasks/todo.md');
   run('--pre', input, f.env);
-  source(f.root, 'tasks/todo.md', validPlan('Fresh'));
+  source(f.root, '.tasks/todo.md', validPlan('Fresh'));
   assert.strictEqual(run('--post', input, f.env), '');
   assert.strictEqual(scope(f.root, input).stamped, true);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -140,9 +140,9 @@ async function fresh() {
 
 async function newTodoPlan() {
   const f = fixture();
-  const input = event(f.root, 'tasks/todo.md');
+  const input = event(f.root, '.tasks/todo.md');
   run('--pre', input, f.env);
-  source(f.root, 'tasks/todo.md', validPlan('New'));
+  source(f.root, '.tasks/todo.md', validPlan('New'));
   assert.strictEqual(run('--post', input, f.env), '');
   assert.strictEqual(scope(f.root, input).stamped, true);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -150,10 +150,10 @@ async function newTodoPlan() {
 
 async function stale() {
   const f = fixture();
-  source(f.root, 'tasks/todo.md', validPlan('Old'));
-  const input = event(f.root, 'tasks/todo.md');
+  source(f.root, '.tasks/todo.md', validPlan('Old'));
+  const input = event(f.root, '.tasks/todo.md');
   run('--pre', input, f.env);
-  source(f.root, 'tasks/todo.md', validPlan('Old'));
+  source(f.root, '.tasks/todo.md', validPlan('Old'));
   assert.strictEqual(run('--post', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -166,10 +166,10 @@ async function nativeStalePlanMarkerReflow() {
   ];
   for (const [index, item] of variants.entries()) {
     const f = fixture();
-    source(f.root, 'tasks/todo.md', '## Plan\n- [ ] Stale native call; verify: node check.js (executor)\n');
-    const input = event(f.root, 'tasks/todo.md', `native-marker-reflow-${index}`);
+    source(f.root, '.tasks/todo.md', '## Plan\n- [ ] Stale native call; verify: node check.js (executor)\n');
+    const input = event(f.root, '.tasks/todo.md', `native-marker-reflow-${index}`);
     assert.strictEqual(run('--pre', input, f.env), '');
-    source(f.root, 'tasks/todo.md', `## Plan\n${item}\n`);
+    source(f.root, '.tasks/todo.md', `## Plan\n${item}\n`);
     assert.strictEqual(run('--post', input, f.env), '');
     assert.strictEqual(scope(f.root, input).stamped, false);
     fs.rmSync(f.root, { recursive: true, force: true });
@@ -205,13 +205,13 @@ async function nonTodoSnapshotRedacted() {
 
 async function planPlusSource() {
   const f = fixture();
-  source(f.root, 'tasks/todo.md', '# Start\n');
+  source(f.root, '.tasks/todo.md', '# Start\n');
   source(f.root, 'one.js', 'one\n');
-  const input = event(f.root, 'tasks/todo.md', 'fixture-session', {
-    tool_input: { command: '*** Update File: tasks/todo.md\n*** Update File: one.js' },
+  const input = event(f.root, '.tasks/todo.md', 'fixture-session', {
+    tool_input: { command: '*** Update File: .tasks/todo.md\n*** Update File: one.js' },
   });
   run('--pre', input, f.env);
-  source(f.root, 'tasks/todo.md', validPlan('Together'));
+  source(f.root, '.tasks/todo.md', validPlan('Together'));
   source(f.root, 'one.js', 'two\n');
   assert.strictEqual(run('--post', input, f.env), '');
   assert.deepStrictEqual(scope(f.root, input), { mutations: [], paths: [], stamped: true, warned: false });
@@ -252,10 +252,10 @@ async function subagents() {
 
 async function migration() {
   const f = fixture();
-  source(f.root, 'tasks/todo.md', '## Migration State\nkeep\n\n## Plan\n- [ ] old\n');
-  const input = event(f.root, 'tasks/todo.md');
+  source(f.root, '.tasks/todo.md', '## Migration State\nkeep\n\n## Plan\n- [ ] old\n');
+  const input = event(f.root, '.tasks/todo.md');
   run('--pre', input, f.env);
-  source(f.root, 'tasks/todo.md', validPlan('Replacement'));
+  source(f.root, '.tasks/todo.md', validPlan('Replacement'));
   assert.match(warning(run('--post', input, f.env)), /Migration State/);
   assert.strictEqual(fs.existsSync(scopeFile(f.root, input)), false);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -263,10 +263,10 @@ async function migration() {
 
 async function deletedMigration() {
   const f = fixture();
-  source(f.root, 'tasks/todo.md', '## Migration State\nkeep\n');
-  const input = event(f.root, 'tasks/todo.md');
+  source(f.root, '.tasks/todo.md', '## Migration State\nkeep\n');
+  const input = event(f.root, '.tasks/todo.md');
   run('--pre', input, f.env);
-  fs.unlinkSync(path.join(f.root, 'tasks', 'todo.md'));
+  fs.unlinkSync(path.join(f.root, '.tasks', 'todo.md'));
   assert.match(warning(run('--post', input, f.env)), /Migration State/);
   fs.rmSync(f.root, { recursive: true, force: true });
 }
@@ -275,10 +275,10 @@ async function symlinkEscape() {
   const f = fixture();
   const outside = path.join(f.root, '..', `plan-gate-outside-${process.pid}.txt`);
   fs.writeFileSync(outside, 'outside-secret-marker\n', 'utf8');
-  fs.symlinkSync(outside, path.join(f.root, 'tasks', 'todo.md'));
+  fs.symlinkSync(outside, path.join(f.root, '.tasks', 'todo.md'));
   const result = 'outside-secret-marker\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
-  const input = event(f.root, 'tasks/todo.md', 'symlink-escape', {
-    tool_input: { command: replacementPatch('tasks/todo.md', 'outside-secret-marker\n', result) },
+  const input = event(f.root, '.tasks/todo.md', 'symlink-escape', {
+    tool_input: { command: replacementPatch('.tasks/todo.md', 'outside-secret-marker\n', result) },
   });
   assert.strictEqual(run('--pre', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
@@ -288,17 +288,17 @@ async function symlinkEscape() {
 
 async function parentSymlinkSwap() {
   const f = fixture();
-  source(f.root, 'tasks/todo.md', '# Start\n');
-  const input = event(f.root, 'tasks/todo.md');
+  source(f.root, '.tasks/todo.md', '# Start\n');
+  const input = event(f.root, '.tasks/todo.md');
   run('--pre', input, f.env);
   const outside = path.join(f.root, '..', `plan-gate-outside-dir-${process.pid}`);
   fs.mkdirSync(outside);
   source(outside, 'todo.md', '## Migration State\noutside\n');
-  fs.renameSync(path.join(f.root, 'tasks'), path.join(f.root, 'tasks-real'));
-  fs.symlinkSync(outside, path.join(f.root, 'tasks'));
+  fs.renameSync(path.join(f.root, '.tasks'), path.join(f.root, '.tasks-real'));
+  fs.symlinkSync(outside, path.join(f.root, '.tasks'));
   assert.strictEqual(run('--post', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
-  fs.unlinkSync(path.join(f.root, 'tasks'));
+  fs.unlinkSync(path.join(f.root, '.tasks'));
   fs.rmSync(outside, { recursive: true, force: true });
   fs.rmSync(f.root, { recursive: true, force: true });
 }
@@ -319,14 +319,14 @@ async function corruptDuplicateMissing() {
 
 async function concurrentUnrelatedTodo() {
   const f = fixture();
-  source(f.root, 'tasks/todo.md', '# Start\n');
-  const one = event(f.root, 'tasks/todo.md', 'shared-session', { tool_use_id: 'todo-one' });
-  const two = event(f.root, 'tasks/todo.md', 'shared-session', { tool_use_id: 'todo-two' });
+  source(f.root, '.tasks/todo.md', '# Start\n');
+  const one = event(f.root, '.tasks/todo.md', 'shared-session', { tool_use_id: 'todo-one' });
+  const two = event(f.root, '.tasks/todo.md', 'shared-session', { tool_use_id: 'todo-two' });
   run('--pre', one, f.env);
   run('--pre', two, f.env);
-  source(f.root, 'tasks/todo.md', validPlan('First'));
+  source(f.root, '.tasks/todo.md', validPlan('First'));
   assert.strictEqual(run('--post', one, f.env), '');
-  source(f.root, 'tasks/todo.md', validPlan('Second'));
+  source(f.root, '.tasks/todo.md', validPlan('Second'));
   assert.strictEqual(run('--post', two, f.env), '');
   assert.strictEqual(scope(f.root, one).stamped, true);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -434,7 +434,7 @@ async function mutationLegacyBaselineCompatibility() {
   const f = fixture();
   const session = 'legacy-baseline';
   const plan = validPlan('Legacy baseline');
-  source(f.root, 'tasks/todo.md', plan);
+  source(f.root, '.tasks/todo.md', plan);
   const mutation = bashEvent(f.root, 'gh pr create --fill', session, 'legacy-create');
   fs.mkdirSync(path.dirname(scopeFile(f.root, mutation)), { recursive: true });
   const firstLine = plan.split('\n').find((line) => line.startsWith('- [ ]'));
@@ -465,12 +465,12 @@ async function mutationConcurrent() {
 async function mutationPlanUnlock() {
   const f = fixture();
   const session = 'mutation-plan-unlock';
-  source(f.root, 'tasks/todo.md', '# Start\n');
+  source(f.root, '.tasks/todo.md', '# Start\n');
   const first = bashEvent(f.root, 'git push origin main', session, 'unlock-push');
   assert.strictEqual(run('--pre', first, f.env), '');
-  const plan = event(f.root, 'tasks/todo.md', session, { tool_use_id: 'unlock-plan' });
+  const plan = event(f.root, '.tasks/todo.md', session, { tool_use_id: 'unlock-plan' });
   run('--pre', plan, f.env);
-  source(f.root, 'tasks/todo.md', validPlan('Unlock'));
+  source(f.root, '.tasks/todo.md', validPlan('Unlock'));
   assert.strictEqual(run('--post', plan, f.env), '');
   assert.strictEqual(scope(f.root, first).stamped, true);
   assert.strictEqual(run('--pre', bashEvent(f.root, 'gh pr create --fill', session, 'unlock-create'), f.env), '');
@@ -480,11 +480,11 @@ async function mutationPlanUnlock() {
 async function mutationWrapperCurrentPlan() {
   const f = fixture();
   const session = 'wrapper-current-plan';
-  source(f.root, 'tasks/todo.md', '# Start\n');
+  source(f.root, '.tasks/todo.md', '# Start\n');
   assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
   assert.deepStrictEqual(scope(f.root, sessionStartEvent(f.root, session)).planBaselineV2, []);
   assert.strictEqual(scope(f.root, sessionStartEvent(f.root, session)).planBaseline, undefined);
-  source(f.root, 'tasks/todo.md', validPlan('Wrapped call'));
+  source(f.root, '.tasks/todo.md', validPlan('Wrapped call'));
   assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
   const first = bashEvent(f.root, 'git push origin main', session, 'wrapper-push');
   const second = bashEvent(f.root, 'gh pr create --fill', session, 'wrapper-create');
@@ -498,10 +498,10 @@ async function mutationMissingTasksStartup() {
   const f = fixture();
   const env = { ...f.env, PLANGATE_MUTATION_THRESHOLD: '1' };
   const session = 'missing-tasks-startup';
-  fs.rmSync(path.join(f.root, 'tasks'), { recursive: true });
+  fs.rmSync(path.join(f.root, '.tasks'), { recursive: true });
   assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), env), '');
   assert.deepStrictEqual(scope(f.root, sessionStartEvent(f.root, session)).planBaselineV2, []);
-  source(f.root, 'tasks/todo.md', validPlan('First wrapped plan'));
+  source(f.root, '.tasks/todo.md', validPlan('First wrapped plan'));
   const mutation = bashEvent(f.root, 'git push origin main', session, 'missing-tasks-push');
   assert.strictEqual(run('--pre', mutation, env), '');
   assert.strictEqual(scope(f.root, mutation).stamped, true);
@@ -511,7 +511,7 @@ async function mutationMissingTasksStartup() {
 async function mutationStaleCurrentPlan() {
   const f = fixture();
   const session = 'stale-current-plan';
-  source(f.root, 'tasks/todo.md', validPlan('Stale call'));
+  source(f.root, '.tasks/todo.md', validPlan('Stale call'));
   assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
   const first = bashEvent(f.root, 'git push origin main', session, 'stale-push');
   const second = bashEvent(f.root, 'gh pr create --fill', session, 'stale-create');
@@ -524,9 +524,9 @@ async function mutationStaleCurrentPlan() {
 async function mutationStalePlanReflow() {
   const f = fixture();
   const session = 'stale-plan-reflow';
-  source(f.root, 'tasks/todo.md', '## Plan\n- [ ] Stale wrapped call; verify: node check.js\n  (executor)\n');
+  source(f.root, '.tasks/todo.md', '## Plan\n- [ ] Stale wrapped call; verify: node check.js\n  (executor)\n');
   assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
-  source(f.root, 'tasks/todo.md', '## Plan\n- [ ] Stale wrapped call; verify: node check.js\n    (executor)\n');
+  source(f.root, '.tasks/todo.md', '## Plan\n- [ ] Stale wrapped call; verify: node check.js\n    (executor)\n');
   const first = bashEvent(f.root, 'git push origin main', session, 'reflow-push');
   const second = bashEvent(f.root, 'gh pr create --fill', session, 'reflow-create');
   assert.strictEqual(run('--pre', first, f.env), '');
@@ -544,9 +544,9 @@ async function mutationStalePlanMarkerReflow() {
     const f = fixture();
     const env = { ...f.env, PLANGATE_MUTATION_THRESHOLD: '1' };
     const session = `stale-plan-marker-reflow-${index}`;
-    source(f.root, 'tasks/todo.md', '## Plan\n- [ ] Stale wrapped call; verify: node check.js (executor)\n');
+    source(f.root, '.tasks/todo.md', '## Plan\n- [ ] Stale wrapped call; verify: node check.js (executor)\n');
     assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), env), '');
-    source(f.root, 'tasks/todo.md', `## Plan\n${item}\n`);
+    source(f.root, '.tasks/todo.md', `## Plan\n${item}\n`);
     const mutation = bashEvent(f.root, 'git push origin main', session, `marker-reflow-${index}`);
     assert.match(denial(run('--pre', mutation, env)), /1 distinct outward git\/gh mutation/);
     assert.strictEqual(scope(f.root, mutation).stamped, false);
@@ -558,10 +558,10 @@ async function mutationAgedSessionBaseline() {
   const f = fixture();
   const env = { ...f.env, PLANGATE_MUTATION_THRESHOLD: '1' };
   const session = 'aged-session-baseline';
-  source(f.root, 'tasks/todo.md', '# Start\n');
+  source(f.root, '.tasks/todo.md', '# Start\n');
   const start = sessionStartEvent(f.root, session);
   assert.strictEqual(run('--session-start', start, env), '');
-  source(f.root, 'tasks/todo.md', validPlan('Long session'));
+  source(f.root, '.tasks/todo.md', validPlan('Long session'));
   const stateFile = scopeFile(f.root, start);
   const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
   fs.utimesSync(stateFile, old, old);
@@ -574,13 +574,13 @@ async function mutationAgedSessionBaseline() {
 async function mutationCrossSessionPrune() {
   const f = fixture();
   const session = 'cross-session-prune-a';
-  source(f.root, 'tasks/todo.md', '# Start\n');
+  source(f.root, '.tasks/todo.md', '# Start\n');
   assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
   const first = bashEvent(f.root, 'git push origin main', session, 'cross-session-push');
   assert.strictEqual(run('--pre', first, f.env), '');
-  const plan = event(f.root, 'tasks/todo.md', session, { tool_use_id: 'cross-session-plan' });
+  const plan = event(f.root, '.tasks/todo.md', session, { tool_use_id: 'cross-session-plan' });
   run('--pre', plan, f.env);
-  source(f.root, 'tasks/todo.md', validPlan('Cross-session retention'));
+  source(f.root, '.tasks/todo.md', validPlan('Cross-session retention'));
   assert.strictEqual(run('--post', plan, f.env), '');
   const expected = scope(f.root, first);
   assert.deepStrictEqual(expected.mutations, ['git-push']);
@@ -597,7 +597,7 @@ async function mutationCrossSessionPrune() {
 async function mutationMissingSessionStart() {
   const f = fixture();
   const session = 'missing-session-start';
-  source(f.root, 'tasks/todo.md', validPlan('Unproven call'));
+  source(f.root, '.tasks/todo.md', validPlan('Unproven call'));
   const first = bashEvent(f.root, 'git push origin main', session, 'unproven-push');
   const second = bashEvent(f.root, 'gh pr create --fill', session, 'unproven-create');
   assert.strictEqual(run('--pre', first, f.env), '');
@@ -608,11 +608,11 @@ async function mutationMissingSessionStart() {
 
 async function absoluteTodoPath() {
   const f = fixture();
-  source(f.root, 'tasks/todo.md', '# Start\n');
-  const todo = path.join(f.root, 'tasks', 'todo.md');
+  source(f.root, '.tasks/todo.md', '# Start\n');
+  const todo = path.join(f.root, '.tasks', 'todo.md');
   const input = event(f.root, todo, 'absolute-todo-path');
   run('--pre', input, f.env);
-  source(f.root, 'tasks/todo.md', validPlan('Absolute path'));
+  source(f.root, '.tasks/todo.md', validPlan('Absolute path'));
   assert.strictEqual(run('--post', input, f.env), '');
   assert.strictEqual(scope(f.root, input).stamped, true);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -637,9 +637,9 @@ async function mutationInvalidCurrentPlan() {
   for (const [label, plan] of invalidPlans) {
     const f = fixture();
     const session = `invalid-current-plan-${label}`;
-    source(f.root, 'tasks/todo.md', '# Start\n');
+    source(f.root, '.tasks/todo.md', '# Start\n');
     assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), f.env), '');
-    source(f.root, 'tasks/todo.md', plan);
+    source(f.root, '.tasks/todo.md', plan);
     const first = bashEvent(f.root, 'git push origin main', session, 'invalid-push');
     const second = bashEvent(f.root, 'gh pr create --fill', session, 'invalid-create');
     assert.strictEqual(run('--pre', first, f.env), '');
@@ -653,9 +653,9 @@ async function mutationWrapperConcurrentThreshold() {
   const f = fixture();
   const env = { ...f.env, PLANGATE_MUTATION_THRESHOLD: '1' };
   const session = 'wrapper-concurrent-plan';
-  source(f.root, 'tasks/todo.md', '# Start\n');
+  source(f.root, '.tasks/todo.md', '# Start\n');
   assert.strictEqual(run('--session-start', sessionStartEvent(f.root, session), env), '');
-  source(f.root, 'tasks/todo.md', validPlan('Concurrent wrapped call'));
+  source(f.root, '.tasks/todo.md', validPlan('Concurrent wrapped call'));
   const push = bashEvent(f.root, 'git push origin main', session, 'concurrent-push');
   const create = bashEvent(f.root, 'gh pr create --fill', session, 'concurrent-create');
   const outputs = await Promise.all([runAsync('--pre', push, env), runAsync('--pre', create, env)]);
@@ -683,14 +683,14 @@ async function attributionDenialBeforeMutation() {
   const f = fixture();
   const baseline = '# Start\n';
   const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const input = event(f.root, 'tasks/todo.md', 'attribution-denial', {
-    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  source(f.root, '.tasks/todo.md', baseline);
+  const input = event(f.root, '.tasks/todo.md', 'attribution-denial', {
+    tool_input: { command: replacementPatch('.tasks/todo.md', baseline, result) },
   });
   const message = denial(run('--pre', input, f.env));
   assert.match(message, /claim about what the user did or asked/);
   assert.match(message, /offending reason: \(main: user asked for direct implementation\)/);
-  assert.strictEqual(fs.readFileSync(path.join(f.root, 'tasks', 'todo.md'), 'utf8'), baseline);
+  assert.strictEqual(fs.readFileSync(path.join(f.root, '.tasks', 'todo.md'), 'utf8'), baseline);
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
   assert.strictEqual(typeof scope(f.root, input).mainAttributionAt, 'number');
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -700,12 +700,12 @@ async function attributionEnvironmentId() {
   const f = fixture();
   const baseline = '# Start\n';
   const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const command = replacementPatch('tasks/todo.md', baseline, result).replace(
+  source(f.root, '.tasks/todo.md', baseline);
+  const command = replacementPatch('.tasks/todo.md', baseline, result).replace(
     '*** Begin Patch\n',
     '*** Begin Patch\n*** Environment ID: remote-123\n',
   );
-  const input = event(f.root, 'tasks/todo.md', 'attribution-environment-id', {
+  const input = event(f.root, '.tasks/todo.md', 'attribution-environment-id', {
     tool_input: { command },
   });
   assert.match(denial(run('--pre', input, f.env)), /claim about what the user did or asked/);
@@ -717,17 +717,17 @@ async function attributionAgedRetry() {
   const f = fixture();
   const baseline = '# Start\n';
   const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user confirmed the approach)\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const first = event(f.root, 'tasks/todo.md', 'attribution-retry', {
-    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  source(f.root, '.tasks/todo.md', baseline);
+  const first = event(f.root, '.tasks/todo.md', 'attribution-retry', {
+    tool_input: { command: replacementPatch('.tasks/todo.md', baseline, result) },
     tool_use_id: 'attribution-retry-first',
   });
   denial(run('--pre', first, f.env));
   const state = scope(f.root, first);
   state.mainAttributionAt = Date.now() - 3000;
   fs.writeFileSync(scopeFile(f.root, first), JSON.stringify(state), 'utf8');
-  const retry = event(f.root, 'tasks/todo.md', 'attribution-retry', {
-    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  const retry = event(f.root, '.tasks/todo.md', 'attribution-retry', {
+    tool_input: { command: replacementPatch('.tasks/todo.md', baseline, result) },
     tool_use_id: 'attribution-retry-aged',
   });
   assert.strictEqual(run('--pre', retry, f.env), '');
@@ -739,13 +739,13 @@ async function attributionConcurrentFirstCalls() {
   const f = fixture();
   const baseline = '# Start\n';
   const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user confirmed the approach)\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const command = replacementPatch('tasks/todo.md', baseline, result);
-  const one = event(f.root, 'tasks/todo.md', 'attribution-concurrent', {
+  source(f.root, '.tasks/todo.md', baseline);
+  const command = replacementPatch('.tasks/todo.md', baseline, result);
+  const one = event(f.root, '.tasks/todo.md', 'attribution-concurrent', {
     tool_input: { command },
     tool_use_id: 'attribution-concurrent-one',
   });
-  const two = event(f.root, 'tasks/todo.md', 'attribution-concurrent', {
+  const two = event(f.root, '.tasks/todo.md', 'attribution-concurrent', {
     tool_input: { command },
     tool_use_id: 'attribution-concurrent-two',
   });
@@ -761,9 +761,9 @@ async function attributionLegitimateMainReason() {
   const f = fixture();
   const baseline = '# Start\n';
   const result = '# Start\n\n## Plan\n- [ ] Review the diff; verify: node check.js (main: cross-file synthesis needs current context)\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const input = event(f.root, 'tasks/todo.md', 'attribution-legitimate', {
-    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  source(f.root, '.tasks/todo.md', baseline);
+  const input = event(f.root, '.tasks/todo.md', 'attribution-legitimate', {
+    tool_input: { command: replacementPatch('.tasks/todo.md', baseline, result) },
   });
   assert.strictEqual(run('--pre', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
@@ -774,9 +774,9 @@ async function attributionNonMainTag() {
   const f = fixture();
   const baseline = '# Start\n';
   const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (executor: user asked for direct implementation)\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const input = event(f.root, 'tasks/todo.md', 'attribution-non-main', {
-    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  source(f.root, '.tasks/todo.md', baseline);
+  const input = event(f.root, '.tasks/todo.md', 'attribution-non-main', {
+    tool_input: { command: replacementPatch('.tasks/todo.md', baseline, result) },
   });
   assert.strictEqual(run('--pre', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
@@ -787,9 +787,9 @@ async function attributionLintDisabled() {
   const f = fixture();
   const baseline = '# Start\n';
   const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user disabled delegation)\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const input = event(f.root, 'tasks/todo.md', 'attribution-disabled', {
-    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  source(f.root, '.tasks/todo.md', baseline);
+  const input = event(f.root, '.tasks/todo.md', 'attribution-disabled', {
+    tool_input: { command: replacementPatch('.tasks/todo.md', baseline, result) },
   });
   assert.strictEqual(run('--pre', input, { ...f.env, PLANGATE_LINT_DISABLED: '1' }), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
@@ -800,9 +800,9 @@ async function attributionContinuationLine() {
   const f = fixture();
   const baseline = '## Plan\n- [ ] Implement guard; verify: node check.js\n  (main: current context spans the hook and fixtures)\n';
   const result = '## Plan\n- [ ] Implement guard; verify: node check.js\n  (main: the user explicitly asked for direct implementation)\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const input = event(f.root, 'tasks/todo.md', 'attribution-continuation', {
-    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  source(f.root, '.tasks/todo.md', baseline);
+  const input = event(f.root, '.tasks/todo.md', 'attribution-continuation', {
+    tool_input: { command: replacementPatch('.tasks/todo.md', baseline, result) },
   });
   assert.match(denial(run('--pre', input, f.env)), /the user explicitly asked/);
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), false);
@@ -812,9 +812,9 @@ async function attributionContinuationLine() {
 async function attributionAmbiguousContextFailOpen() {
   const f = fixture();
   const baseline = 'repeat\nrepeat\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const command = '*** Begin Patch\n*** Update File: tasks/todo.md\n@@\n-repeat\n+repeat\n+\n+## Plan\n+- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n*** End Patch';
-  const input = event(f.root, 'tasks/todo.md', 'attribution-ambiguous', { tool_input: { command } });
+  source(f.root, '.tasks/todo.md', baseline);
+  const command = '*** Begin Patch\n*** Update File: .tasks/todo.md\n@@\n-repeat\n+repeat\n+\n+## Plan\n+- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n*** End Patch';
+  const input = event(f.root, '.tasks/todo.md', 'attribution-ambiguous', { tool_input: { command } });
   assert.strictEqual(run('--pre', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -823,9 +823,9 @@ async function attributionAmbiguousContextFailOpen() {
 async function attributionFuzzyContextFailOpen() {
   const f = fixture();
   const baseline = '# Start\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const command = '*** Begin Patch\n*** Update File: tasks/todo.md\n@@\n-#  Start\n+# Start\n+\n+## Plan\n+- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n*** End Patch';
-  const input = event(f.root, 'tasks/todo.md', 'attribution-fuzzy', { tool_input: { command } });
+  source(f.root, '.tasks/todo.md', baseline);
+  const command = '*** Begin Patch\n*** Update File: .tasks/todo.md\n@@\n-#  Start\n+# Start\n+\n+## Plan\n+- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n*** End Patch';
+  const input = event(f.root, '.tasks/todo.md', 'attribution-fuzzy', { tool_input: { command } });
   assert.strictEqual(run('--pre', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -834,8 +834,8 @@ async function attributionFuzzyContextFailOpen() {
 async function attributionUnsupportedSyntaxFailOpen() {
   const f = fixture();
   const result = '## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
-  const command = `*** Begin Patch\n*** Add File: tasks/todo.md\n${result.replace(/\n$/, '').split('\n').map((line) => `+${line}`).join('\n')}\n*** End Patch`;
-  const input = event(f.root, 'tasks/todo.md', 'attribution-unsupported', { tool_input: { command } });
+  const command = `*** Begin Patch\n*** Add File: .tasks/todo.md\n${result.replace(/\n$/, '').split('\n').map((line) => `+${line}`).join('\n')}\n*** End Patch`;
+  const input = event(f.root, '.tasks/todo.md', 'attribution-unsupported', { tool_input: { command } });
   assert.strictEqual(run('--pre', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -844,10 +844,10 @@ async function attributionUnsupportedSyntaxFailOpen() {
 async function attributionMultiFileFailOpen() {
   const f = fixture();
   const baseline = '# Start\n';
-  source(f.root, 'tasks/todo.md', baseline);
+  source(f.root, '.tasks/todo.md', baseline);
   source(f.root, 'one.js', 'old\n');
-  const command = '*** Begin Patch\n*** Update File: tasks/todo.md\n@@\n-# Start\n+# Start\n+\n+## Plan\n+- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n*** Update File: one.js\n@@\n-old\n+new\n*** End Patch';
-  const input = event(f.root, 'tasks/todo.md', 'attribution-multi-file', { tool_input: { command } });
+  const command = '*** Begin Patch\n*** Update File: .tasks/todo.md\n@@\n-# Start\n+# Start\n+\n+## Plan\n+- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n*** Update File: one.js\n@@\n-old\n+new\n*** End Patch';
+  const input = event(f.root, '.tasks/todo.md', 'attribution-multi-file', { tool_input: { command } });
   assert.strictEqual(run('--pre', input, f.env), '');
   assert.strictEqual(fs.existsSync(transaction(f.root, input)), true);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -857,9 +857,9 @@ async function attributionUnreadableStateFailOpen() {
   const f = fixture();
   const baseline = '# Start\n';
   const result = '# Start\n\n## Plan\n- [ ] Implement guard; verify: node check.js (main: user asked for direct implementation)\n';
-  source(f.root, 'tasks/todo.md', baseline);
-  const input = event(f.root, 'tasks/todo.md', 'attribution-unreadable-state', {
-    tool_input: { command: replacementPatch('tasks/todo.md', baseline, result) },
+  source(f.root, '.tasks/todo.md', baseline);
+  const input = event(f.root, '.tasks/todo.md', 'attribution-unreadable-state', {
+    tool_input: { command: replacementPatch('.tasks/todo.md', baseline, result) },
   });
   fs.mkdirSync(path.dirname(scopeFile(f.root, input)), { recursive: true });
   fs.writeFileSync(scopeFile(f.root, input), '{bad', 'utf8');

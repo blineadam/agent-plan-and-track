@@ -4,8 +4,8 @@ Portable, user-scoped agent rules, skills, and hooks for Claude Code, GitHub
 Copilot, and Codex. They stay active through a session and carry over into
 the next one.
 
-Uses a `tasks/todo.md` to plan non-trivial work, logs your corrections in
-`tasks/lessons.md`, and verifies changes before calling anything done.
+Uses a `.tasks/todo.md` to plan non-trivial work, logs your corrections in
+`.tasks/lessons.md`, and verifies changes before calling anything done.
 These rules stay in place even as a session's context grows.
 
 Best for iterative work in an existing repo: features, bug fixes,

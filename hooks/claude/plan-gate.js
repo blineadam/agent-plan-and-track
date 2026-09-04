@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * Plan Gate: plan-and-track enforcement for tasks/todo.md (Claude Code only)
+ * Plan Gate: plan-and-track enforcement for .tasks/todo.md (Claude Code only)
  *
  * A PreToolUse hook (registered for Skill|Edit|Write|MultiEdit) that denies
- * every Edit/Write/MultiEdit to `tasks/todo.md` until the plan-and-track
+ * every Edit/Write/MultiEdit to `.tasks/todo.md` until the plan-and-track
  * Skill has been invoked this session. A plan written straight into
- * tasks/todo.md skips the skill's reconcile/lessons/checklist steps, and
+ * .tasks/todo.md skips the skill's reconcile/lessons/checklist steps, and
  * attention-based fixes (description wording, digest lines) don't reach
  * mid-session self-initiated planning, so per this repo's thesis the rule is
  * enforced by the harness: a Skill call naming plan-and-track stamps the
- * session; edits to tasks/todo.md check for the stamp.
+ * session; edits to .tasks/todo.md check for the stamp.
  *
  * UNLIKE GATEGUARD, REPEATED DENIAL IS INTENTIONAL. Gateguard marks a file
  * "checked" at deny time so the retry always passes; this gate denies every
  * todo.md write until the external unlock (the Skill invocation). The two
- * gates never double-fire: gateguard exempts tasks/todo.md.
+ * gates never double-fire: gateguard exempts .tasks/todo.md.
  *
  * CLAUDE-ONLY. Codex loads skills as instructions, so there is no Skill tool
  * event to stamp from and a hard block could never unlock; Copilot has no
@@ -32,13 +32,13 @@
  * can't be created the edit is ALLOWED with a stderr note, since the Skill
  * branch could never stamp on such a machine and a deny would loop forever.
  *
- * SCOPE GATE: a session that never touches tasks/todo.md at all still needs
+ * SCOPE GATE: a session that never touches .tasks/todo.md at all still needs
  * catching (a competing-pressure prompt like "just hack it in" can skip
  * planning and go straight to source edits). Once a session's distinct
  * edited-file count reaches PLANGATE_SCOPE_THRESHOLD (default 3, since a
  * one- or two-file fix-plus-its-test is legitimately plan-free) without a
  * plan-and-track stamp, every further Edit/Write/MultiEdit is denied the
- * same hard way as the tasks/todo.md gate. "3+ distinct files" is the
+ * same hard way as the .tasks/todo.md gate. "3+ distinct files" is the
  * observable proxy for the "3+ steps" core rule a hook can actually measure.
  * Marker files record each *allowed* edit's normalized path (sha256-keyed,
  * next to the session's stamp file) so a denied edit is never counted and
@@ -52,7 +52,7 @@
  * full-path invocation, `env git`, or a shell alias is an accepted false
  * negative, not chased). Once a session's distinct mutation-kind count would
  * reach PLANGATE_MUTATION_THRESHOLD (default 2) without a stamp, that Bash
- * call is denied the same hard way as tasks/todo.md and the scope gate above
+ * call is denied the same hard way as .tasks/todo.md and the scope gate above
  * (deny-until-stamped, not gateguard's deny-once: a bare retry of the same
  * command is denied again); only the plan-and-track stamp unlocks.
  * CLAUDE-ONLY, same portable-skill + Claude-only-hook split as the rest of
@@ -60,7 +60,7 @@
  * classify this way, and Copilot has no Skill tool or comparable PreToolUse
  * hook wired here either.
  *
- * CONTENT LINT: once a session is stamped, tasks/todo.md writes still get a
+ * CONTENT LINT: once a session is stamped, .tasks/todo.md writes still get a
  * lighter check: every NEW unchecked step inside a `## Plan` section (not
  * Review/Context/preamble) must end in an owner tag, e.g. `(executor)`,
  * `(researcher)`, `(mechanic)`, or a reasoned `(main: <why>)`; a bare `(main)`
@@ -70,7 +70,7 @@
  * on-disk baseline counts as new. Runs only after the stamp check passes, via
  * maybeLintTodoContent().
  *
- * MIGRATION-STATE GUARD: also once stamped, a tasks/todo.md write that would
+ * MIGRATION-STATE GUARD: also once stamped, a .tasks/todo.md write that would
  * delete an existing `## Migration State` heading (the durable cross-session
  * block the migration-discipline skill keeps there) is denied once
  * per session, gateguard-style: the marker is written at deny time so an
@@ -101,7 +101,7 @@
  *                             kinds exist (git-push, gh-pr-create,
  *                             gh-pr-merge), so a value above 3 effectively
  *                             disables this gate.
- *   PLANGATE_LINT_DISABLED   "1" turns off the tasks/todo.md content lint
+ *   PLANGATE_LINT_DISABLED   "1" turns off the .tasks/todo.md content lint
  *                             and the main-attribution guard only (stamp
  *                             gate, scope gate, mutation gate, and the
  *                             migration-state guard still apply).
@@ -177,13 +177,13 @@ function namesPlanAndTrack(toolInput) {
 
 // --- Scope gate: distinct edited-file count, same stamp, sibling markers ---
 
-// Paths the scope count ignores: tasks/todo.md (already gated on its own),
-// tasks/lessons.md and .claude/settings*.json (rule-forced/hook-repair
+// Paths the scope count ignores: .tasks/todo.md (already gated on its own),
+// .tasks/lessons.md and .claude/settings*.json (rule-forced/hook-repair
 // edits, mirroring gateguard's isBuiltinExempt). Case-insensitive: NTFS
 // treats these paths case-insensitively, same rationale as the todo.md gate.
 function isScopeExempt(norm) {
   return (
-    /(^|\/)tasks\/(todo|lessons)\.md$/i.test(norm) ||
+    /(^|\/)\.tasks\/(todo|lessons)\.md$/i.test(norm) ||
     /(^|\/)\.claude\/settings(?:\.[^/]+)?\.json$/i.test(norm)
   );
 }
@@ -531,7 +531,7 @@ const MAIN_REASON_RE = /\(main:\s*([^)\s][^)]*)\)\s*$/i;
 const MAIN_USER_ATTRIBUTION_RE =
   /\b(?:user|you)\b(?:\s+\S+){0,2}\s+(?:disabled|enabled|turned on|turned off|asked|said|told|chose|requested|wanted|wants|approved|confirmed|authorized|declined|rejected|prefers|preferred|specified)\b/i;
 
-// Simulates the post-edit tasks/todo.md content for Edit/Write/MultiEdit
+// Simulates the post-edit .tasks/todo.md content for Edit/Write/MultiEdit
 // without writing anything to disk. Returns null (skip the lint entirely) on
 // anything that would make the simulation a guess rather than exact: an
 // unreadable existing file, an old_string that's empty or not found in the
@@ -704,7 +704,7 @@ function stepTagViolation(joined) {
 
 function gateMsg() {
   return [
-    '[PlanGate] Writes to tasks/todo.md are gated: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this edit.',
+    '[PlanGate] Writes to .tasks/todo.md are gated: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this edit.',
     '(PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
   ].join('\n');
 }
@@ -732,7 +732,7 @@ function lintMsg(offenders) {
   });
   if (offenders.length > 3) shown.push(`  ...and ${offenders.length - 3} more`);
   return [
-    '[PlanGate] New plan steps in tasks/todo.md need an owner tag at end of step:',
+    '[PlanGate] New plan steps in .tasks/todo.md need an owner tag at end of step:',
     ...shown,
     'Tag each step with who carries it out: implementation defaults to (executor), research to (researcher), mechanical tails to (mechanic); also valid: (planner), (debugger), (security-auditor), (architect-reviewer), (fable-advisor), each optionally with a reason like (executor: <why>). Tagging (main) is the exception and must carry a one-clause reason in the tag itself, e.g. (main: needs user sign-off mid-step); "main already has the context" does not qualify. Retry the same write with tags added.',
     '(PLANGATE_LINT_DISABLED=1 turns off this lint; PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
@@ -757,7 +757,7 @@ function attributionMsg(offender, reason) {
 
 function migrationMsg() {
   return [
-    '[PlanGate] This write would delete the `## Migration State` block from tasks/todo.md. That block is durable cross-session migration state (frozen oracle, ladder rung, ownership) that must survive tidying, batch compression, and compaction.',
+    '[PlanGate] This write would delete the `## Migration State` block from .tasks/todo.md. That block is durable cross-session migration state (frozen oracle, ladder rung, ownership) that must survive tidying, batch compression, and compaction.',
     'If ending or abandoning the migration is intentional (user-confirmed), retry the same write: the retry passes. Otherwise re-issue the write with the `## Migration State` block kept intact.',
     '(PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
   ].join('\n');
@@ -812,7 +812,7 @@ function maybeLintTodoContent(toolName, toolInput) {
 // mentions the phrase never counts as the heading.
 const MIGRATION_HEADING_RE = /^\s{0,3}##\s+Migration State\s*$/im;
 
-// Deny ONCE per session a tasks/todo.md write that would delete an existing
+// Deny ONCE per session a .tasks/todo.md write that would delete an existing
 // `## Migration State` heading. Gateguard's mark-at-deny-time pattern: the
 // `.migstate` marker is claimed exclusively when the deny is emitted, so the
 // intentional retry (and any later deletion this session) passes. Runs only
@@ -990,14 +990,14 @@ function main() {
   }
 
   // Edit branch. Case-insensitive throughout: install.ps1 deploys this hook
-  // on Windows, where NTFS treats tasks\todo.md and TASKS\TODO.MD (etc.) as
+  // on Windows, where NTFS treats .tasks\todo.md and .TASKS\TODO.MD (etc.) as
   // the same file.
   if (!EDIT_TOOLS.has(toolName)) process.exit(0);
   const norm = String(toolInput.file_path || '').replace(/\\/g, '/');
   const stamp = stampPath(input.session_id, input);
 
-  // tasks/todo.md gate: unchanged behavior, own message.
-  if (/(^|\/)tasks\/todo\.md$/i.test(norm)) {
+  // .tasks/todo.md gate: unchanged behavior, own message.
+  if (/(^|\/)\.tasks\/todo\.md$/i.test(norm)) {
     if (fs.existsSync(stamp)) {
       // Guards before lint, exclusively: at most one decision JSON per run,
       // and keeping the Migration State block and catching a misattributed

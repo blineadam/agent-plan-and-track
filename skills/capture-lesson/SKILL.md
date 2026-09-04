@@ -1,6 +1,6 @@
 ---
 name: capture-lesson
-description: Record a lesson in the active project's tasks/lessons.md after the user corrects a mistake, rejects an approach, points out something missed, or gives feedback on how to work, or when you catch yourself or a subagent repeating a mistake without any user correction. Use IMMEDIATELY after ANY correction from the user; the goal is to never repeat the same mistake twice. Not for a question or displeasure with no established mistake, which calls for re-deriving rather than recording.
+description: Record a lesson in the active project's .tasks/lessons.md after the user corrects a mistake, rejects an approach, points out something missed, or gives feedback on how to work, or when you catch yourself or a subagent repeating a mistake without any user correction. Use IMMEDIATELY after ANY correction from the user; the goal is to never repeat the same mistake twice. Not for a question or displeasure with no established mistake, which calls for re-deriving rather than recording.
 ---
 
 # Capture Lesson
@@ -15,7 +15,7 @@ It also fires without a user correction: the second time you or a subagent you d
 
 ## Steps
 
-1. Open (or create) `tasks/lessons.md` in the active project.
+1. Migrate a legacy scratch folder first, once: if `.tasks/` does not exist and `tasks/todo.md` or `tasks/lessons.md` does, run `mkdir -p .tasks`, then `mv tasks/todo.md .tasks/todo.md` and `mv tasks/lessons.md .tasks/lessons.md` (skipping whichever is absent), and report in one line what is still in `tasks/` so the user decides whether to move, delete, or keep the rest as the project's own folder. Never rename or delete `tasks/` itself. Once `.tasks/` exists, do not inspect `tasks/` again. Open (or create) `.tasks/lessons.md` in the active project.
 2. Read the full index before writing. If an applicable standing rule or skill already fully encodes the correction, do not add a local lesson.
 3. If a matching bullet exists, strengthen it in place. Otherwise insert exactly one concise, checkable imperative bullet under the closest topical H2, creating one topical H2 only when none fits. Scope it to the correction actually covered: a correction about one file, register, or situation becomes a global rule only when the user says so or the same mistake recurs elsewhere. Preserve a narrower scope unless the correction itself broadens it. Over-generalizing a scoped correction is itself a mistake the user then has to correct.
 4. Do not add dates, incident-field labels, duplicate lessons, unrelated rewrites, or periodic compaction. Normalize each capture when you write it; this index holds durable rules, not incident narratives.
@@ -23,4 +23,4 @@ It also fires without a user correction: the second time you or a subagent you d
 
 ## At session start
 
-When beginning work in a project, read `tasks/lessons.md` if it exists and apply the relevant rules.
+When beginning work in a project, if `.tasks/` does not exist, apply step 1's migration first; then read `.tasks/lessons.md` if it exists and apply the relevant rules.

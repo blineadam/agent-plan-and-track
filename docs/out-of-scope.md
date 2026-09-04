@@ -6,7 +6,7 @@ This file records a decision not to build something, so a later session does not
 
 A decision about how an existing component behaves stays in that component's own header, where the code that implements it lives, not here. `hooks/gateguard.js`'s header is the exemplar: it records why the ECC destructive-Bash gate was not ported, right where a future editor of that file will hit it.
 
-`tasks/lessons.md` is a different thing again: it holds a correction about how to work, so a mistake does not recur. It is gitignored, session-local bookkeeping, while this file is checked in.
+`.tasks/lessons.md` is a different thing again: it holds a correction about how to work, so a mistake does not recur. It is gitignored, session-local bookkeeping, while this file is checked in.
 
 An entry here is a starting point for re-litigation, not a permanent ban. A new argument or a changed circumstance can reopen a decision, and the entry should then be updated rather than silently contradicted.
 

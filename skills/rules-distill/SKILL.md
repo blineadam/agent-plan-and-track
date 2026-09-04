@@ -6,7 +6,7 @@ description: Scan installed skills and this repo's rule files, extract cross-cut
 # Rules Distill
 
 Scan the skills installed across every harness plus this repo's rule files,
-find principles that recur in **2+ skills** (or repeatedly in `tasks/lessons.md`)
+find principles that recur in **2+ skills** (or repeatedly in `.tasks/lessons.md`)
 but aren't yet a rule, and distill them into `rules/`, with the user approving
 every change. This mechanizes the manual "promote a `lessons.md` entry into
 `core-rules.md`" move (e.g. PRs #6/#7).
@@ -20,7 +20,7 @@ this repo is their source of truth, and skills live across three harness dirs.
 ## When to use
 
 - Periodic rules maintenance (after installing or writing new skills)
-- When `tasks/lessons.md` has a pattern that keeps recurring and belongs in the
+- When `.tasks/lessons.md` has a pattern that keeps recurring and belongs in the
   standing rules instead
 - When the rules feel incomplete relative to the skills in use
 
@@ -51,7 +51,7 @@ Launch a general-purpose subagent per cluster with this prompt:
 
 > You cross-read skills to find principles that should be promoted to standing rules.
 >
-> **Input**: Skills in this batch (full text); the full text of `rules/agent-guidelines.md` and `rules/core-rules.md`; and, if present, `tasks/lessons.md`.
+> **Input**: Skills in this batch (full text); the full text of `rules/agent-guidelines.md` and `rules/core-rules.md`; and, if present, `.tasks/lessons.md`.
 >
 > **Include a candidate only if ALL hold:**
 > 1. **Recurs**: appears in 2+ skills (or repeatedly in lessons.md). One-skill principles stay in that skill.

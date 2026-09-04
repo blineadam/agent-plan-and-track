@@ -13,9 +13,9 @@ work, then publish or capture what the session taught you.
 
 - **`plan-and-track`** (skill) kicks in on multi-step work: a feature, a
   refactor, a 3+ step fix, or picking a repo back up that already has a
-  `tasks/todo.md`. Writes a checklist, tracks it, and verifies before
+  `.tasks/todo.md`. Writes a checklist, tracks it, and verifies before
   closing out. A Claude-only hook backs it up: it blocks writes to
-  `tasks/todo.md` until the skill has actually run that session, and checks
+  `.tasks/todo.md` until the skill has actually run that session, and checks
   that new plan steps carry an owner tag (implementation defaults to
   executor; `main` needs a stated reason), and speed-bumps any write that
   would delete an existing `## Migration State` block (deny once, retry
@@ -43,7 +43,7 @@ work, then publish or capture what the session taught you.
 - **`migration-discipline`** (skill) kicks in on migration-shaped work: many
   files, one mechanical change, possibly parallel agents. Layers on
   `plan-and-track` and `efficient-frontier`, and keeps a durable
-  `## Migration State` block in the project's `tasks/todo.md`.
+  `## Migration State` block in the project's `.tasks/todo.md`.
 
 ### Finish, learn, and publish
 
@@ -53,7 +53,7 @@ work, then publish or capture what the session taught you.
   env var can make it block instead of warn.
 - **`capture-lesson`** (skill) kicks in whenever the user corrects the agent
   or the agent notices a repeated error. It turns the correction into a durable
-  rule in `tasks/lessons.md`.
+  rule in `.tasks/lessons.md`.
 - **`humanizer`** (skill, adapted from
   [blader/humanizer](https://github.com/blader/humanizer)) kicks in before
   finalizing longer user-facing writing: README sections, docs, PR
