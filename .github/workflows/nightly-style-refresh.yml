@@ -422,10 +422,19 @@ jobs:
           # hand-authored and also steers Copilot's coding agent. Strip the
           # owned section from both sides and require the remainder to match,
           # so an unattended session cannot rewrite the unowned part.
+          # Fence tracking matters: a fenced Markdown example in the
+          # hand-authored part can contain a literal `# Code reviews` line,
+          # and reading that as a real heading would hide every following
+          # line from the comparison. Same reason lint-pr-body.js computes
+          # fenced lines before applying its heading checks.
           strip_owned() {
             git show "$1:$f" 2>/dev/null | awk '
-              /^# / { owned = ($0 == "# Code reviews") }
-              !owned { print }
+              {
+                if ($0 ~ /^[ \t]*```/ && (!fence || open == "`")) { fence = !fence; open = "`" }
+                else if ($0 ~ /^[ \t]*~~~/ && (!fence || open == "~")) { fence = !fence; open = "~" }
+                else if (!fence && $0 ~ /^# /) { owned = ($0 == "# Code reviews") }
+                if (!owned) print
+              }
             '
           }
           if git cat-file -e "origin/main:$f" 2>/dev/null \

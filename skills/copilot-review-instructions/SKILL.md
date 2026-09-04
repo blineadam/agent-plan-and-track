@@ -1,6 +1,6 @@
 ---
 name: copilot-review-instructions
-description: Use to generate or refresh path-scoped GitHub Copilot review instructions when a Copilot-reviewed project's conventions or directory/language layout change, after inherit-legacy-style or standalone. Only the output is Copilot-specific.
+description: Use to generate or refresh GitHub Copilot review instructions, both the path-scoped files and the repo-wide code-review section, when a Copilot-reviewed project's conventions or directory/language layout change, after inherit-legacy-style or standalone. Only the output is Copilot-specific.
 ---
 
 # copilot-review-instructions
@@ -152,12 +152,20 @@ therefore inert text, so this file should not try to pull the conventions in.
 It tells the reviewer where they live and how to review, in a `# Code reviews`
 section this skill owns.
 
-Create the file if it is missing. If it exists and already carries a `# Code
-reviews` H1, replace just that section, from the heading to the next H1 or the
-end of the file. If it exists without one, append the section at the end. Leave
-the rest of the file alone either way: there is no marker comment here, so the
-heading is the ownership boundary, and what sits outside it is usually
-hand-authored guidance for Copilot's coding agent.
+Create the file if it is missing, and append the section when the file exists
+without a `# Code reviews` H1. Where that section already exists, apply the same
+marker test Step 5 applies to the path-scoped files, since a repo adopting this
+skill may well have written its own:
+
+- **Carrying the marker**: skill-owned, so regenerate it in place.
+- **Missing the marker**: possibly hand-authored. Confirm its provenance with
+  the user before replacing anything, exactly as Step 5 does, and never adopt an
+  unmarked section silently.
+
+Write the marker as the section's first line under the heading, so a later run
+can tell. Leave everything outside the section alone: the heading and the next
+H1 (or the end of the file) bound what this skill owns, and what sits outside is
+usually hand-authored guidance for Copilot's cloud agent.
 
 The section is four prose paragraphs, in this order, following this repo's own
 `.github/copilot-instructions.md` as the reference rendering:
