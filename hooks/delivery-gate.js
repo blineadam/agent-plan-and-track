@@ -174,7 +174,7 @@ const RATIONALIZATION = [
   /\bcan'?t (?:verify|test)\b/i,
   /\bassuming (?:it|this|that) works\b/i,
 ];
-const TODO_RE = /\.tasks\/todo\.md$/;
+const TODO_RE = /(^|\/)\.tasks\/todo\.md$/;
 
 // Evidence-free capitulation: an agreement opener plus self-blame narration in
 // the same recent text window. Either alone is often genuine; the combo is the
