@@ -30,12 +30,16 @@
  * than being reimplemented here: it already applies CommonMark's rules for
  * closing-fence length, the whitespace-only closing suffix, and the backtick
  * info-string restriction, and it is covered by that script's own fixtures.
+ * parseHeading comes from there for the same reason: CommonMark allows an ATX
+ * heading up to a three-space indent, and a scan anchored at column 1 misses
+ * an indented H1, extending the owned section over whatever follows it.
  */
 
 const fs = require('fs');
-const { codeLineMask } = require('./lint-pr-body.js');
+const { codeLineMask, parseHeading } = require('./lint-pr-body.js');
 
-const OWNED_HEADING = '# Code reviews';
+const OWNED_HEADING_TEXT = 'Code reviews';
+const OWNED_HEADING = `# ${OWNED_HEADING_TEXT}`;
 
 function readIfPresent(filePath) {
   if (!fs.existsSync(filePath)) return null;
@@ -47,13 +51,15 @@ function headingIndexes(lines) {
   const isCode = codeLineMask(lines);
   const indexes = [];
   for (let i = 0; i < lines.length; i += 1) {
-    if (!isCode[i] && /^# /.test(lines[i])) indexes.push(i);
+    if (isCode[i]) continue;
+    const heading = parseHeading(lines[i]);
+    if (heading && heading.level === 1) indexes.push(i);
   }
   return indexes;
 }
 
 function ownedHeadingIndexes(lines) {
-  return headingIndexes(lines).filter((i) => lines[i].trim() === OWNED_HEADING);
+  return headingIndexes(lines).filter((i) => parseHeading(lines[i]).text === OWNED_HEADING_TEXT);
 }
 
 // Everything except the owned section: its heading through the line before the

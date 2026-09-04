@@ -423,6 +423,7 @@ jobs:
           # compares everything outside that section. Each side is written only
           # when it exists, so the checker can tell absent from empty.
           d="$(mktemp -d)"
+          trap 'rm -rf "$d"' EXIT
           git show "origin/main:$f" > "$d/base.md" 2>/dev/null || rm -f "$d/base.md"
           git show "origin/$BRANCH:$f" > "$d/head.md" 2>/dev/null || rm -f "$d/head.md"
           node .github/scripts/check-owned-section.js "$d/base.md" "$d/head.md"
