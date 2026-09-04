@@ -162,6 +162,16 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   might predate the skill or be genuinely hand-authored: don't assume
   either way, flag it for the author to confirm provenance rather than
   treating the absence as settled.
+- The same skill also owns just the `# Code reviews` section of
+  `.github/copilot-instructions.md` (marker as that section's first line,
+  bounded by the heading through the next H1 or end of file), not the whole
+  file: the rest is hand-authored guidance that also steers Copilot's cloud
+  agent. Flag an edit inside that marked section made without re-running the
+  skill, and flag a PR that adds this file to the nightly unattended
+  workflow's diff allowlist, since that file carries no `excludeAgent:
+  "cloud-agent"` exclusion and an unattended diff check can't safely bound
+  content written inside the section the way whole-file admission bounds a
+  wholly-owned file.
 
 ## Reference-doc structure
 
