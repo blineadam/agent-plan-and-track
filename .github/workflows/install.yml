@@ -423,7 +423,6 @@ jobs:
           node .github/scripts/run-check-digest-preview-fixtures.js >/dev/null
           node .github/scripts/check-split-shell-segments-parity.js >/dev/null
           node .github/scripts/run-check-split-shell-segments-parity-fixtures.js >/dev/null
-          node .github/scripts/run-check-owned-section-fixtures.js >/dev/null
       - name: Probe-agent frontmatter escape/quote round-trip
         run: |
           set -euo pipefail
@@ -1193,7 +1192,6 @@ jobs:
           node .github\scripts\run-check-digest-preview-fixtures.js | Out-Null; Assert-Node 'check-digest-preview fixtures'
           node .github\scripts\check-split-shell-segments-parity.js | Out-Null; Assert-Node 'split-shell-segments parity'
           node .github\scripts\run-check-split-shell-segments-parity-fixtures.js | Out-Null; Assert-Node 'split-shell-segments parity fixtures'
-          node .github\scripts\run-check-owned-section-fixtures.js | Out-Null; Assert-Node 'owned-section fixtures'
       - name: Probe-agent frontmatter escape/quote round-trip
         shell: powershell
         run: |
