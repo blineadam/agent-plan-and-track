@@ -212,7 +212,7 @@ jobs:
           fi
           title="$(head -n1 "$summary")"
           git checkout -b "$BRANCH"
-          git add .ai-style-rules.md .github/instructions/*.instructions.md
+          git add -A -- .ai-style-rules.md .github/instructions
           git commit -m "$title"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
           gh pr create --base main --head "$BRANCH" --title "$title" --body-file <(tail -n +2 "$summary")
@@ -304,7 +304,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$(git status --porcelain)" ]; then
-            git add .ai-style-rules.md .github/instructions/*.instructions.md
+            git add -A -- .ai-style-rules.md .github/instructions
             git commit -m "Address Copilot review feedback on PR #$PR_NUMBER"
             git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
           fi

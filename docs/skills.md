@@ -127,13 +127,16 @@ For turning a project's conventions into documentation other agents can read:
 | Skill | What it does | Where |
 | --- | --- | --- |
 | **`inherit-legacy-style`** | Captures legacy conventions in `.ai-style-rules.md`. | All 3 |
-| **`copilot-review-instructions`** | Writes path-scoped review directives. | All 3 |
+| **`copilot-review-instructions`** | Writes path-scoped review directives and the repo-wide review section. | All 3 |
 
 `inherit-legacy-style` captures enforceable conventions; its hard
 implementation is Claude-only.
-`copilot-review-instructions` writes Copilot-only output to
-`.github/instructions/*.instructions.md` from style rules, instruction files,
-the README, and other docs. For Codex, review rules belong under
+`copilot-review-instructions` writes Copilot-only output from style rules,
+instruction files, the README, and other docs: the path-scoped
+`.github/instructions/*.instructions.md` files, plus the `# Code reviews`
+section of `.github/copilot-instructions.md`, which points Copilot's reviewer
+at those sources and names what CI already blocks. It owns only that section
+of that file, not the whole file. For Codex, review rules belong under
 `## Code Review Rules` in the closest applicable `AGENTS.md`.
 
 ## Design, document, and browser-testing skills
