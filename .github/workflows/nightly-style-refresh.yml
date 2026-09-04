@@ -213,7 +213,7 @@ jobs:
           fi
           title="$(head -n1 "$summary")"
           git checkout -b "$BRANCH"
-          git add .ai-style-rules.md .github/instructions/*.instructions.md .github/copilot-instructions.md
+          git add -A -- .ai-style-rules.md .github/instructions .github/copilot-instructions.md
           git commit -m "$title"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
           gh pr create --base main --head "$BRANCH" --title "$title" --body-file <(tail -n +2 "$summary")
@@ -305,7 +305,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$(git status --porcelain)" ]; then
-            git add .ai-style-rules.md .github/instructions/*.instructions.md .github/copilot-instructions.md
+            git add -A -- .ai-style-rules.md .github/instructions .github/copilot-instructions.md
             git commit -m "Address Copilot review feedback on PR #$PR_NUMBER"
             git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
           fi
@@ -418,35 +418,14 @@ jobs:
           set -euo pipefail
           f=.github/copilot-instructions.md
           # The allowlist above is file-level, but copilot-review-instructions
-          # owns only this file's `# Code reviews` H1 section; the rest is
-          # hand-authored and also steers Copilot's coding agent. Strip the
-          # owned section from both sides and require the remainder to match,
-          # so an unattended session cannot rewrite the unowned part.
-          # Fence tracking matters: a fenced Markdown example in the
-          # hand-authored part can contain a literal `# Code reviews` line,
-          # and reading that as a real heading would hide every following
-          # line from the comparison. Same reason lint-pr-body.js computes
-          # fenced lines before applying its heading checks.
-          strip_owned() {
-            git show "$1:$f" 2>/dev/null | awk '
-              {
-                if ($0 ~ /^[ \t]*```/ && (!fence || open == "`")) { fence = !fence; open = "`" }
-                else if ($0 ~ /^[ \t]*~~~/ && (!fence || open == "~")) { fence = !fence; open = "~" }
-                else if (!fence && $0 ~ /^# /) { owned = ($0 == "# Code reviews") }
-                if (!owned) print
-              }
-            '
-          }
-          if git cat-file -e "origin/main:$f" 2>/dev/null \
-            && ! git cat-file -e "origin/$BRANCH:$f" 2>/dev/null; then
-            echo "$f was deleted; the skill only rewrites its own section" >&2
-            exit 1
-          fi
-          if ! diff <(strip_owned origin/main) <(strip_owned "origin/$BRANCH") >/dev/null; then
-            echo 'PR changes .github/copilot-instructions.md outside its `# Code reviews` section:' >&2
-            diff <(strip_owned origin/main) <(strip_owned "origin/$BRANCH") >&2 || true
-            exit 1
-          fi
+          # owns only this file's `# Code reviews` section; the rest is
+          # hand-authored and also steers Copilot's cloud agent. The checker
+          # compares everything outside that section. Each side is written only
+          # when it exists, so the checker can tell absent from empty.
+          d="$(mktemp -d)"
+          git show "origin/main:$f" > "$d/base.md" 2>/dev/null || rm -f "$d/base.md"
+          git show "origin/$BRANCH:$f" > "$d/head.md" 2>/dev/null || rm -f "$d/head.md"
+          node .github/scripts/check-owned-section.js "$d/base.md" "$d/head.md"
 
       - name: Wait for required checks, then squash-merge and delete the branch
         if: steps.pr.outputs.has_pr == '1'

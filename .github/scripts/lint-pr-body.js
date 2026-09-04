@@ -294,4 +294,11 @@ function main() {
   process.exit(hardCount > 0 ? 1 : 0);
 }
 
-main();
+// codeLineMask is shared with check-owned-section.js, which needs the same
+// CommonMark fence rules to find a real heading. Exporting it keeps one
+// tested implementation instead of a second copy needing a parity guard.
+module.exports = { codeLineMask };
+
+if (require.main === module) {
+  main();
+}

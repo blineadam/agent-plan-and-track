@@ -47,7 +47,10 @@ which rules each one carries:
    `.github/copilot-instructions.md`, or a `rules/` directory of shared rule
    files: explicit standing rules (writing voice, git/PR hygiene, scope
    discipline, verification). These are prime review-directive material and
-   usually live nowhere near `.ai-style-rules.md`.
+   usually live nowhere near `.ai-style-rules.md`. Skip the marker-owned
+   `# Code reviews` section of `.github/copilot-instructions.md`, since Step 6
+   generates it from this gathering: reading it back would let one run's output
+   become the next run's input and drift away from the real sources.
 3. **`README.md`, `CONTRIBUTING.md`, `docs/`, and any nested `**/README.md`**:
    human-written guidance already in the repo (layout conventions,
    contribution rules), including a subdirectory's own README explaining that
