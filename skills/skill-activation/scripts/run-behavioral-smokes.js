@@ -364,7 +364,7 @@ function idIsPathSafe(id) {
 }
 
 // An assertion `path` is a relative file path under the case dir (e.g.
-// "tasks/lessons.md"), so unlike an id/fixture it legitimately contains
+// ".tasks/lessons.md"), so unlike an id/fixture it legitimately contains
 // separators. Reject absolute paths and any `..` segment so it can't escape the
 // case dir and read another case's artifact.
 function relPathIsContained(p) {

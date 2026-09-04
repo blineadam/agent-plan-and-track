@@ -28,7 +28,7 @@ Before the **first edit to any file in a session**, present these facts:
    values, never raw production data).
 4. **The instruction**: quote the user's current instruction verbatim.
 5. **Scope**: is this part of a 3+ step or architectural task? If so, point
-   to the tasks/todo.md plan (or invoke plan-and-track first). If this edit
+   to the .tasks/todo.md plan (or invoke plan-and-track first). If this edit
    doesn't need one, say why.
 
 Before **creating a new file**:
@@ -58,8 +58,8 @@ that entire class of bug. Guessing a schema is never faster than looking.
   gets "yes". Demand the list, not the assurance.
 - **Pre-answering from memory**: the value is the *search*, not the prose.
   Run the grep; don't reconstruct importers from recall.
-- **Gating trivia**: task-tracking files (`tasks/todo.md`,
-  `tasks/lessons.md`) and similar scratch files have no importers or schemas;
+- **Gating trivia**: task-tracking files (`.tasks/todo.md`,
+  `.tasks/lessons.md`) and similar scratch files have no importers or schemas;
   don't burn a round-trip on them.
 
 ## Enforcing hook (all three harnesses)
@@ -77,7 +77,7 @@ moment, so a later edit of the same file in the same session is never
 gated again.
 
 Skipped automatically: subagent tool calls, `.claude/settings*.json` (so hook
-repair is never blocked), and `tasks/todo.md` / `tasks/lessons.md`.
+repair is never blocked), and `.tasks/todo.md` / `.tasks/lessons.md`.
 
 Tune via environment variables:
 

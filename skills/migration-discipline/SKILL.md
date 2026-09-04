@@ -102,7 +102,7 @@ The rule governs how an artifact points at the code being migrated, not its own 
 
 ## Durable Migration State
 
-A migration runs across many sessions and compactions, long enough that standing invariants like the frozen oracle or the ladder rung reached decay out of context between sessions. Move them onto disk instead, as a top-level `## Migration State` block in the target project's `tasks/todo.md`, re-read on resume via [[plan-and-track]]. This is advisory guidance with a recommended template, not a mandated output format.
+A migration runs across many sessions and compactions, long enough that standing invariants like the frozen oracle or the ladder rung reached decay out of context between sessions. Move them onto disk instead, as a top-level `## Migration State` block in the target project's `.tasks/todo.md`, re-read on resume via [[plan-and-track]]. This is advisory guidance with a recommended template, not a mandated output format.
 
 ```markdown
 ## Migration State
@@ -121,10 +121,10 @@ The block is a single-writer file under the same ownership rule as any other: on
 
 ## Applying This Discipline
 
-1. Before starting: confirm the change is migration-shaped (many files, one mechanical change, possibly parallel agents), otherwise use [[plan-and-track]] alone. If `tasks/todo.md` already carries a `## Migration State` block, this is a resume: re-read it and trust it over remembered context for the oracle, the ladder rung, ownership, and the conventions doc.
+1. Before starting: confirm the change is migration-shaped (many files, one mechanical change, possibly parallel agents), otherwise use [[plan-and-track]] alone. If `.tasks/todo.md` already carries a `## Migration State` block, this is a resume: re-read it and trust it over remembered context for the oracle, the ladder rung, ownership, and the conventions doc.
 2. Plan file/component ownership and worktree layout per the isolation section above before any agent starts editing.
 3. Freeze the behavior-verification suite per the oracle-integrity section before behavior-preserving work begins.
-4. If no `## Migration State` block exists yet, write the one described above into `tasks/todo.md` before the first batch begins. If one already exists, update it rather than replacing it, so the recorded oracle and ladder rung survive.
+4. If no `## Migration State` block exists yet, write the one described above into `.tasks/todo.md` before the first batch begins. If one already exists, update it rather than replacing it, so the recorded oracle and ladder rung survive.
 5. Write the porting-conventions doc and the worker-brief constraints per their sections above, then pilot: run a small, representative subset of the work through implementation, review, and validation before any fan-out, and fold every correction into the conventions doc and the brief template, not just into the piloted files ([[efficient-frontier]]'s pilot-before-scale guardrail, applied at migration scale).
 6. Keep each batch mechanical and behavior-preserving per the behavior-preservation section.
 7. As broad validation commands (compiler, linter, full test run) produce output, batch and fix per the work-queue section, updating the `## Migration State` block in the same pass.

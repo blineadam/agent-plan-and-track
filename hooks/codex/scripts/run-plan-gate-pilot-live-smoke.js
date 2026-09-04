@@ -102,9 +102,9 @@ function runCase(root, codexHome, name, prompt) {
   const rawFile = path.join(root, `${name}-raw-hooks.jsonl`);
   const trace = path.join(root, `${name}-trace.jsonl`);
   fs.mkdirSync(path.join(workspace, 'src'), { recursive: true });
-  fs.mkdirSync(path.join(workspace, 'tasks'), { recursive: true });
+  fs.mkdirSync(path.join(workspace, '.tasks'), { recursive: true });
   childProcess.execFileSync('git', ['init', '-q'], { cwd: workspace });
-  fs.writeFileSync(path.join(workspace, 'tasks', 'todo.md'), '# Smoke\n', 'utf8');
+  fs.writeFileSync(path.join(workspace, '.tasks', 'todo.md'), '# Smoke\n', 'utf8');
   for (const file of ['one.js', 'two.js', 'three.js', 'planned.js']) fs.writeFileSync(path.join(workspace, 'src', file), 'export default 0;\n', 'utf8');
   const command = ['exec', '--ephemeral', '--ignore-user-config', '--dangerously-bypass-hook-trust', '--sandbox', 'workspace-write', '--json', prompt];
   const result = childProcess.spawnSync('codex', command, {
@@ -134,20 +134,20 @@ function runMutationCase(root, codexHome) {
   const stubLog = path.join(workspace, 'gh-stub.log');
   const remote = path.join(workspace, '.remote.git');
   fs.mkdirSync(path.join(workspace, 'src'), { recursive: true });
-  fs.mkdirSync(path.join(workspace, 'tasks'), { recursive: true });
+  fs.mkdirSync(path.join(workspace, '.tasks'), { recursive: true });
   fs.mkdirSync(stubBin, { recursive: true });
   fs.writeFileSync(path.join(workspace, 'src', 'seed.js'), 'export default 0;\n', 'utf8');
-  fs.writeFileSync(path.join(workspace, 'tasks', 'todo.md'), '# Smoke\n', 'utf8');
+  fs.writeFileSync(path.join(workspace, '.tasks', 'todo.md'), '# Smoke\n', 'utf8');
   fs.writeFileSync(path.join(stubBin, 'gh'), '#!/usr/bin/env bash\nprintf \'%s\\n\' \"$*\" >> \"$PLANGATE_GH_STUB_LOG\"\n', { mode: 0o700 });
   childProcess.execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: workspace });
   childProcess.execFileSync('git', ['config', 'user.name', 'Plan Gate Smoke'], { cwd: workspace });
   childProcess.execFileSync('git', ['config', 'user.email', 'plan-gate-smoke@example.invalid'], { cwd: workspace });
-  childProcess.execFileSync('git', ['add', '-f', 'src/seed.js', 'tasks/todo.md'], { cwd: workspace });
+  childProcess.execFileSync('git', ['add', '-f', 'src/seed.js', '.tasks/todo.md'], { cwd: workspace });
   childProcess.execFileSync('git', ['commit', '-q', '-m', 'seed'], { cwd: workspace });
   childProcess.execFileSync('git', ['init', '--bare', '-q', remote], { cwd: workspace });
   childProcess.execFileSync('git', ['remote', 'add', 'origin', remote], { cwd: workspace });
 
-  const prompt = 'Run these actions in order and use each exact command or tool named. First run `git push origin main` as one shell call. Second run `gh pr create --fill` as a separate shell call. The second command will be blocked by a hook; after that denial, use apply_patch to add this exact unchecked item under a new exact ## Plan heading in tasks/todo.md: `- [ ] Create smoke PR; verify: inspect gh-stub.log (executor)`. Then retry the exact separate shell command `gh pr create --fill`. Do not use any other git or gh command. Finish only after the retry succeeds.';
+  const prompt = 'Run these actions in order and use each exact command or tool named. First run `git push origin main` as one shell call. Second run `gh pr create --fill` as a separate shell call. The second command will be blocked by a hook; after that denial, use apply_patch to add this exact unchecked item under a new exact ## Plan heading in .tasks/todo.md: `- [ ] Create smoke PR; verify: inspect gh-stub.log (executor)`. Then retry the exact separate shell command `gh pr create --fill`. Do not use any other git or gh command. Finish only after the retry succeeds.';
   const command = ['exec', '--ephemeral', '--ignore-user-config', '--dangerously-bypass-hook-trust', '--sandbox', 'workspace-write', '--json', prompt];
   const result = childProcess.spawnSync('codex', command, {
     cwd: workspace,
@@ -225,14 +225,14 @@ function main() {
         root,
         codexHome,
         'three-source-edits',
-        'Use apply_patch exactly three times, once each, to change src/one.js, src/two.js, and src/three.js from 0 to 1. Do not edit tasks/todo.md. After each patch, continue normally and finish.'
+        'Use apply_patch exactly three times, once each, to change src/one.js, src/two.js, and src/three.js from 0 to 1. Do not edit .tasks/todo.md. After each patch, continue normally and finish.'
       );
       if (!warningEvidence(source.eventFile, SCOPE_WARNING)) fail('three-source-edits did not record the exact nonblocking PlanGate warning');
       const planned = runCase(
         root,
         codexHome,
         'plan-plus-source',
-        'Use one apply_patch call to add this exact unchecked item under a new exact ## Plan heading in tasks/todo.md: - [ ] Update planned source; verify: inspect src/planned.js (executor). In that same apply_patch call, change src/planned.js from 0 to 1. Finish after that.'
+        'Use one apply_patch call to add this exact unchecked item under a new exact ## Plan heading in .tasks/todo.md: - [ ] Update planned source; verify: inspect src/planned.js (executor). In that same apply_patch call, change src/planned.js from 0 to 1. Finish after that.'
       );
       if (warningEvidence(planned.eventFile, SCOPE_WARNING)) fail('plan-plus-source unexpectedly recorded a PlanGate warning');
       runMutationCase(root, codexHome);

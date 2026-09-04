@@ -30,8 +30,8 @@
 #     skipDangerousModePermissionPrompt to true in ~/.claude/settings.json; leaving
 #     the variable unset is the opt-out.
 #   - the user's global git excludes file (whatever core.excludesfile already
-#     points to, or ~/.gitignore_global if unset) gets tasks/todo.md and
-#     tasks/lessons.md appended if missing, once per run regardless of target;
+#     points to, or ~/.gitignore_global if unset) gets .tasks/ appended if
+#     missing, once per run regardless of target;
 #     skipped if git isn't installed
 #   - a previously installed skill/agent whose repo source was removed is pruned
 #     on reinstall, tracked via a `.plan-and-track-manifest` in each managed dir;
@@ -585,7 +585,7 @@ upsert_toml_default() {
 }
 
 # Ensure the user's *global* git excludes file ignores the per-project
-# tasks/todo.md and tasks/lessons.md scratch files the plan-and-track and
+# .tasks/ scratch folder the plan-and-track and
 # capture-lesson skills create in whatever repo they run in (not just this
 # one, so this belongs in the global excludes file, not this repo's own
 # .gitignore). No-op if git isn't installed: gh has no gitignore concept of
@@ -613,7 +613,7 @@ install_global_gitignore() {
     echo >> "$target"
   fi
   local entry added=""
-  for entry in tasks/todo.md tasks/lessons.md; do
+  for entry in .tasks/; do
     grep -qxF "$entry" "$target" 2>/dev/null && continue
     echo "$entry" >> "$target"
     added="$added${added:+, }$entry"

@@ -299,7 +299,7 @@ function exactMatch(lines, needle, start) {
 }
 
 // Simulates only a single-file patch whose one Update File operation targets
-// the already snapshotted tasks/todo.md. Non-todo snapshots deliberately
+// the already snapshotted .tasks/todo.md. Non-todo snapshots deliberately
 // retain no plaintext, so a multi-file patch cannot be proved exact here and
 // fails open. Hunks apply in order and each old sequence must have exactly one
 // byte-for-byte line match after the prior hunk.
@@ -390,10 +390,10 @@ function validPlanItem(item) {
 }
 
 function currentPlanItems(c) {
-  const todo = absolutePath(c.cwd, 'tasks/todo.md');
+  const todo = absolutePath(c.cwd, '.tasks/todo.md');
   if (!todo) {
     try {
-      fs.lstatSync(path.join(c.cwd, 'tasks'));
+      fs.lstatSync(path.join(c.cwd, '.tasks'));
     } catch (err) {
       if (err && err.code === 'ENOENT') return [];
     }
@@ -639,11 +639,11 @@ function mutationThreshold() {
 }
 
 function isTodo(file) {
-  return /(^|\/)tasks\/todo\.md$/i.test(file.relative);
+  return /(^|\/)\.tasks\/todo\.md$/i.test(file.relative);
 }
 
 function isScopeExempt(file) {
-  return /(^|\/)tasks\/(?:todo|lessons)\.md$/i.test(file.relative);
+  return /(^|\/)\.tasks\/(?:todo|lessons)\.md$/i.test(file.relative);
 }
 
 function recordEvent(phase, input, c, message) {
@@ -665,7 +665,7 @@ function warning(message, input, c) {
 }
 
 function mutationMessage(prospective, threshold) {
-  return `[PlanGate] This command would bring this session to ${prospective} distinct outward git/gh mutations (push, PR create, PR merge), meeting the configured limit of ${threshold} without a plan. Add a valid new unchecked item under an exact \`## Plan\` heading in tasks/todo.md through apply_patch, including a verify clause and owner tag, then retry this command. (PLANGATE_MUTATION_THRESHOLD sets the mutation-count trigger, default 2.)`;
+  return `[PlanGate] This command would bring this session to ${prospective} distinct outward git/gh mutations (push, PR create, PR merge), meeting the configured limit of ${threshold} without a plan. Add a valid new unchecked item under an exact \`## Plan\` heading in .tasks/todo.md through apply_patch, including a verify clause and owner tag, then retry this command. (PLANGATE_MUTATION_THRESHOLD sets the mutation-count trigger, default 2.)`;
 }
 
 function attributionMessage(finding) {

@@ -274,7 +274,7 @@ It implements several independent gates in one file:
 
 ### Stamp gate
 
-Denies `Edit`/`Write`/`MultiEdit` to `tasks/todo.md` until a `plan-and-track`
+Denies `Edit`/`Write`/`MultiEdit` to `.tasks/todo.md` until a `plan-and-track`
 Skill invocation stamps the session. The Skill tool call writes the stamp.
 
 ### Scope gate
@@ -282,9 +282,9 @@ Skill invocation stamps the session. The Skill tool call writes the stamp.
 Once a session's distinct edited-file count reaches
 `PLANGATE_SCOPE_THRESHOLD` (default `3`) without a stamp, every further
 `Edit`/`Write`/`MultiEdit` is denied. This catches a prompt that skips planning
-and edits source directly without touching `tasks/todo.md`.
+and edits source directly without touching `.tasks/todo.md`.
 
-`tasks/todo.md`, `tasks/lessons.md`, and `.claude/settings*.json` are exempt
+`.tasks/todo.md`, `.tasks/lessons.md`, and `.claude/settings*.json` are exempt
 from the file count.
 
 ### Mutation gate
@@ -306,13 +306,13 @@ There is no subagent carve-out. A subagent's tool call shares its parent's
 
 ### Content lint
 
-Once a session is stamped, writes to `tasks/todo.md` are content-linted. A new
+Once a session is stamped, writes to `.tasks/todo.md` are content-linted. A new
 unchecked `## Plan` step must carry a trailing owner tag, and `(main)` needs a
 colon-separated reason. `PLANGATE_LINT_DISABLED=1` turns off only this lint.
 
 ### Migration-state deletion guard
 
-A stamped `tasks/todo.md` write that would delete an existing
+A stamped `.tasks/todo.md` write that would delete an existing
 `## Migration State` heading is denied once per session, gateguard-style. This
 is the durable block that `migration-discipline` keeps in a target project's
 todo file. The marker is written at deny time, so an intentional retry passes.
@@ -379,7 +379,7 @@ Denied kinds are not recorded, so a bare retry is denied again.
 
 It rejects symlinked and outside-cwd paths, while accepting relative or
 absolute paths whose canonical parent stays inside the cwd. It retains text
-only for `tasks/todo.md`, stores other paths and the SessionStart plan inventory
+only for `.tasks/todo.md`, stores other paths and the SessionStart plan inventory
 as hashes, and stops retaining source paths once it warns. Session-and-cwd
 scopes are retained so another session cannot prune a live baseline.
 

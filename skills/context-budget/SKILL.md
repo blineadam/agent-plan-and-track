@@ -110,7 +110,7 @@ Guidance:
   "don't optimize blindly" in reverse: a rule that merely looks obvious isn't
   automatically a no-op. Some rules exist because a model demonstrably
   violated them, and this repo records those cases, so check for a recorded
-  failure, a `tasks/lessons.md` entry, or a regression case before cutting;
+  failure, a `.tasks/lessons.md` entry, or a regression case before cutting;
   that evidence is what separates a load-bearing restatement from genuine
   dead weight.
 

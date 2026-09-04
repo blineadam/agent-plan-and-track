@@ -159,7 +159,7 @@ function summarize(id, strictness, metadata, events, workspace) {
       observable.push({ kind: 'plan', items: item.items || [] });
     }
   }
-  const todoPath = path.join(workspace, 'tasks', 'todo.md');
+  const todoPath = path.join(workspace, '.tasks', 'todo.md');
   let planArtifact = null;
   try {
     planArtifact = bounded(fs.readFileSync(todoPath, 'utf8'), MAX_PLAN_CHARS);

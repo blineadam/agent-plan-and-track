@@ -26,7 +26,7 @@
  *
  * Checks (heuristic: all WARN):
  *  - Complex session (>= EDIT_THRESHOLD edits) that never checkpointed to
- *    tasks/todo.md.
+ *    .tasks/todo.md.
  *  - Rationalization language in recent assistant text ("good enough", "should
  *    work", "didn't run", ...) → nudge to actually verify.
  *  - Agreement opener + self-blame in recent assistant text -> evidence-free
@@ -174,7 +174,7 @@ const RATIONALIZATION = [
   /\bcan'?t (?:verify|test)\b/i,
   /\bassuming (?:it|this|that) works\b/i,
 ];
-const TODO_RE = /tasks\/todo\.md$/;
+const TODO_RE = /(^|\/)\.tasks\/todo\.md$/;
 
 // Evidence-free capitulation: an agreement opener plus self-blame narration in
 // the same recent text window. Either alone is often genuine; the combo is the
@@ -257,7 +257,7 @@ function lastAssistantText(entries) {
 }
 
 // Full streaming pass over the whole transcript: session-wide edit count and
-// whether tasks/todo.md was ever checkpointed. Handles both the Claude JSONL
+// whether .tasks/todo.md was ever checkpointed. Handles both the Claude JSONL
 // and the Codex rollout shapes; the two record forms are disjoint, so one pass
 // covers either transcript. Must see the entire session, so it can't rely on a
 // bounded tail.
@@ -365,7 +365,7 @@ function main() {
   const warnings = [];
   if (edits >= editThreshold && !touchedTodo) {
     warnings.push(
-      `Complex session (${edits} edits) but tasks/todo.md was never updated: checkpoint your plan/state before finishing (plan-and-track).`
+      `Complex session (${edits} edits) but .tasks/todo.md was never updated: checkpoint your plan/state before finishing (plan-and-track).`
     );
   }
   if (rationalized) {

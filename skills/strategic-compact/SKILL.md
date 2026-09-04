@@ -26,7 +26,7 @@ output (the plan, the milestone) and sheds only the bulk you're done with.
 | Phase transition | Compact? | Why |
 | --- | --- | --- |
 | Research → planning | Yes | Research context is bulky; the plan is the distilled output |
-| Planning → implementation | Yes | Plan lives in `tasks/todo.md`; free the window for code |
+| Planning → implementation | Yes | Plan lives in `.tasks/todo.md`; free the window for code |
 | Implementation → testing | Maybe | Keep if tests reference recent code; compact if focus shifts |
 | Debugging → next feature | Yes | Debug traces pollute context for unrelated work |
 | Mid-implementation | **No** | Losing variable names, paths, and partial state is costly |
@@ -37,17 +37,17 @@ output (the plan, the milestone) and sheds only the bulk you're done with.
 | Persists | Lost |
 | --- | --- |
 | Instruction files (CLAUDE.md / AGENTS.md / copilot-instructions.md) | Intermediate reasoning and analysis |
-| `tasks/todo.md` and `tasks/lessons.md` on disk | File contents you previously read |
+| `.tasks/todo.md` and `.tasks/lessons.md` on disk | File contents you previously read |
 | Git state (commits, branches) | Tool-call history |
 | Anything written to a file | Preferences stated only in chat |
 
 The rule follows from the table: **write before you compact.** Checkpoint state
-to `tasks/todo.md` (and capture any correction via `capture-lesson`) first, then
+to `.tasks/todo.md` (and capture any correction via `capture-lesson`) first, then
 compact. Nothing important should live only in the conversation.
 
 ## Best practices
 
-1. **Compact after planning**: once the plan is in `tasks/todo.md`, start fresh for the build.
+1. **Compact after planning**: once the plan is in `.tasks/todo.md`, start fresh for the build.
 2. **Compact after debugging**: clear error-resolution context before moving on.
 3. **Don't compact mid-implementation**: preserve context for related edits.
 4. **You decide *if***: a suggestion tells you *when*; the call is yours.

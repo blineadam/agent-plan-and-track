@@ -40,8 +40,8 @@ checkable against a tool-call trace.
 {
   "target": "~/.claude/skills/plan-and-track/SKILL.md",
   "steps": [
-    {"id": "read-lessons", "expect": "Reads tasks/lessons.md before planning", "ordered_before": ["write-plan"]},
-    {"id": "write-plan",   "expect": "Writes a checklist plan to tasks/todo.md"},
+    {"id": "read-lessons", "expect": "Reads .tasks/lessons.md before planning", "ordered_before": ["write-plan"]},
+    {"id": "write-plan",   "expect": "Writes a checklist plan to .tasks/todo.md"},
     {"id": "verify",       "expect": "Runs tests/commands to verify before claiming done"}
   ]
 }

@@ -114,6 +114,101 @@
       },
       "expect": "warn",
       "expectContains": "I'll"
+    },
+    {
+      "id": "checkpoint_dot_tasks_todo_allowed",
+      "input": {},
+      "transcript": [
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              { "type": "tool_use", "name": "Edit", "input": { "file_path": "/repo/src/a.js" } }
+            ]
+          }
+        },
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              { "type": "tool_use", "name": "Edit", "input": { "file_path": "/repo/src/b.js" } }
+            ]
+          }
+        },
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              { "type": "tool_use", "name": "Edit", "input": { "file_path": "/repo/.tasks/todo.md" } }
+            ]
+          }
+        }
+      ],
+      "expect": "allow"
+    },
+    {
+      "id": "checkpoint_legacy_tasks_todo_warns",
+      "input": {},
+      "transcript": [
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              { "type": "tool_use", "name": "Edit", "input": { "file_path": "/repo/src/a.js" } }
+            ]
+          }
+        },
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              { "type": "tool_use", "name": "Edit", "input": { "file_path": "/repo/src/b.js" } }
+            ]
+          }
+        },
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              { "type": "tool_use", "name": "Edit", "input": { "file_path": "/repo/tasks/todo.md" } }
+            ]
+          }
+        }
+      ],
+      "expect": "warn",
+      "expectContains": ".tasks/todo.md was never updated"
+    },
+    {
+      "id": "checkpoint_not_dot_tasks_suffix_warns",
+      "input": {},
+      "transcript": [
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              { "type": "tool_use", "name": "Edit", "input": { "file_path": "/repo/src/a.js" } }
+            ]
+          }
+        },
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              { "type": "tool_use", "name": "Edit", "input": { "file_path": "/repo/src/b.js" } }
+            ]
+          }
+        },
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              { "type": "tool_use", "name": "Edit", "input": { "file_path": "/repo/not.tasks/todo.md" } }
+            ]
+          }
+        }
+      ],
+      "expect": "warn",
+      "expectContains": ".tasks/todo.md was never updated"
     }
   ]
 }

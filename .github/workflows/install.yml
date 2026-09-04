@@ -32,6 +32,11 @@ jobs:
           echo "$out"
           echo "$out" | grep -q 'digest hook     -- already present' \
             || { echo "FAIL: digest hook not detected as already present on re-run"; exit 1; }
+          echo "$out" | grep -q 'entries         -- already present' \
+            || { echo "FAIL: global excludes entry not detected as already present on re-run"; exit 1; }
+          excludes="$(git config --global --path core.excludesfile)"
+          [ "$(cat "$excludes")" = ".tasks/" ] \
+            || { echo "FAIL: global excludes file is not exactly '.tasks/':"; cat "$excludes"; exit 1; }
       - name: Assert layout, defaults, and hook wiring
         run: |
           set -euo pipefail
@@ -870,6 +875,14 @@ jobs:
           Write-Host $out
           if ($out -notmatch 'digest hook\s+-- already present') {
             throw "digest hook not detected as already present on re-run"
+          }
+          if ($out -notmatch 'entries\s+-- already present') {
+            throw "global excludes entry not detected as already present on re-run"
+          }
+          $excludes = (git config --global --path core.excludesfile)
+          $lines = @(Get-Content -Path $excludes)
+          if ($lines.Count -ne 1 -or $lines[0] -ne '.tasks/') {
+            throw "global excludes file is not exactly '.tasks/': $($lines -join '|')"
           }
       - name: Assert layout, defaults, and hook wiring
         shell: powershell
