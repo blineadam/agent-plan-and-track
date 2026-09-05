@@ -26,6 +26,10 @@
       install. PT_KEEP_MODEL=1 keeps an existing per-machine model,
       output-style, or artifact choice; a Copilot settings.json that isn't
       plain JSON is left alone.
+    - the Claude attribution block (attribution.commit="", attribution.pr="",
+      attribution.sessionUrl=false) is repo-owned and OVERWRITTEN on every
+      install, so no AI trailer, PR text, or session link is added;
+      PT_KEEP_MODEL does not cover it.
     - a bare install never changes Claude's permission posture.
       PT_BYPASS_PERMISSIONS=1 sets permissions.defaultMode to bypassPermissions and
       skipDangerousModePermissionPrompt to true in ~/.claude/settings.json; leaving
