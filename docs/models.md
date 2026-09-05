@@ -103,9 +103,10 @@ handoff or a positive bounded count when prior turns are required.
 ### Claude
 
 The digest is injected every turn through a `UserPromptSubmit` hook, so edits
-to `core-rules.md` take effect immediately. Set
-`"includeCoAuthoredBy": false` in `~/.claude/settings.json` to drop the
-co-author trailer.
+to `core-rules.md` take effect immediately. The installer writes the
+`attribution` block (empty commit and PR text, `sessionUrl: false`), so no
+trailer, PR text, or session link is added; `includeCoAuthoredBy` is
+deprecated and ignored once that block is set.
 
 ### Copilot
 

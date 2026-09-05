@@ -61,6 +61,9 @@ jobs:
           [ "$(jq -r .outputStyle "$HOME/.claude/settings.json")" = "Concise" ]
           [ "$(jq -r .switchModelsOnFlag "$HOME/.claude/settings.json")" = "true" ]
           [ "$(jq -r .enableArtifact "$HOME/.claude/settings.json")" = "false" ]
+          [ "$(jq -r .attribution.commit "$HOME/.claude/settings.json")" = "" ]
+          [ "$(jq -r .attribution.pr "$HOME/.claude/settings.json")" = "" ]
+          [ "$(jq -r .attribution.sessionUrl "$HOME/.claude/settings.json")" = "false" ]
           assert_bare_permission_posture() {
             local h="$1" dm skip plugin
             local s="$h/.claude/settings.json"
@@ -911,6 +914,9 @@ jobs:
           if ($s.outputStyle -ne 'Concise') { throw "outputStyle != Concise" }
           if ($s.switchModelsOnFlag -ne $true) { throw "switchModelsOnFlag != true" }
           if ($s.enableArtifact -ne $false) { throw "enableArtifact != false" }
+          if ($s.attribution.commit -ne '') { throw "attribution.commit != ''" }
+          if ($s.attribution.pr -ne '') { throw "attribution.pr != ''" }
+          if ($s.attribution.sessionUrl -ne $false) { throw "attribution.sessionUrl != false" }
           function Assert-BarePermissionPosture($h) {
             $j = Get-Content -Raw (Join-Path $h '.claude\settings.json') | ConvertFrom-Json
             $dm = $null

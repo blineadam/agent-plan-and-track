@@ -717,6 +717,13 @@ install_claude() {
   # own frontend-design skill, and the frontend-design@claude-plugins-official
   # plugin bundles a second skill of the same name, a routing collision.
   set_json_path "$settings" '["enabledPlugins","frontend-design@claude-plugins-official"]' false "plugin disable"
+  # Repo-owned attribution block, re-asserted on every install: this repo's
+  # no-AI-self-attribution rule made mechanical, since the deprecated
+  # includeCoAuthoredBy covers only the co-author trailer and PR text, not the
+  # session link. See https://code.claude.com/docs/en/settings-reference#attribution.
+  set_json_path "$settings" '["attribution","commit"]' '""' "attribution"
+  set_json_path "$settings" '["attribution","pr"]' '""' "attribution"
+  set_json_path "$settings" '["attribution","sessionUrl"]' false "attribution"
   # Bypass posture is opt-in only (PT_BYPASS_PERMISSIONS=1): a bare install must
   # never silently stop a stranger's sessions from asking before tool calls.
   if [ "${PT_BYPASS_PERMISSIONS:-}" = "1" ]; then

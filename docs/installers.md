@@ -232,3 +232,10 @@ Separately, `enabledPlugins["frontend-design@claude-plugins-official"]` is set
 to `false` on every install. This repo ships its own `frontend-design` skill,
 and the plugin bundles a second skill with the same name, causing a routing
 collision.
+
+Also ungated: `attribution.commit`, `attribution.pr`, and
+`attribution.sessionUrl` are set to `""`, `""`, and `false` on every install,
+per the [settings reference](https://code.claude.com/docs/en/settings-reference#attribution).
+This is the no-AI-self-attribution rule made mechanical, since the deprecated
+`includeCoAuthoredBy` covers only the co-author trailer and PR text, not the
+claude.ai session link a Remote Control or cloud session adds.
