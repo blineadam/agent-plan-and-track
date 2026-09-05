@@ -199,14 +199,18 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   set-if-absent, unless the target write is genuinely unsafe to clobber
   (e.g. a config file a JSON tool can't round-trip losslessly).
 - A new Claude managed default (`model`, `switchModelsOnFlag`,
-  `outputStyle`, `enableArtifact`, the plugin disable) is preceded by a
-  comment following the existing "Repo-owned `<name>`, re-asserted on every
-  install" template, adding the `PT_KEEP_MODEL=1` parenthetical when the
-  setting is gated by it, plus rationale citing an external doc when the
-  key's semantics aren't obvious from its name alone. Flag a new
+  `outputStyle`, `enableArtifact`, the plugin disable, the
+  `attribution.commit`/`attribution.pr`/`attribution.sessionUrl` block) is
+  preceded by a comment following the existing "Repo-owned `<name>`,
+  re-asserted on every install" template, adding the `PT_KEEP_MODEL=1`
+  parenthetical when the setting is gated by it (the plugin disable and the
+  attribution block are not: both are ungated, overwritten on every install
+  regardless), plus rationale citing an external doc when the key's
+  semantics aren't obvious from its name alone. Flag a new
   `set_json_default`/`Set-JsonDefault`/`set_json_path`/`Set-JsonPath` call
-  for a managed default with no such comment (the plugin disable itself is
-  written via the path helpers, not the scalar-default ones).
+  for a managed default with no such comment (the plugin disable and
+  attribution block are written via the path helpers, not the
+  scalar-default ones).
 - `install.sh` (bash + jq) and `install.ps1` (PowerShell, jq-free) are kept
   in lockstep, each with a parity note in its header listing the managed
   surface. Flag a PR that changes one installer's managed surface (a skill,

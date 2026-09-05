@@ -234,7 +234,7 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   covering ground an existing entry already settled.
 - A decision about how an existing component behaves belongs in that
   component's own header, not here; a correction about how to work belongs
-  in the gitignored `tasks/lessons.md`, not this checked-in file. Flag an
+  in the gitignored `.tasks/lessons.md`, not this checked-in file. Flag an
   entry that's actually one of those two miscategorized into
   `docs/out-of-scope.md`.
 
