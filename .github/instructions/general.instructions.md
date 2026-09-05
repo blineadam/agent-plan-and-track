@@ -30,10 +30,11 @@ just a suggestion.
 ## Git and PR hygiene
 
 - No AI self-attribution in commits or PRs: no `Co-Authored-By:` trailer
-  naming an AI/tool, no "Generated with ..." footer, no other AI/tool
-  self-reference in commit messages, PR titles, or PR bodies.
+  naming an AI/tool, no "Generated with ..." footer, no `Claude-Session:`
+  trailer or claude.ai session link, no other AI/tool self-reference in
+  commit messages, PR titles, or PR bodies.
 - Flag a commit message, PR title/description, code comment, or release
-  note that names `tasks/todo.md`, `tasks/lessons.md`, or a todo.md batch
+  note that names `.tasks/todo.md`, `.tasks/lessons.md`, or a todo.md batch
   number (e.g. "Batch 12"). Those files are gitignored and local-only, so
   the reference is a dead pointer for anyone without the author's working
   tree; the change should be described on its own terms instead.
