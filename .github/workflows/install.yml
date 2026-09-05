@@ -61,6 +61,9 @@ jobs:
           [ "$(jq -r .outputStyle "$HOME/.claude/settings.json")" = "Concise" ]
           [ "$(jq -r .switchModelsOnFlag "$HOME/.claude/settings.json")" = "true" ]
           [ "$(jq -r .enableArtifact "$HOME/.claude/settings.json")" = "false" ]
+          [ "$(jq -r .attribution.commit "$HOME/.claude/settings.json")" = "" ]
+          [ "$(jq -r .attribution.pr "$HOME/.claude/settings.json")" = "" ]
+          [ "$(jq -r .attribution.sessionUrl "$HOME/.claude/settings.json")" = "false" ]
           assert_bare_permission_posture() {
             local h="$1" dm skip plugin
             local s="$h/.claude/settings.json"
@@ -294,6 +297,22 @@ jobs:
           [ "$(jq -r .enableArtifact "$s")" = "false" ] \
             || { echo "FAIL: bare install did not re-assert the enableArtifact default"; exit 1; }
           echo "OK: PT_KEEP_MODEL=1 preserves model, outputStyle, and enableArtifact; a bare install re-asserts all three"
+      - name: attribution block overwrites existing values, even under PT_KEEP_MODEL
+        run: |
+          set -euo pipefail
+          # Seed conflicting values, then install with PT_KEEP_MODEL=1: the block
+          # is not covered by that opt-out, so all three must still be replaced.
+          export HOME="$RUNNER_TEMP/scratch-home-attribution"; mkdir -p "$HOME/.claude"
+          printf '%s' '{"attribution":{"commit":"Generated with AI","pr":"Made by a bot","sessionUrl":true}}' > "$HOME/.claude/settings.json"
+          PT_KEEP_MODEL=1 ./install.sh claude >/dev/null
+          s="$HOME/.claude/settings.json"
+          [ "$(jq -r .attribution.commit "$s")" = "" ] \
+            || { echo "FAIL: install left an existing attribution.commit in place"; exit 1; }
+          [ "$(jq -r .attribution.pr "$s")" = "" ] \
+            || { echo "FAIL: install left an existing attribution.pr in place"; exit 1; }
+          [ "$(jq -r .attribution.sessionUrl "$s")" = "false" ] \
+            || { echo "FAIL: install left attribution.sessionUrl=true in place"; exit 1; }
+          echo "OK: the attribution block replaces existing values under PT_KEEP_MODEL=1"
       - name: jq missing offers to install (stubbed apt-get, no network)
         run: |
           set -euo pipefail
@@ -911,6 +930,9 @@ jobs:
           if ($s.outputStyle -ne 'Concise') { throw "outputStyle != Concise" }
           if ($s.switchModelsOnFlag -ne $true) { throw "switchModelsOnFlag != true" }
           if ($s.enableArtifact -ne $false) { throw "enableArtifact != false" }
+          if ($s.attribution.commit -ne '') { throw "attribution.commit != ''" }
+          if ($s.attribution.pr -ne '') { throw "attribution.pr != ''" }
+          if ($s.attribution.sessionUrl -ne $false) { throw "attribution.sessionUrl != false" }
           function Assert-BarePermissionPosture($h) {
             $j = Get-Content -Raw (Join-Path $h '.claude\settings.json') | ConvertFrom-Json
             $dm = $null
@@ -1174,6 +1196,23 @@ jobs:
           if ($s.outputStyle -ne 'Concise') { throw "bare install did not re-assert the outputStyle default" }
           if ($s.enableArtifact -ne $false) { throw "bare install did not re-assert the enableArtifact default" }
           Write-Host "OK: PT_KEEP_MODEL=1 preserves model, outputStyle, and enableArtifact; a bare install re-asserts all three"
+      - name: attribution block overwrites existing values, even under PT_KEEP_MODEL
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Seed conflicting values, then install with PT_KEEP_MODEL=1: the block
+          # is not covered by that opt-out, so all three must still be replaced.
+          $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-attribution"
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
+          Set-Content -Path "$env:USERPROFILE\.claude\settings.json" -Value '{"attribution":{"commit":"Generated with AI","pr":"Made by a bot","sessionUrl":true}}'
+          $env:PT_KEEP_MODEL = '1'
+          .\install.ps1 claude | Out-Null
+          Remove-Item Env:PT_KEEP_MODEL -ErrorAction SilentlyContinue
+          $s = Get-Content -Raw "$env:USERPROFILE\.claude\settings.json" | ConvertFrom-Json
+          if ($s.attribution.commit -ne '') { throw "install left an existing attribution.commit in place" }
+          if ($s.attribution.pr -ne '') { throw "install left an existing attribution.pr in place" }
+          if ($s.attribution.sessionUrl -ne $false) { throw "install left attribution.sessionUrl=true in place" }
+          Write-Host "OK: the attribution block replaces existing values under PT_KEEP_MODEL=1"
       - name: Shared Node scripts run
         shell: powershell
         run: |

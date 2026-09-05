@@ -26,6 +26,10 @@
       install. PT_KEEP_MODEL=1 keeps an existing per-machine model,
       output-style, or artifact choice; a Copilot settings.json that isn't
       plain JSON is left alone.
+    - the Claude attribution block (attribution.commit="", attribution.pr="",
+      attribution.sessionUrl=false) is repo-owned and OVERWRITTEN on every
+      install, so no AI trailer, PR text, or session link is added;
+      PT_KEEP_MODEL does not cover it.
     - a bare install never changes Claude's permission posture.
       PT_BYPASS_PERMISSIONS=1 sets permissions.defaultMode to bypassPermissions and
       skipDangerousModePermissionPrompt to true in ~/.claude/settings.json; leaving
@@ -779,6 +783,13 @@ function Install-Claude {
   # own frontend-design skill, and the frontend-design@claude-plugins-official
   # plugin bundles a second skill of the same name, a routing collision.
   Set-JsonPath $settings @('enabledPlugins', 'frontend-design@claude-plugins-official') $false 'plugin disable'
+  # Repo-owned attribution block, re-asserted on every install: this repo's
+  # no-AI-self-attribution rule made mechanical, since the deprecated
+  # includeCoAuthoredBy covers only the co-author trailer and PR text, not the
+  # session link. See https://code.claude.com/docs/en/settings-reference#attribution.
+  Set-JsonPath $settings @('attribution', 'commit') '' 'attribution'
+  Set-JsonPath $settings @('attribution', 'pr') '' 'attribution'
+  Set-JsonPath $settings @('attribution', 'sessionUrl') $false 'attribution'
   # Bypass posture is opt-in only (PT_BYPASS_PERMISSIONS=1): a bare install must
   # never silently stop a stranger's sessions from asking before tool calls.
   if ($env:PT_BYPASS_PERMISSIONS -eq '1') {
