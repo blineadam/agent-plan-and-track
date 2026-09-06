@@ -362,7 +362,8 @@ toml_escape() {
 codex_model() {
   local source_model="$1"
   case "$source_model" in
-    fable|opus) printf '%s' "gpt-5.6-sol" ;;
+    fable)      printf '%s' "gpt-6-astra" ;;
+    opus)       printf '%s' "gpt-5.6-sol" ;;
     sonnet)     printf '%s' "gpt-5.6-terra" ;;
     haiku)      printf '%s' "gpt-5.6-luna" ;;
     *)

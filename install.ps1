@@ -374,7 +374,7 @@ function ConvertTo-TomlEscaped($s) {
 # inheriting the parent session's model.
 function ConvertTo-CodexModel($sourceModel) {
   switch ($sourceModel) {
-    'fable' { return 'gpt-5.6-sol' }
+    'fable' { return 'gpt-6-astra' }
     'opus' { return 'gpt-5.6-sol' }
     'sonnet' { return 'gpt-5.6-terra' }
     'haiku' { return 'gpt-5.6-luna' }

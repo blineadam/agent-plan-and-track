@@ -65,13 +65,17 @@ current compatibility mapping:
 
 | Source tier | Codex model |
 | --- | --- |
-| Fable / Opus | `gpt-5.6-sol` |
+| Fable | `gpt-6-astra` |
+| Opus | `gpt-5.6-sol` |
 | Sonnet | `gpt-5.6-terra` |
 | Haiku | `gpt-5.6-luna` |
 
-The rendered Codex profile carries the assigned reasoning effort and sandbox
-mode. Copilot also gets the same eight agents, but only tool permissions carry
-over there, not the model tier or effort.
+The rendered TOML pins these slugs literally, and OpenAI's subagent reference
+documents no fallback for a model the account cannot use, so an account
+without `gpt-6-astra` access needs the `fable` line of the mapping changed
+and a reinstall. The rendered Codex profile carries the assigned reasoning
+effort and sandbox mode. Copilot also gets the same eight agents, but only
+tool permissions carry over there, not the model tier or effort.
 
 ### Invoking agents
 
