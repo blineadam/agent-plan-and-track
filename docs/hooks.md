@@ -302,7 +302,11 @@ gateguard's once-per-file gate, a bare retry never passes. Only the
 `plan-and-track` stamp unlocks the session.
 
 There is no subagent carve-out. A subagent's tool call shares its parent's
-`session_id`, so the same stamp check covers delegated writes.
+`session_id`, so the same stamp check covers delegated writes. A deny inside a
+subagent (the same four-field subagent test gateguard uses) adds a line telling it to
+stop and report the missing stamp to its caller if it has no Skill tool, rather
+than only inviting it to invoke one. This is worded that way because a 2026-09-04 executor, denied
+without that line, wrote through a Bash heredoc instead of stopping.
 
 ### Content lint
 

@@ -26,7 +26,11 @@
  * as its parent (verified empirically), so the stamp check resolves to the
  * same file either way. Exempting subagents (gateguard's precedent) would
  * let the main session dodge the gate entirely by delegating the todo.md
- * write to an executor/mechanic before ever invoking the Skill.
+ * write to an executor/mechanic before ever invoking the Skill. Most roster
+ * tiers have no Skill tool, though, so a deny inside a subagent (the same
+ * four-field isSubagent() test gateguard uses) adds a line telling it to stop and
+ * report the missing stamp to its caller rather than route around the gate,
+ * instead of only inviting it to invoke a tool it may not have.
  *
  * FAIL OPEN everywhere else: malformed stdin exits 0, and if the state dir
  * can't be created the edit is ALLOWED with a stderr note, since the Skill
@@ -702,25 +706,52 @@ function stepTagViolation(joined) {
 
 // --- Messages ---
 
-function gateMsg() {
+// Same four-field subagent test as gateguard.js's isSubagent(), copied per
+// script by house style. agent_type alone is deliberately not consulted: a
+// whole session launched with --agent carries it on the main thread too.
+function isSubagent(input) {
+  const ids = [input.agent_id, input.agentId, input.parent_tool_use_id, input.parentToolUseId];
+  return ids.some((v) => typeof v === 'string' && v.trim());
+}
+
+// Returns '' on the main thread. Inside a subagent, most roster tiers have
+// no Skill tool, so the base message's "invoke the Skill" instruction is
+// unfollowable there; this line tells the subagent to stop and report to
+// its caller instead of routing around the gate.
+function subagentLine(input) {
+  if (!input || !isSubagent(input)) return '';
+  const agentType = input.agent_type || 'unknown';
+  return `This call runs inside subagent \`${agentType}\`. If you have no Skill tool, stop and report to your caller that this session has no plan-and-track stamp, so the caller can invoke the skill and resume you. Do not route around this gate with another tool (a Bash heredoc, a script) or an env override.`;
+}
+
+function gateMsg(input) {
   return [
     '[PlanGate] Writes to .tasks/todo.md are gated: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this edit.',
+    subagentLine(input),
     '(PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
-function scopeMsg(threshold) {
+function scopeMsg(threshold, input) {
   return [
     `[PlanGate] This session has touched ${threshold} distinct files without a plan: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this edit.`,
+    subagentLine(input),
     '(PLANGATE_SCOPE_THRESHOLD sets the file-count trigger, default 3; PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
-function mutationMsg(threshold) {
+function mutationMsg(threshold, input) {
   return [
     `[PlanGate] This command would bring this session to ${threshold} distinct outward git/gh mutations (push, PR create, PR merge) without a plan: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this command.`,
+    subagentLine(input),
     '(PLANGATE_MUTATION_THRESHOLD sets the mutation-count trigger, default 2; PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function lintMsg(offenders) {
@@ -968,7 +999,7 @@ function main() {
       const wouldBeCount = distinctMutationCount(input.session_id, input) + newKinds.length;
 
       if (wouldBeCount >= threshold) {
-        emitGateDecision(mutationMsg(threshold));
+        emitGateDecision(mutationMsg(threshold, input));
         // A real deny must not record any new kind (it would inflate the
         // count on retry, defeating deny-until-stamped). PLANGATE_WARN=1
         // lets the call proceed, so it falls through and records like any
@@ -1015,7 +1046,7 @@ function main() {
       process.stderr.write('[PlanGate] state dir could not be created; allowing the edit.\n');
       process.exit(0);
     }
-    emitGateDecision(gateMsg());
+    emitGateDecision(gateMsg(input));
     process.exit(0);
   }
 
@@ -1030,7 +1061,7 @@ function main() {
     const wouldBeCount = alreadyCounted ? distinctFileCount(input.session_id, input) : distinctFileCount(input.session_id, input) + 1;
 
     if (wouldBeCount >= threshold) {
-      emitGateDecision(scopeMsg(threshold));
+      emitGateDecision(scopeMsg(threshold, input));
       // A real deny must not record the marker (it would inflate the count
       // on retry). PLANGATE_WARN=1 lets the edit proceed, so it falls
       // through and gets the same marker as any other allowed edit.

@@ -22,6 +22,11 @@
     { "id": "non-attribution-main-reason-allowed", "expect": "silent" },
     { "id": "executor-tag-unaffected-by-attribution-guard", "expect": "silent" },
     { "id": "lint-disabled-allows-attribution-case", "expect": "silent" },
-    { "id": "continuation-line-attribution-denied", "expect": "deny" }
+    { "id": "continuation-line-attribution-denied", "expect": "deny" },
+    { "id": "subagent-scope-deny-names-caller", "expect": "deny" },
+    { "id": "subagent-mutation-deny-names-caller", "expect": "deny" },
+    { "id": "main-thread-deny-has-no-subagent-line", "expect": "deny" },
+    { "id": "subagent-todo-deny-alt-id-field-names-caller", "expect": "deny" },
+    { "id": "agent-type-only-is-main-thread", "expect": "deny" }
   ]
 }
