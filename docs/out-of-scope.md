@@ -124,13 +124,17 @@ The instruction channels that do reach a reviewer are already owned: `.github/in
 
 ## attention-span's scanning format and output style stay unadopted
 
-Reviewed 2026-09-06 against [alexgreensh/attention-span](https://github.com/alexgreensh/attention-span), which ships three Claude Code output styles built around answer-first, ADHD-friendly delivery. Two of its ideas were adopted as rule bullets, brevity-trims-elaboration and deliverable-purity, and are credited in `AGENTS.md`. The rest is recorded here because most of the project restates rules this repo already carries, and the parts that do not conflict with rules it carries deliberately.
+Reviewed 2026-09-06 against [alexgreensh/attention-span](https://github.com/alexgreensh/attention-span), which ships three Claude Code output styles built around answer-first, ADHD-friendly delivery. Two of its ideas were adopted as rule bullets, compression-targets-elaboration and artifact-requests-get-the-artifact-alone, and are credited in `AGENTS.md`. The rest is recorded here because most of the project restates rules this repo already carries, and the parts that do not conflict with rules it carries deliberately.
 
 Four things were declined:
 
 - The scanning format itself: `→` markers as standalone paragraphs, and bolding chosen so that reading only the bold text yields the whole answer. This is the mechanism the project's measured gains rest on, so declining it means declining most of its value. It contradicts the writing-voice rule's ban on lists and bold-lead bullets for a one-or-two-concept answer, and the be-skimmable rule's preference for plain prose over dense bullets. Adopting it is a change to those rules, not an addition alongside them.
 - Rundown's status board, which tags rows with checkbox and traffic-light emoji. The writing-voice rule bans emoji everywhere, including tables and docs.
 - Replacing the installed `outputStyle: Concise` with one of the three styles. Concise is built into Claude Code, `install.sh` already asserts it as a managed default, and it covers answer-first and cut-the-narration on its own. Swapping it in would import the format conflict above and add a per-harness file the installers would then have to manage.
-- A third candidate bullet, placing a blocking question last with nothing after it. The owner chose the two adopted bullets over all three, on the ground that the action-first rule already requires surfacing what needs the user once at the end, so this one would add placement only. The digest had roughly 1,000 characters of headroom left after the two adopted bullets, against a 10,000-character inline-persistence ceiling that a previous trim already had to claw back under.
+- A third candidate bullet, placing a blocking question last with nothing after it. Presented with the digest measurements for both options, the owner asked:
+
+> what do you suggest given the size and need 1+2 or 1+2+3
+
+and then approved the two-bullet recommendation by instructing that it be implemented. The recommendation was this session's, not a preference the owner stated: the action-first rule already requires surfacing what needs the user once at the end, so a third bullet would add placement only, and the digest had roughly 1,000 characters of headroom left against a 10,000-character inline-persistence ceiling that a previous trim already had to claw back under.
 
 What would reopen this: a decision to relax the writing-voice rule's bold and list constraints, which is the real blocker on the format, or evidence that blocking-question placement is a recurring problem in practice, in which case it belongs in `rules/agent-guidelines.md` only, where there is no character ceiling.
