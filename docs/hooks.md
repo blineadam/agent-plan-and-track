@@ -303,7 +303,7 @@ gateguard's once-per-file gate, a bare retry never passes. Only the
 
 There is no subagent carve-out. A subagent's tool call shares its parent's
 `session_id`, so the same stamp check covers delegated writes. A deny inside a
-subagent (detected by `agent_id` in the hook payload) adds a line telling it to
+subagent (the same four-field subagent test gateguard uses) adds a line telling it to
 stop and report the missing stamp to its caller if it has no Skill tool, rather
 than only inviting it to invoke one. This is worded that way because a 2026-09-04 executor, denied
 without that line, wrote through a Bash heredoc instead of stopping.

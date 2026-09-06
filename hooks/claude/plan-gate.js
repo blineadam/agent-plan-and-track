@@ -27,8 +27,8 @@
  * same file either way. Exempting subagents (gateguard's precedent) would
  * let the main session dodge the gate entirely by delegating the todo.md
  * write to an executor/mechanic before ever invoking the Skill. Most roster
- * tiers have no Skill tool, though, so a deny inside a subagent (detected
- * via `agent_id` in the hook payload) adds a line telling it to stop and
+ * tiers have no Skill tool, though, so a deny inside a subagent (the same
+ * four-field isSubagent() test gateguard uses) adds a line telling it to stop and
  * report the missing stamp to its caller rather than route around the gate,
  * instead of only inviting it to invoke a tool it may not have.
  *
@@ -706,13 +706,20 @@ function stepTagViolation(joined) {
 
 // --- Messages ---
 
-// Returns '' on the main thread (no agent_id in the hook payload). Inside a
-// subagent, most roster tiers have no Skill tool, so the base message's
-// "invoke the Skill" instruction is unfollowable there; this line tells the
-// subagent to stop and report to its caller instead of routing around the
-// gate.
+// Same four-field subagent test as gateguard.js's isSubagent(), copied per
+// script by house style. agent_type alone is deliberately not consulted: a
+// whole session launched with --agent carries it on the main thread too.
+function isSubagent(input) {
+  const ids = [input.agent_id, input.agentId, input.parent_tool_use_id, input.parentToolUseId];
+  return ids.some((v) => typeof v === 'string' && v.trim());
+}
+
+// Returns '' on the main thread. Inside a subagent, most roster tiers have
+// no Skill tool, so the base message's "invoke the Skill" instruction is
+// unfollowable there; this line tells the subagent to stop and report to
+// its caller instead of routing around the gate.
 function subagentLine(input) {
-  if (!input || !input.agent_id) return '';
+  if (!input || !isSubagent(input)) return '';
   const agentType = input.agent_type || 'unknown';
   return `This call runs inside subagent \`${agentType}\`. If you have no Skill tool, stop and report to your caller that this session has no plan-and-track stamp, so the caller can invoke the skill and resume you. Do not route around this gate with another tool (a Bash heredoc, a script) or an env override.`;
 }

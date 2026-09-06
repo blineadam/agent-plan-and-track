@@ -437,6 +437,36 @@ async function mainThreadDenyHasNoSubagentLine() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+// The todo gate (gateMsg) through the alternate `agentId` spelling, one of
+// the four fields the subagent test accepts.
+async function subagentTodoDenyAltIdFieldNamesCaller() {
+  const f = fixture();
+  const session = 'sess-subagent-todo';
+  const event = writeEvent(session, todoPath(f.root), '# Plan\n');
+  event.agentId = 'a1';
+  event.agent_type = 'mechanic';
+  const reason = denyReason(run(event, f.env));
+  assert.match(reason, /Writes to \.tasks\/todo\.md are gated/);
+  assert.match(reason, /stop and report to your caller/);
+  assert.match(reason, /mechanic/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// agent_type alone is set for a whole session launched with --agent, which
+// is main-thread: no id field, no subagent line.
+async function agentTypeOnlyIsMainThread() {
+  const f = fixture();
+  const session = 'sess-agent-type-only';
+  assert.strictEqual(run(writeEvent(session, path.join(f.root, 'a.js'), 'x'), f.env), '');
+  assert.strictEqual(run(writeEvent(session, path.join(f.root, 'b.js'), 'x'), f.env), '');
+  const event = writeEvent(session, path.join(f.root, 'c.js'), 'x');
+  event.agent_type = 'executor';
+  const reason = denyReason(run(event, f.env));
+  assert.match(reason, /3 distinct files/);
+  assert.doesNotMatch(reason, /report to your caller/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 const HANDLERS = {
   'npm-test-silent': npmTestSilent,
   'git-push-help-silent': gitPushHelpSilent,
@@ -464,6 +494,8 @@ const HANDLERS = {
   'subagent-scope-deny-names-caller': subagentScopeDenyNamesCaller,
   'subagent-mutation-deny-names-caller': subagentMutationDenyNamesCaller,
   'main-thread-deny-has-no-subagent-line': mainThreadDenyHasNoSubagentLine,
+  'subagent-todo-deny-alt-id-field-names-caller': subagentTodoDenyAltIdFieldNamesCaller,
+  'agent-type-only-is-main-thread': agentTypeOnlyIsMainThread,
 };
 
 async function main() {

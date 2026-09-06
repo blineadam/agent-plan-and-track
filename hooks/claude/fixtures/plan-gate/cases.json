@@ -25,6 +25,8 @@
     { "id": "continuation-line-attribution-denied", "expect": "deny" },
     { "id": "subagent-scope-deny-names-caller", "expect": "deny" },
     { "id": "subagent-mutation-deny-names-caller", "expect": "deny" },
-    { "id": "main-thread-deny-has-no-subagent-line", "expect": "deny" }
+    { "id": "main-thread-deny-has-no-subagent-line", "expect": "deny" },
+    { "id": "subagent-todo-deny-alt-id-field-names-caller", "expect": "deny" },
+    { "id": "agent-type-only-is-main-thread", "expect": "deny" }
   ]
 }
