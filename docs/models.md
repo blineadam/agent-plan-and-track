@@ -70,11 +70,15 @@ current compatibility mapping:
 | Sonnet | `gpt-5.6-terra` |
 | Haiku | `gpt-5.6-luna` |
 
-The rendered TOML pins these slugs literally, and OpenAI's subagent reference
-documents no fallback for a model the account cannot use, so an account
-without `gpt-6-astra` access needs the `fable` line of the mapping changed
-and a reinstall. The rendered Codex profile carries the assigned reasoning
-effort and sandbox mode. Copilot also gets the same eight agents, but only
+All four slugs come from [OpenAI's Codex models
+page](https://developers.openai.com/codex/models), which notes that
+`gpt-6-astra` availability depends on the rollout, your sign-in method, and
+your client. The rendered TOML pins each slug literally, and neither that page
+nor the subagent reference below documents what Codex does when an account
+cannot use a pinned model, so that outcome is unverified. If an agent fails to
+run on `gpt-6-astra`, change the `fable` line of the mapping and reinstall.
+The rendered Codex profile carries the assigned reasoning effort and sandbox
+mode. Copilot also gets the same eight agents, but only
 tool permissions carry over there, not the model tier or effort.
 
 ### Invoking agents
