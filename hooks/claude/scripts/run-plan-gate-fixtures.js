@@ -395,6 +395,48 @@ async function continuationLineAttributionDenied() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+// Default PLANGATE_SCOPE_THRESHOLD is 3, but the deny fires on the write
+// that would BRING the count to 3 (wouldBeCount >= threshold), not on a
+// fourth write after three allowed ones: two distinct-file writes are
+// allowed, and the third is denied (verified against the real hook).
+async function subagentScopeDenyNamesCaller() {
+  const f = fixture();
+  const session = 'sess-subagent-scope';
+  assert.strictEqual(run(writeEvent(session, path.join(f.root, 'a.js'), 'x'), f.env), '');
+  assert.strictEqual(run(writeEvent(session, path.join(f.root, 'b.js'), 'x'), f.env), '');
+  const event = writeEvent(session, path.join(f.root, 'c.js'), 'x');
+  event.agent_id = 'a1';
+  event.agent_type = 'executor';
+  const reason = denyReason(run(event, f.env));
+  assert.match(reason, /stop and report to your caller/);
+  assert.match(reason, /executor/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function subagentMutationDenyNamesCaller() {
+  const f = fixture();
+  const session = 'sess-subagent-mutation';
+  assert.strictEqual(run(bashEvent('git push origin main', session), f.env), '');
+  const event = bashEvent('gh pr create --fill', session);
+  event.agent_id = 'a1';
+  event.agent_type = 'executor';
+  const reason = denyReason(run(event, f.env));
+  assert.match(reason, /stop and report to your caller/);
+  assert.match(reason, /executor/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function mainThreadDenyHasNoSubagentLine() {
+  const f = fixture();
+  const session = 'sess-main-thread-scope';
+  assert.strictEqual(run(writeEvent(session, path.join(f.root, 'a.js'), 'x'), f.env), '');
+  assert.strictEqual(run(writeEvent(session, path.join(f.root, 'b.js'), 'x'), f.env), '');
+  const reason = denyReason(run(writeEvent(session, path.join(f.root, 'c.js'), 'x'), f.env));
+  assert.match(reason, /3 distinct files/);
+  assert.doesNotMatch(reason, /report to your caller/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 const HANDLERS = {
   'npm-test-silent': npmTestSilent,
   'git-push-help-silent': gitPushHelpSilent,
@@ -419,6 +461,9 @@ const HANDLERS = {
   'executor-tag-unaffected-by-attribution-guard': executorTagUnaffectedByAttributionGuard,
   'lint-disabled-allows-attribution-case': lintDisabledAllowsAttributionCase,
   'continuation-line-attribution-denied': continuationLineAttributionDenied,
+  'subagent-scope-deny-names-caller': subagentScopeDenyNamesCaller,
+  'subagent-mutation-deny-names-caller': subagentMutationDenyNamesCaller,
+  'main-thread-deny-has-no-subagent-line': mainThreadDenyHasNoSubagentLine,
 };
 
 async function main() {
