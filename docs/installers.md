@@ -96,7 +96,8 @@ The current compatibility mapping for `model`:
 
 | Source model | Rendered as |
 | --- | --- |
-| `fable` / `opus` | `gpt-5.6-sol` |
+| `fable` | `gpt-6-astra` |
+| `opus` | `gpt-5.6-sol` |
 | `sonnet` | `gpt-5.6-terra` |
 | `haiku` | `gpt-5.6-luna` |
 

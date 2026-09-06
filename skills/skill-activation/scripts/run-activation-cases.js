@@ -94,7 +94,7 @@ const AGENT_MODEL_EFFORT = new Map([
   ['haiku', 'medium'],
 ]);
 const AGENT_CODEX_MODEL = new Map([
-  ['fable', 'gpt-5.6-sol'],
+  ['fable', 'gpt-6-astra'],
   ['opus', 'gpt-5.6-sol'],
   ['sonnet', 'gpt-5.6-terra'],
   ['haiku', 'gpt-5.6-luna'],

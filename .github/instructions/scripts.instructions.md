@@ -241,9 +241,10 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `upsert_toml_default` → `Set-TomlDefault`, not `Upsert-TomlDefault`).
 - Rendering a Codex agent's TOML (`render_codex_agent` /
   `ConvertTo-CodexAgentToml`) must use the current compatibility mapping:
-  `fable`/`opus` → `gpt-5.6-sol`, `sonnet` → `gpt-5.6-terra`, and `haiku` →
-  `gpt-5.6-luna`, while preserving `effort` as `model_reasoning_effort` and
-  the existing `tools` → `sandbox_mode` mapping. Copilot's Markdown renderer
+  `fable` → `gpt-6-astra`, `opus` → `gpt-5.6-sol`, `sonnet` → `gpt-5.6-terra`,
+  and `haiku` → `gpt-5.6-luna`, while preserving `effort` as
+  `model_reasoning_effort` and the existing `tools` → `sandbox_mode` mapping.
+  Copilot's Markdown renderer
   (`render_copilot_agent` / `ConvertTo-CopilotAgentMd`) still leaves `model`
   unset and drops `effort`, since its frontmatter has no matching fields; it
   translates only `tools` through the closed alias table (`Read`→`read`,
