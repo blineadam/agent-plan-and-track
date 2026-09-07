@@ -8,6 +8,13 @@
 // routing step confirm AGENTS.md is a tracked file. No post-commit file
 // rewrite: unlike plan-and-track-risk-classification-normal.setup.js, these
 // cases need only a clean, fully committed repo, not an uncommitted diff.
+//
+// The project files are staged by name rather than with `git add -A`, which
+// would make the tracked set depend on the caller's ambient global excludes:
+// this repo's installer adds `.tasks/` to core.excludesfile, so `-A` skips
+// .tasks/lessons.md here and commits it anywhere that line is absent. Both
+// cases turn on the local index being untracked while AGENTS.md is tracked,
+// so that distinction has to hold on any machine, not just a configured one.
 
 const { spawnSync } = require('child_process');
 
@@ -20,7 +27,7 @@ function run(command, args) {
 }
 
 run('git', ['init', '-b', 'main']);
-run('git', ['add', '-A']);
+run('git', ['add', '--', 'AGENTS.md', 'package.json', 'src/index.js']);
 run('git', [
   '-c',
   'user.email=fixture@example.invalid',
