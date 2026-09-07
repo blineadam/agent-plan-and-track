@@ -124,7 +124,7 @@ The instruction channels that do reach a reviewer are already owned: `.github/in
 
 ## attention-span's scanning format and output style stay unadopted
 
-Reviewed 2026-09-06 against [alexgreensh/attention-span](https://github.com/alexgreensh/attention-span), which ships three Claude Code output styles built around answer-first, ADHD-friendly delivery. Two of its ideas were adopted as rule bullets, compression-targets-elaboration and artifact-requests-get-the-artifact-alone, and are credited in `AGENTS.md`. The rest is recorded here because most of the project restates rules this repo already carries, and the parts that do not conflict with rules it carries deliberately.
+Reviewed 2026-09-06 against [alexgreensh/attention-span](https://github.com/alexgreensh/attention-span), which ships three Claude Code output styles built around answer-first, ADHD-friendly delivery. Two of its ideas were adopted as rule bullets, compression-targets-elaboration and artifact-requests-get-the-artifact-alone, and are credited in `AGENTS.md`. Only the second earned a place in the digest; the entry below records why the first did not. The rest is recorded here because most of the project restates rules this repo already carries, and the parts that do not conflict with rules it carries deliberately.
 
 Four things were declined:
 
@@ -138,3 +138,19 @@ Four things were declined:
 and then approved the two-bullet recommendation by instructing that it be implemented. The recommendation was this session's, not a preference the owner stated: the action-first rule already requires surfacing what needs the user once at the end, so a third bullet would add placement only, and the digest had roughly 1,000 characters of headroom left against a 10,000-character inline-persistence ceiling that a previous trim already had to claw back under.
 
 What would reopen this: a decision to relax the writing-voice rule's bold and list constraints, which is the real blocker on the format, or evidence that blocking-question placement is a recurring problem in practice, in which case it belongs in `rules/agent-guidelines.md` only, where there is no character ceiling.
+
+## The compression-targets-elaboration rule stays out of the digest
+
+Decided 2026-09-06, in the same round that adopted the rule itself into `rules/agent-guidelines.md`. The rule states an obligation no other rule here carried, that shortening takes examples and background rather than figures, bounds, disputed points, and safety-critical detail. It is worth stating. It has not earned the digest.
+
+The measurement is the reason, and it is worth recording precisely because it is easy to misread. Four contrast cells ran with the bullet appended as the only variable. Two put mild brevity pressure on the reply, and in both the control arm preserved every figure, bound, and dissenting detail unaided, so neither cell had room to show a benefit. Two applied a hard word cap. One favored the treatment arm slightly, which kept an explicit scope marker the control dropped. The other favored the control, which kept a secondary figure the treatment shed.
+
+That is one informative cell out of four, and it split. The honest reading is that the rule is unmeasured, not that it was disproven, which is the distinction `.tasks/lessons.md` draws when it warns that a ceiling control arm is a cost result rather than evidence of no benefit. The ASD-STE100 entry above is not the governing precedent either: that decision turned on rewording an existing rule, where this one adds an obligation that was never stated.
+
+The digest is the scarce channel. It sits under a 10,000-character inline-persistence ceiling that an earlier trim already had to claw back under, and this bullet would have taken roughly 300 of the 1,000 characters remaining. An unmeasured rule does not get that on every prompt, forever, ahead of a rule that measures. The instruction file has no such ceiling and is also the only rules channel a subagent ever sees, so nothing is lost by keeping it there.
+
+A design flaw surfaced alongside the measurement and is fixed in the surviving copy rather than carried. The rule originally said the facts survive every cut, which a hard word cap can make impossible, so it gave no way to tell a compliant reply from a failing one. It now fixes the triage order under a cap and requires naming what was left out.
+
+That hard-cap contrast was then run, three cells against the revised wording, and it did not settle anything either. The control arm preserved every figure, bound, and safety-critical fact in all three, once leading with the irreversible-corruption warning unprompted. No treatment cell named what it had cut, so the new triage clause produced no observable difference. Seven cells in, no scenario yet written makes the control fail, which is a fact about the scenarios rather than about the rule.
+
+Two things would reopen this: a contrast whose control arm actually fails, which means finding a prompt shape that induces lossy compression in the first place, or evidence that over-compression is a late-session decay failure rather than a prompt-shape one. The second matters more than it looks. Late decay is the digest's actual admission criterion, and if over-compression is instead driven by the shape of a single prompt, re-injecting the rule every turn would not fix it no matter what a contrast run showed.
