@@ -68,9 +68,15 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   subagent's checks the same four fields (`agent_id`, `agentId`,
   `parent_tool_use_id`, `parentToolUseId`; true if any is a non-empty
   string), copied inline per script rather than shared (`gateguard.js`'s
-  `isSubagent()`, `suggest-compact.js`'s inline check). Flag a new hook that
-  reimplements this differently, or that relies on `agent_type` alone (also
-  set for a whole session launched with `--agent`, which is main-thread).
+  `isSubagent()`, `suggest-compact.js`'s inline check, `plan-gate.js`'s own
+  `isSubagent()`). Flag a new hook that reimplements this differently, or
+  that relies on `agent_type` alone (also set for a whole session launched
+  with `--agent`, which is main-thread). `plan-gate.js` uses its copy to
+  append a line to each deny message telling a subagent with no Skill tool
+  to stop and report the missing stamp to its caller instead of routing
+  around the gate (a Bash heredoc, a script, an env override); flag a new
+  gate message that invites a subagent to take an action it can't perform
+  with no such fallback line.
 
 ## CI guard scripts
 
