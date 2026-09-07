@@ -72,11 +72,11 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   `isSubagent()`). Flag a new hook that reimplements this differently, or
   that relies on `agent_type` alone (also set for a whole session launched
   with `--agent`, which is main-thread). `plan-gate.js` uses its copy to
-  append a line to each deny message telling a subagent with no Skill tool
-  to stop and report the missing stamp to its caller instead of routing
-  around the gate (a Bash heredoc, a script, an env override); flag a new
-  gate message that invites a subagent to take an action it can't perform
-  with no such fallback line.
+  append a line to its gate/scope/mutation deny messages telling a subagent
+  with no Skill tool to stop and report the missing stamp to its caller
+  instead of routing around the gate (a Bash heredoc, a script, an env
+  override); flag a new gate/scope/mutation-style deny message that invites
+  a subagent to take an action it can't perform with no such fallback line.
 
 ## CI guard scripts
 
