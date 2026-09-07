@@ -64,6 +64,8 @@ Delivery order inside the digest is load-bearing too: Claude Code persists hook 
 
 The action-first output-shaping principle in both files is adapted from [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd), folded in as a standing rule rather than its upstream form (an opt-in, explicitly-invoked skill) since the point is output that's shaped this way by default, without a per-session invocation.
 
+The compression-targets-elaboration bullet in `rules/agent-guidelines.md` and the artifact-requests bullets in both files take their two ideas from [alexgreensh/attention-span](https://github.com/alexgreensh/attention-span), whose output styles argue both. The wording is this repo's own and was rewritten once already for exactly this reason: a first draft reproduced several of the upstream clauses closely enough that the ideas-only claim was not true. That project is AGPL-3.0 and this repo is MIT, so an idea in common is fine and a borrowed sentence is not. Its scanning format, arrow-marked paragraphs and skim-the-bold-only emphasis, was deliberately left behind, since it conflicts with the writing-voice rule's ban on bold-lead bullets for short answers. Only the artifact-requests rule earned digest space: a contrast run left the compression rule unmeasured rather than supported, so it rides the instruction file alone, which is the same subset-not-mirror logic the rule-delivery section above describes. `docs/out-of-scope.md` records that decision, the format decline, and three others from the same review.
+
 ### install.sh / install.ps1
 
 Before changing either installer, read [docs/installers.md](docs/installers.md).
