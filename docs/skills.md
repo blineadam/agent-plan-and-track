@@ -53,7 +53,9 @@ work, then publish or capture what the session taught you.
   env var can make it block instead of warn.
 - **`capture-lesson`** (skill) kicks in whenever the user corrects the agent
   or the agent notices a repeated error. It turns the correction into a durable
-  rule in `.tasks/lessons.md`.
+  rule, in `.tasks/lessons.md` for a personal working lesson, or, with
+  approval, in a tracked instruction file such as `AGENTS.md` when the
+  correction is a project fact every contributor needs.
 - **`humanizer`** (skill, adapted from
   [blader/humanizer](https://github.com/blader/humanizer)) kicks in before
   finalizing longer user-facing writing: README sections, docs, PR

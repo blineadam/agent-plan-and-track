@@ -1,0 +1,10 @@
+{
+  "name": "capture-lesson-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "echo running full suite including e2e",
+    "test:unit": "echo running unit suite only",
+    "lint": "echo linting"
+  }
+}
