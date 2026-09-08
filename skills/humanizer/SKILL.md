@@ -87,14 +87,13 @@ synonyms for the same referent instead of repeating or using a pronoun);
 false ranges ("from X to Y" where X and Y aren't on a real scale); passive
 voice and subjectless fragments ("No configuration file needed").
 
-**Concrete language**: Prefer concrete, literal language over abstract or
-metaphorical business language. Say what is actually happening. Avoid
-phrases such as "gives X more room," "creates space for," "opens the door
-to," "unlocks," "enables a path," "moves the needle," or "provides a
-foundation for" when a direct verb will do. Prefer "continue," "stop,"
-"build," "use," "support," "work on," "replace," or "run alongside."
-Before finalizing, ask: "Could this sentence say the same thing with a common
-verb and no metaphor?" If yes, rewrite it.
+**Concrete language**: abstract or metaphorical business language standing in
+for a plain verb, whether or not the phrase appears in this list ("gives X
+more room," "creates space for," "opens the door to," "unlocks," "enables a
+path," "moves the needle," "provides a foundation for," "clears the way
+for"); the rewrite has to land on a literal verb (continue, stop, build, use,
+support, work on, replace, run alongside), not a fresher metaphor. Test every
+sentence: could this say the same thing with a common verb and no metaphor?
 
 **Style and formatting**: em dashes and en dashes are a hard rule, not a
 "use sparingly" preference (also catch spaced ` — ` and double-hyphen ` -- `
