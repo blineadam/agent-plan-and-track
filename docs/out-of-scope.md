@@ -124,7 +124,7 @@ The instruction channels that do reach a reviewer are already owned: `.github/in
 
 ## A Copilot code-review agent skill stays unadopted
 
-Decided 2026-09-08. GitHub's pull request view now shows a banner offering to add `.github/skills/code-review/SKILL.md` for "context-aware, tailored reviews". The banner appears on any repository without a `.github/skills/` directory, so it says nothing about whether this repo's review instructions are being read.
+Decided 2026-09-08. GitHub's pull request view now shows a banner offering to add `.github/skills/code-review/SKILL.md` for "context-aware, tailored reviews". It showed here on a repository whose `.github/copilot-instructions.md` and `.github/instructions/` files are populated and in use, so the banner says nothing about whether those instructions are being read.
 
 The [Copilot code review docs](https://docs.github.com/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review?tool=webui#mcp-servers-and-agent-skills) draw the line this way: custom instructions in `.github/copilot-instructions.md` and `.github/instructions/*.instructions.md` are "repository-wide, always-on rules", while agent skills are "task-specific review workflows" that Copilot uses "when they are relevant to the code being reviewed". Everything this repo wants a reviewer to know is a standing rule, and the always-on channel already delivers it on every review. Wrapping the same content in a skill that loads only when Copilot judges it relevant would make delivery less reliable.
 
