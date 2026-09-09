@@ -63,10 +63,11 @@ work, then publish or capture what the session taught you.
   dashes, promotional puffery, filler, rule-of-three, chatbot artifacts)
   while preserving the intended meaning and register.
 - **`yeet`** (skill) kicks in once work is done and ready to ship: commits,
-  pushes, and opens a GitHub PR with the standing PR-body heading set via
-  `--body-file`, requests a Copilot review when the repo doesn't
-  auto-request one, then triages, replies to, and resolves every Copilot
-  thread before calling it done. Threads people opened are left for them.
+  pushes, and opens a draft GitHub PR with the standing PR-body heading set
+  via `--body-file`, requests a Copilot review when the repo doesn't
+  auto-request one, triages, replies to, and resolves every Copilot thread,
+  and only then marks the PR ready for review. Threads people opened are
+  left for them.
 - **`resolving-merge-conflicts`** (skill) covers an in-progress merge,
   rebase, or cherry-pick conflict: read both sides' intent before choosing,
   resolve hunk by hunk without inventing behavior neither side had, then
