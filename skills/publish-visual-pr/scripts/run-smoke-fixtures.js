@@ -4,7 +4,7 @@
  *
  * Builds five temporary git checkouts of tiny static pages (base/head pairs,
  * each differing only in a button label), serves each with a one-file Node
- * http server started via startup.argv, and runs smoke.js against nine
+ * http server started via startup.argv, and runs smoke.js against ten
  * manifests, plus one pure unit block and one no-manifest argument-order
  * check:
  *
@@ -31,7 +31,12 @@
  *   6. startup.argv backgrounds the real server behind a shell wrapper, so
  *      the server is a grandchild -> exit 0, and no process matching a
  *      distinctive marker survives smoke.js (proves terminate() kills the
- *      whole process tree, not just the direct child).
+ *      whole process tree, not just the direct child). On win32, startup.argv
+ *      is `cmd /c node serve.js {port} marker` (node as a grandchild of the
+ *      runner via cmd) and survivors are checked with `powershell -NoProfile
+ *      -Command` over `Get-CimInstance Win32_Process` filtered to
+ *      `Name -eq 'node.exe'` and a CommandLine containing the marker; POSIX
+ *      keeps the sh wrapper and pgrep.
  *   7. two surfaces whose names collide case-insensitively (they become file
  *      names) -> exit 1 with the collision error on stderr, and a marker
  *      file that startup.argv would have created is never written (proves
@@ -44,7 +49,20 @@
  *      grandchild process, as in case 6) is still up -> exit 130 and no
  *      process matching a distinctive marker survives, proving withServer's
  *      signal handler terminates the whole process tree before exiting.
- *      Reuses case 1's checkouts.
+ *      Reuses case 1's checkouts. On win32 this case is skipped (Node
+ *      terminates a child on kill() there instead of delivering a POSIX
+ *      signal it can catch), printing `SKIP: case9 (POSIX signal delivery;
+ *      Node on Windows terminates a child on kill)` and counting neither a
+ *      pass nor a fail.
+ *  10. a startup.argv server writes the keys of its own process.env to a file
+ *      outside the checkout before listening; smoke.js runs with
+ *      PVP_ENV_CANARY=1 added to its own environment and startup.env
+ *      declaring PVP_DECLARED -> the server's env carries PVP_DECLARED,
+ *      never carries PVP_ENV_CANARY, and carries each inherited variable the
+ *      parent process has (POSIX: HOME, PATH; win32: SYSTEMROOT, TEMP,
+ *      USERPROFILE, PATHEXT, COMSPEC, compared case-insensitively), per the
+ *      inherited-variables contract in references/manifest.md. Reuses case
+ *      1's checkouts.
  *
  * Separately (not part of the case list, since it never builds a manifest):
  * smoke.js is spawned with no arguments and NODE_PATH deleted from its
@@ -58,10 +76,11 @@
  *
  * Dependencies: Node core modules (child_process, fs, os, path) only, plus
  * this repo's own render.js (for requirePlaywright). It resolves
- * `playwright` the same way smoke.js does (installed globally for Node, or
- * reachable via NODE_PATH), only to fail fast with a one-line message before
- * spawning any child process if the package is missing; the actual browser
- * automation happens in the smoke.js child processes this script spawns.
+ * `playwright` the same way smoke.js does (set NODE_PATH to a node_modules
+ * directory that contains it), only to fail fast with a one-line message
+ * before spawning any child process if the package is missing; the actual
+ * browser automation happens in the smoke.js child processes this script
+ * spawns.
  */
 'use strict';
 
@@ -109,6 +128,22 @@ const html = fs.readFileSync(path.join(__dirname, 'index.html'));
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html' });
   res.end(html);
+}).listen(port, '127.0.0.1');
+`;
+
+// Case 10's startup command: writes its own process.env keys to a file
+// outside the checkout before listening, so the fixture runner can inspect
+// exactly what environment withServer passed the child. Run via `node -e`
+// with `{port}` and the env-file path as trailing positional args.
+const CASE10_SERVE_JS = `
+const http = require('http');
+const fs = require('fs');
+const port = Number(process.argv[1]);
+const envFile = process.argv[2];
+fs.writeFileSync(envFile, JSON.stringify(Object.keys(process.env)));
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end('<!doctype html><html><body style="margin:0;"><div data-test="app-ready" style="width:10px;height:10px;"></div></body></html>');
 }).listen(port, '127.0.0.1');
 `;
 
@@ -206,10 +241,10 @@ function writeManifest(
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 }
 
-function runSmoke(manifestPath) {
+function runSmoke(manifestPath, extraEnv) {
   const result = spawnSync(process.execPath, [SMOKE, '--manifest', manifestPath], {
     encoding: 'utf8',
-    env: process.env,
+    env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
     timeout: SMOKE_TIMEOUT_MS,
   });
   if (result.error && result.error.code === 'ETIMEDOUT') {
@@ -220,6 +255,11 @@ function runSmoke(manifestPath) {
 
 function nonEmptyFile(filePath) {
   return fs.existsSync(filePath) && fs.statSync(filePath).size > 0;
+}
+
+function hasKeyCI(keys, name) {
+  const lower = name.toLowerCase();
+  return keys.some((key) => key.toLowerCase() === lower);
 }
 
 function waitUntil(conditionFn, timeoutMs, intervalMs) {
@@ -501,14 +541,20 @@ async function main() {
       case5FailDiff ? JSON.stringify(case5FailDiff) : `no report (stderr=${case5Fail.stderr})`
     );
 
-    // Case 6: startup.argv is a shell wrapper that backgrounds the real
-    // server ("node serve.js $0 & wait"), making it a grandchild rather than
-    // a direct child. A direct-child-only kill would orphan it; terminate()
-    // must kill the whole process tree. The marker is a distinctive string
-    // so pgrep -f cannot match an unrelated process.
+    // Case 6: startup.argv backgrounds the real server behind an
+    // intermediary, making it a grandchild rather than a direct child. A
+    // direct-child-only kill would orphan it; terminate() must kill the
+    // whole process tree. The marker is a distinctive string so the survivor
+    // check cannot match an unrelated process. POSIX uses a shell wrapper
+    // ("node serve.js $0 & wait"); win32 uses `cmd /c` in front of node,
+    // since cmd is the direct child and node its grandchild.
     const case6Marker = 'pvp-treekill-marker-7f2c9';
     const case6Output = path.join(tempRoot, 'case6-output');
     const case6Manifest = path.join(tempRoot, 'case6-manifest.json');
+    const case6Argv =
+      process.platform === 'win32'
+        ? ['cmd', '/c', 'node', 'serve.js', '{port}', case6Marker]
+        : ['sh', '-c', `node serve.js $0 ${case6Marker} & wait`, '{port}'];
     fs.writeFileSync(
       case6Manifest,
       JSON.stringify(
@@ -518,7 +564,7 @@ async function main() {
           output_dir: case6Output,
           startup: {
             cwd: '.',
-            argv: ['sh', '-c', `node serve.js $0 ${case6Marker} & wait`, '{port}'],
+            argv: case6Argv,
             ready_url: 'http://127.0.0.1:{port}/',
             url: 'http://127.0.0.1:{port}/',
             env: {},
@@ -550,12 +596,29 @@ async function main() {
     );
     const case6 = runSmoke(case6Manifest);
     report('case6 exit code 0', case6.status === 0, `status=${case6.status} stderr=${case6.stderr}`);
-    const case6Pgrep = spawnSync('pgrep', ['-f', case6Marker], { encoding: 'utf8' });
-    report(
-      'case6 no server process survives smoke.js (no pgrep -f marker match)',
-      case6Pgrep.status === 1 && case6Pgrep.stdout.trim() === '',
-      `pgrep status=${case6Pgrep.status} stdout=${case6Pgrep.stdout} stderr=${case6Pgrep.stderr}`
-    );
+    if (process.platform === 'win32') {
+      const case6Survivors = spawnSync(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          `@(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*${case6Marker}*' }).Count`,
+        ],
+        { encoding: 'utf8' }
+      );
+      report(
+        'case6 no server process survives smoke.js (no node.exe with marker in CommandLine)',
+        case6Survivors.stdout.trim() === '0',
+        `status=${case6Survivors.status} stdout=${case6Survivors.stdout} stderr=${case6Survivors.stderr}`
+      );
+    } else {
+      const case6Pgrep = spawnSync('pgrep', ['-f', case6Marker], { encoding: 'utf8' });
+      report(
+        'case6 no server process survives smoke.js (no pgrep -f marker match)',
+        case6Pgrep.status === 1 && case6Pgrep.stdout.trim() === '',
+        `pgrep status=${case6Pgrep.status} stdout=${case6Pgrep.stdout} stderr=${case6Pgrep.stderr}`
+      );
+    }
 
     // Case 7: two surfaces whose names collide case-insensitively (they
     // become file names) must be rejected by loadManifest before any server
@@ -649,22 +712,136 @@ async function main() {
     // terminate the whole process tree before smoke.js itself exits 130.
     // Reuses case 1's checkouts; the surface's 15s wait action keeps
     // smoke.js busy long enough to send the signal while the server is up.
-    const case9Marker = 'pvp-sigint-marker-4d81a';
-    const case9Output = path.join(tempRoot, 'case9-output');
-    const case9Manifest = path.join(tempRoot, 'case9-manifest.json');
+    // Skipped on win32: Node terminates a child on kill() there instead of
+    // delivering a POSIX signal withServer's handler can catch.
+    if (process.platform === 'win32') {
+      console.log('SKIP: case9 (POSIX signal delivery; Node on Windows terminates a child on kill)');
+    } else {
+      const case9Marker = 'pvp-sigint-marker-4d81a';
+      const case9Output = path.join(tempRoot, 'case9-output');
+      const case9Manifest = path.join(tempRoot, 'case9-manifest.json');
+      fs.writeFileSync(
+        case9Manifest,
+        JSON.stringify(
+          {
+            base: { path: baseRoot, commit: baseSha },
+            head: { path: headRoot, commit: headSha },
+            output_dir: case9Output,
+            startup: {
+              cwd: '.',
+              argv: ['sh', '-c', `node serve.js $0 ${case9Marker} & wait`, '{port}'],
+              ready_url: 'http://127.0.0.1:{port}/',
+              url: 'http://127.0.0.1:{port}/',
+              env: {},
+              timeout_seconds: 30,
+            },
+            browser: {
+              viewport: [400, 300],
+              device_scale_factor: 1,
+              reduced_motion: 'reduce',
+              color_scheme: 'light',
+              locale: 'en-US',
+              timezone_id: 'UTC',
+            },
+            surfaces: [
+              {
+                name: 'panel',
+                path: '/',
+                ready: { selector: '[data-test="app-ready"]', state: 'visible' },
+                crop: { selector: '[data-test="panel"]' },
+                permitted_changes: [20, 20, 220, 100],
+                expected_controls: [],
+                expected_fonts: [],
+                actions: [{ type: 'wait', milliseconds: 15000 }],
+              },
+            ],
+          },
+          null,
+          2
+        )
+      );
+      const startupLogDirs = () =>
+        new Set(fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('pvp-log-')));
+      const case9LogDirsBefore = startupLogDirs();
+      const case9Child = spawn(process.execPath, [SMOKE, '--manifest', case9Manifest], { env: process.env });
+      let case9Stdout = '';
+      let case9Stderr = '';
+      case9Child.stdout.on('data', (chunk) => {
+        case9Stdout += chunk;
+      });
+      case9Child.stderr.on('data', (chunk) => {
+        case9Stderr += chunk;
+      });
+      const markerAppeared = await waitUntil(
+        () => spawnSync('pgrep', ['-f', case9Marker], { encoding: 'utf8' }).status === 0,
+        30000,
+        200
+      );
+      report('case9 server process appears before SIGINT', markerAppeared);
+      case9Child.kill('SIGINT');
+      const case9ExitResult = await Promise.race([
+        new Promise((resolve) => case9Child.once('exit', (code, signal) => resolve({ code, signal }))),
+        new Promise((resolve) => setTimeout(() => resolve(null), 30000)),
+      ]);
+      report('case9 smoke.js exits within 30s of SIGINT', case9ExitResult !== null);
+      report(
+        'case9 exit code 130',
+        !!case9ExitResult && case9ExitResult.code === 130,
+        case9ExitResult
+          ? `code=${case9ExitResult.code} signal=${case9ExitResult.signal}`
+          : `stdout=${case9Stdout} stderr=${case9Stderr}`
+      );
+      if (!case9ExitResult) {
+        try {
+          case9Child.kill('SIGKILL');
+        } catch {}
+      }
+      const case9Survivors = spawnSync('pgrep', ['-f', case9Marker], { encoding: 'utf8' });
+      report(
+        'case9 no marker process survives SIGINT',
+        case9Survivors.status === 1 && case9Survivors.stdout.trim() === '',
+        `pgrep status=${case9Survivors.status} stdout=${case9Survivors.stdout}`
+      );
+      const case9LeakedLogDirs = [...startupLogDirs()].filter((name) => !case9LogDirsBefore.has(name));
+      report(
+        'case9 no startup log dir survives SIGINT',
+        case9LeakedLogDirs.length === 0,
+        `leaked=${case9LeakedLogDirs.join(',')}`
+      );
+      for (const name of case9LeakedLogDirs) {
+        fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true });
+      }
+      for (const pid of case9Survivors.stdout
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)) {
+        try {
+          process.kill(Number(pid), 'SIGKILL');
+        } catch {}
+      }
+    }
+
+    // Case 10: the startup command's env carries startup.env overrides and
+    // the inherited-variables allowlist, while PVP_ENV_CANARY (set only on
+    // smoke.js's own process, never declared in startup.env) does not leak
+    // into the started server.
+    // Reuses case 1's checkouts.
+    const case10EnvFile = path.join(tempRoot, 'case10-env.json');
+    const case10Output = path.join(tempRoot, 'case10-output');
+    const case10Manifest = path.join(tempRoot, 'case10-manifest.json');
     fs.writeFileSync(
-      case9Manifest,
+      case10Manifest,
       JSON.stringify(
         {
           base: { path: baseRoot, commit: baseSha },
           head: { path: headRoot, commit: headSha },
-          output_dir: case9Output,
+          output_dir: case10Output,
           startup: {
             cwd: '.',
-            argv: ['sh', '-c', `node serve.js $0 ${case9Marker} & wait`, '{port}'],
+            argv: ['node', '-e', CASE10_SERVE_JS, '{port}', case10EnvFile],
             ready_url: 'http://127.0.0.1:{port}/',
             url: 'http://127.0.0.1:{port}/',
-            env: {},
+            env: { PVP_DECLARED: '1' },
             timeout_seconds: 30,
           },
           browser: {
@@ -680,11 +857,9 @@ async function main() {
               name: 'panel',
               path: '/',
               ready: { selector: '[data-test="app-ready"]', state: 'visible' },
-              crop: { selector: '[data-test="panel"]' },
-              permitted_changes: [20, 20, 220, 100],
+              crop: { selector: '[data-test="app-ready"]' },
               expected_controls: [],
               expected_fonts: [],
-              actions: [{ type: 'wait', milliseconds: 15000 }],
             },
           ],
         },
@@ -692,64 +867,33 @@ async function main() {
         2
       )
     );
-    const startupLogDirs = () =>
-      new Set(fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('pvp-log-')));
-    const case9LogDirsBefore = startupLogDirs();
-    const case9Child = spawn(process.execPath, [SMOKE, '--manifest', case9Manifest], { env: process.env });
-    let case9Stdout = '';
-    let case9Stderr = '';
-    case9Child.stdout.on('data', (chunk) => {
-      case9Stdout += chunk;
-    });
-    case9Child.stderr.on('data', (chunk) => {
-      case9Stderr += chunk;
-    });
-    const markerAppeared = await waitUntil(
-      () => spawnSync('pgrep', ['-f', case9Marker], { encoding: 'utf8' }).status === 0,
-      30000,
-      200
-    );
-    report('case9 server process appears before SIGINT', markerAppeared);
-    case9Child.kill('SIGINT');
-    const case9ExitResult = await Promise.race([
-      new Promise((resolve) => case9Child.once('exit', (code, signal) => resolve({ code, signal }))),
-      new Promise((resolve) => setTimeout(() => resolve(null), 30000)),
-    ]);
-    report('case9 smoke.js exits within 30s of SIGINT', case9ExitResult !== null);
-    report(
-      'case9 exit code 130',
-      !!case9ExitResult && case9ExitResult.code === 130,
-      case9ExitResult
-        ? `code=${case9ExitResult.code} signal=${case9ExitResult.signal}`
-        : `stdout=${case9Stdout} stderr=${case9Stderr}`
-    );
-    if (!case9ExitResult) {
-      try {
-        case9Child.kill('SIGKILL');
-      } catch {}
-    }
-    const case9Survivors = spawnSync('pgrep', ['-f', case9Marker], { encoding: 'utf8' });
-    report(
-      'case9 no marker process survives SIGINT',
-      case9Survivors.status === 1 && case9Survivors.stdout.trim() === '',
-      `pgrep status=${case9Survivors.status} stdout=${case9Survivors.stdout}`
-    );
-    const case9LeakedLogDirs = [...startupLogDirs()].filter((name) => !case9LogDirsBefore.has(name));
-    report(
-      'case9 no startup log dir survives SIGINT',
-      case9LeakedLogDirs.length === 0,
-      `leaked=${case9LeakedLogDirs.join(',')}`
-    );
-    for (const name of case9LeakedLogDirs) {
-      fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true });
-    }
-    for (const pid of case9Survivors.stdout
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)) {
-      try {
-        process.kill(Number(pid), 'SIGKILL');
-      } catch {}
+    const case10 = runSmoke(case10Manifest, { PVP_ENV_CANARY: '1' });
+    report('case10 exit code 0', case10.status === 0, `status=${case10.status} stderr=${case10.stderr}`);
+    const case10EnvKeys = fs.existsSync(case10EnvFile) ? JSON.parse(fs.readFileSync(case10EnvFile, 'utf8')) : null;
+    report('case10 server env file written', case10EnvKeys !== null, `stderr=${case10.stderr}`);
+    if (case10EnvKeys !== null) {
+      report(
+        'case10 startup.env variable (PVP_DECLARED) present in server env',
+        hasKeyCI(case10EnvKeys, 'PVP_DECLARED'),
+        JSON.stringify(case10EnvKeys)
+      );
+      report(
+        'case10 non-startup.env variable (PVP_ENV_CANARY) not inherited by server env',
+        !hasKeyCI(case10EnvKeys, 'PVP_ENV_CANARY'),
+        JSON.stringify(case10EnvKeys)
+      );
+      const platformKeys =
+        process.platform === 'win32'
+          ? ['SYSTEMROOT', 'TEMP', 'USERPROFILE', 'PATHEXT', 'COMSPEC']
+          : ['HOME', 'PATH'];
+      for (const key of platformKeys) {
+        if (!hasKeyCI(Object.keys(process.env), key)) continue;
+        report(
+          `case10 inherited variable (${key}) present in server env`,
+          hasKeyCI(case10EnvKeys, key),
+          JSON.stringify(case10EnvKeys)
+        );
+      }
     }
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });

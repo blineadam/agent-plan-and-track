@@ -447,6 +447,12 @@ jobs:
           node .github/scripts/run-check-digest-preview-fixtures.js >/dev/null
           node .github/scripts/check-split-shell-segments-parity.js >/dev/null
           node .github/scripts/run-check-split-shell-segments-parity-fixtures.js >/dev/null
+      - name: Visual-PR capture runner fixtures
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/playwright" playwright@1.62.1
+          node "$RUNNER_TEMP/playwright/node_modules/playwright/cli.js" install --with-deps --only-shell chromium
+          NODE_PATH="$RUNNER_TEMP/playwright/node_modules" node skills/publish-visual-pr/scripts/run-smoke-fixtures.js
       - name: Probe-agent frontmatter escape/quote round-trip
         run: |
           set -euo pipefail
@@ -1244,6 +1250,15 @@ jobs:
           node .github\scripts\run-check-digest-preview-fixtures.js | Out-Null; Assert-Node 'check-digest-preview fixtures'
           node .github\scripts\check-split-shell-segments-parity.js | Out-Null; Assert-Node 'split-shell-segments parity'
           node .github\scripts\run-check-split-shell-segments-parity-fixtures.js | Out-Null; Assert-Node 'split-shell-segments parity fixtures'
+      - name: Visual-PR capture runner fixtures
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Assert-Node($label) { if ($LASTEXITCODE -ne 0) { throw "$label exited $LASTEXITCODE" } }
+          npm install --prefix "$env:RUNNER_TEMP\playwright" playwright@1.62.1; Assert-Node 'npm install playwright'
+          node "$env:RUNNER_TEMP\playwright\node_modules\playwright\cli.js" install --only-shell chromium; Assert-Node 'playwright install chromium'
+          $env:NODE_PATH = "$env:RUNNER_TEMP\playwright\node_modules"
+          node skills\publish-visual-pr\scripts\run-smoke-fixtures.js; Assert-Node 'visual-PR fixture runner'
       - name: Probe-agent frontmatter escape/quote round-trip
         shell: powershell
         run: |

@@ -25,9 +25,9 @@
  *
  * Dependencies: Node core modules (fs, path) plus the `playwright` package,
  * required directly by this file and by render.js (checks.js never requires
- * it); no other npm dependencies. `playwright` must be resolvable (installed
- * globally for Node, or reachable via NODE_PATH); a missing package throws a
- * one-line Error, printed here without a stack, before exiting 1.
+ * it); no other npm dependencies. `playwright` must be resolvable (set
+ * NODE_PATH to a node_modules directory that contains it); a missing package
+ * throws a one-line Error, printed here without a stack, before exiting 1.
  */
 'use strict';
 
@@ -145,7 +145,7 @@ function permittedRects(surface, fallback) {
   return value;
 }
 
-const PLAYWRIGHT_MISSING_MESSAGE = 'playwright must be resolvable (install it globally or set NODE_PATH)';
+const PLAYWRIGHT_MISSING_MESSAGE = 'playwright must be resolvable: set NODE_PATH to a node_modules directory that contains it';
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
