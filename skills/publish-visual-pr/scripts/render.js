@@ -29,8 +29,8 @@
  *
  * Dependencies: Node core modules (child_process, fs, http, https, net, os,
  * path, url) plus the `playwright` package; no other npm dependencies.
- * `playwright` must be resolvable (installed globally for Node, or reachable
- * via NODE_PATH); a missing package throws a one-line Error.
+ * `playwright` must be resolvable (set NODE_PATH to a node_modules directory
+ * that contains it); a missing package throws a one-line Error.
  */
 'use strict';
 
@@ -50,7 +50,7 @@ function requirePlaywright() {
     return require('playwright');
   } catch (error) {
     if (error && error.code === 'MODULE_NOT_FOUND' && /Cannot find module 'playwright'/.test(error.message)) {
-      throw new Error('playwright must be resolvable (install it globally or set NODE_PATH)');
+      throw new Error('playwright must be resolvable: set NODE_PATH to a node_modules directory that contains it');
     }
     throw error;
   }

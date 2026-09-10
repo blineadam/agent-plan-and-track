@@ -1,10 +1,12 @@
 # Screenshot manifest
 
 Run the bundled capture command against two prepared Git checkouts. Node needs the `playwright`
-package resolvable (a global install or `NODE_PATH`) and its Chromium build:
+package resolvable and its Chromium build. Node does not search npm's global `lib/node_modules`, so
+install into a prefix and point `NODE_PATH` at it:
 
 ```bash
-node ~/.claude/skills/publish-visual-pr/scripts/smoke.js --manifest /absolute/path/to/visual-proof.json
+npm install --prefix <dir> playwright
+NODE_PATH=<dir>/node_modules node ~/.claude/skills/publish-visual-pr/scripts/smoke.js --manifest /absolute/path/to/visual-proof.json
 ```
 
 The script starts `startup.argv` once in each checkout, captures every surface in a clean headless
