@@ -68,6 +68,12 @@ work, then publish or capture what the session taught you.
   auto-request one, triages, replies to, and resolves every Copilot thread,
   and only then marks the PR ready for review. Threads people opened are
   left for them.
+- **`publish-visual-pr`** (skill) extends `yeet` when reviewers need to
+  see a UI change: renders the base and head revisions in separate checkouts,
+  captures before/after screenshots under identical seeded conditions with a
+  bundled Playwright runner that fails on undeclared pixel changes, missing
+  controls, or new console errors, and uploads the crops into the PR body
+  once Copilot review has settled, before the PR is marked ready.
 - **`resolving-merge-conflicts`** (skill) covers an in-progress merge,
   rebase, or cherry-pick conflict: read both sides' intent before choosing,
   resolve hunk by hunk without inventing behavior neither side had, then

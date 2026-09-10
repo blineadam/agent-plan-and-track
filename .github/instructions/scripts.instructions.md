@@ -113,6 +113,12 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   scripts above; these live at `skills/<name>/scripts/`, each self-contained
   since sibling skill directories share no `node_modules` or relative-import
   root.
+  One deliberate exception: `skills/publish-visual-pr/scripts/*.js` may
+  `require('playwright')`, since that skill drives a real Chromium and no
+  core module can; it adds nothing else (pixel diffing runs in a Chromium
+  canvas, not an image library) and resolves the package lazily with a
+  one-line error when it is missing. Do not flag that one require; any
+  other npm dependency under `skills/**/scripts/` is still a violation.
 - Do not propose factoring the bounded-live-run process-control helpers
   (`liveCaseTimeout()`, `terminateChildTree()`, `handleParentSignal()`, and
   the timeout/grace/force-kill staging in `runChildCase()`, all gated by a
