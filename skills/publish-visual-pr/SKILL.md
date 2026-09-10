@@ -88,8 +88,7 @@ run the bundled runner from this skill's installed copy (Claude Code shown; Code
 node ~/.claude/skills/publish-visual-pr/scripts/smoke.js --manifest /absolute/path/to/visual-proof.json
 ```
 
-It uses headless Playwright only for capture and reports, the same stack [[webapp-testing]] drives
-for ad hoc browser checks. It does not log into GitHub, edit a pull
+It uses headless Playwright only for capture and reports. It does not log into GitHub, edit a pull
 request, or replace the authenticated browser-MCP upload sequence below.
 
 Use the same conditions on both sides:
