@@ -76,7 +76,7 @@ Rebuilding the body from an older draft can drop attachment markup.
 
 ## 3. Capture comparable images
 
-Render the recorded `main` base and current head in separate clean worktrees or checkouts. Install
+Render the recorded base revision and current head in separate clean worktrees or checkouts. Install
 dependencies in each checkout rather than sharing a dependency directory whose paths can change
 asset loading. Do not rely on mutable branch names after recording the SHAs.
 
@@ -104,7 +104,7 @@ Capture a full viewport image for diagnosis and a focused crop for the PR. Wait 
 animations, scrolling, and DOM replacement to settle before each capture. When an interaction only
 exists on the head, mark it as head-only and explain why the base cannot perform it.
 
-Label every pair with short revision identifiers. Use the recorded `main` base for Before and the
+Label every pair with short revision identifiers. Use the recorded base revision for Before and the
 current branch or PR head for After. Do not substitute a design-reference branch for the Before
 side.
 
@@ -159,5 +159,5 @@ After Copilot review and its fix rounds settle:
 
 Do not assume that moving a draft to ready triggers an automated review. Check the repository's
 actual review request and review state after the transition, and request the review manually when it
-did not fire. If the head or selected `main` base changes after the final capture, rerun affected
-checks, recapture changed surfaces, and update the body before merge.
+did not fire. If the head or the recorded base revision changes after the final capture, rerun
+affected checks, recapture changed surfaces, and update the body before merge.

@@ -4,8 +4,9 @@
  *
  * Builds five temporary git checkouts of tiny static pages (base/head pairs,
  * each differing only in a button label), serves each with a one-file Node
- * http server started via startup.argv, and runs smoke.js against seven
- * manifests, plus one pure unit block:
+ * http server started via startup.argv, and runs smoke.js against nine
+ * manifests, plus one pure unit block and one no-manifest argument-order
+ * check:
  *
  *   0. checkFonts is pure, so its weight-matching logic (single value,
  *      normal/bold, variable-font range) is exercised directly against
@@ -31,10 +32,25 @@
  *      the server is a grandchild -> exit 0, and no process matching a
  *      distinctive marker survives smoke.js (proves terminate() kills the
  *      whole process tree, not just the direct child).
- *   7. the manifest declares two surfaces with the same name -> exit 1 with
- *      the duplicate-name error on stderr, and a marker file that
- *      startup.argv would have created is never written (proves the
- *      manifest is rejected before any server starts).
+ *   7. two surfaces whose names collide case-insensitively (they become file
+ *      names) -> exit 1 with the collision error on stderr, and a marker
+ *      file that startup.argv would have created is never written (proves
+ *      the manifest is rejected before any server starts).
+ *   8. expected_controls names a control matched by exact accessible name ->
+ *      substring matching would let head's "Save All" satisfy a request for
+ *      "Save"; base=PASS head=FAIL proves getByRole is called with
+ *      exact: true. Reuses case 1's checkouts.
+ *   9. sends SIGINT to a running smoke.js while its shell-wrapped server (a
+ *      grandchild process, as in case 6) is still up -> exit 130 and no
+ *      process matching a distinctive marker survives, proving withServer's
+ *      signal handler terminates the whole process tree before exiting.
+ *      Reuses case 1's checkouts.
+ *
+ * Separately (not part of the case list, since it never builds a manifest):
+ * smoke.js is spawned with no arguments and NODE_PATH deleted from its
+ * environment, asserting exit 2, since parseArgs must run before
+ * render.requirePlaywright() so a missing --manifest flag is reported even
+ * when playwright cannot resolve.
  *
  * Usage: node run-smoke-fixtures.js
  *
@@ -49,13 +65,13 @@
  */
 'use strict';
 
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const render = require('./render');
 const checks = require('./checks');
+const render = require('./render');
 
 const SCRIPT_DIR = __dirname;
 const SMOKE = path.join(SCRIPT_DIR, 'smoke.js');
@@ -206,8 +222,31 @@ function nonEmptyFile(filePath) {
   return fs.existsSync(filePath) && fs.statSync(filePath).size > 0;
 }
 
+function waitUntil(conditionFn, timeoutMs, intervalMs) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const check = () => {
+      if (conditionFn()) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        resolve(false);
+        return;
+      }
+      setTimeout(check, intervalMs);
+    };
+    check();
+  });
+}
+
 async function main() {
-  render.requirePlaywright();
+  try {
+    render.requirePlaywright();
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
 
   // Case 0: checkFonts is pure, so exercise its weight-matching logic
   // directly against synthetic records instead of a captured browser
@@ -260,6 +299,22 @@ async function main() {
     'case0 unloaded face does not match',
     case0Unloaded.status === 'FAIL',
     JSON.stringify(case0Unloaded)
+  );
+
+  // D: parseArgs must run before render.requirePlaywright(), so a missing
+  // --manifest flag is reported even in an environment that cannot resolve
+  // playwright.
+  const envWithoutNodePath = { ...process.env };
+  delete envWithoutNodePath.NODE_PATH;
+  const missingArgs = spawnSync(process.execPath, [SMOKE], {
+    encoding: 'utf8',
+    env: envWithoutNodePath,
+    timeout: SMOKE_TIMEOUT_MS,
+  });
+  report(
+    'smoke.js with no args exits 2 even when playwright cannot resolve',
+    missingArgs.status === 2,
+    `status=${missingArgs.status} stdout=${missingArgs.stdout} stderr=${missingArgs.stderr}`
   );
 
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pvp-smoke-fixture-'));
@@ -502,9 +557,10 @@ async function main() {
       `pgrep status=${case6Pgrep.status} stdout=${case6Pgrep.stdout} stderr=${case6Pgrep.stderr}`
     );
 
-    // Case 7: two surfaces declared with the same name must be rejected by
-    // loadManifest before any server starts. The marker-file trick proves
-    // that: startup.argv would touch the marker file if it ever ran.
+    // Case 7: two surfaces whose names collide case-insensitively (they
+    // become file names) must be rejected by loadManifest before any server
+    // starts. The marker-file trick proves that: startup.argv would touch
+    // the marker file if it ever ran.
     const case7Marker = path.join(tempRoot, 'case7-marker');
     const case7Output = path.join(tempRoot, 'case7-output');
     const case7Manifest = path.join(tempRoot, 'case7-manifest.json');
@@ -539,7 +595,7 @@ async function main() {
               crop: { selector: '[data-test="panel"]' },
             },
             {
-              name: 'panel',
+              name: 'Panel',
               path: '/',
               ready: { selector: '[data-test="app-ready"]', state: 'visible' },
               crop: { selector: '[data-test="panel"]' },
@@ -553,8 +609,10 @@ async function main() {
     const case7 = runSmoke(case7Manifest);
     report('case7 exit code 1', case7.status === 1, `status=${case7.status} stderr=${case7.stderr}`);
     report(
-      'case7 stderr reports the duplicate surface name',
-      case7.stderr.includes('surface name "panel" is declared more than once'),
+      'case7 stderr reports the case-insensitive name collision',
+      case7.stderr.includes(
+        'surface name "Panel" collides with another surface name (compared case-insensitively because names become file names)'
+      ),
       `stderr=${case7.stderr}`
     );
     report(
@@ -562,6 +620,137 @@ async function main() {
       !fs.existsSync(case7Marker),
       `marker exists=${fs.existsSync(case7Marker)}`
     );
+
+    // Case 8: expected_controls names a control matched by exact accessible
+    // name. Substring matching would let head's "Save All" satisfy a
+    // request for "Save" -> base=PASS head=FAIL proves getByRole is called
+    // with exact: true. Reuses case 1's checkouts.
+    const case8Output = path.join(tempRoot, 'case8-output');
+    const case8Manifest = path.join(tempRoot, 'case8-manifest.json');
+    writeManifest(case8Manifest, {
+      basePath: baseRoot,
+      baseSha,
+      headPath: headRoot,
+      headSha,
+      outputDir: case8Output,
+      permittedChanges: [20, 20, 220, 100],
+      expectedControls: [{ role: 'button', name: 'Save' }],
+    });
+    const case8 = runSmoke(case8Manifest);
+    report('case8 exit code 1', case8.status === 1, `status=${case8.status} stderr=${case8.stderr}`);
+    report(
+      'case8 stdout line base=PASS head=FAIL',
+      case8.stdout.includes('panel: base=PASS head=FAIL'),
+      `stdout=${case8.stdout} stderr=${case8.stderr}`
+    );
+
+    // Case 9: sending SIGINT to a running smoke.js while its shell-wrapped
+    // server (a grandchild process, as in case 6) is still up must
+    // terminate the whole process tree before smoke.js itself exits 130.
+    // Reuses case 1's checkouts; the surface's 15s wait action keeps
+    // smoke.js busy long enough to send the signal while the server is up.
+    const case9Marker = 'pvp-sigint-marker-4d81a';
+    const case9Output = path.join(tempRoot, 'case9-output');
+    const case9Manifest = path.join(tempRoot, 'case9-manifest.json');
+    fs.writeFileSync(
+      case9Manifest,
+      JSON.stringify(
+        {
+          base: { path: baseRoot, commit: baseSha },
+          head: { path: headRoot, commit: headSha },
+          output_dir: case9Output,
+          startup: {
+            cwd: '.',
+            argv: ['sh', '-c', `node serve.js $0 ${case9Marker} & wait`, '{port}'],
+            ready_url: 'http://127.0.0.1:{port}/',
+            url: 'http://127.0.0.1:{port}/',
+            env: {},
+            timeout_seconds: 30,
+          },
+          browser: {
+            viewport: [400, 300],
+            device_scale_factor: 1,
+            reduced_motion: 'reduce',
+            color_scheme: 'light',
+            locale: 'en-US',
+            timezone_id: 'UTC',
+          },
+          surfaces: [
+            {
+              name: 'panel',
+              path: '/',
+              ready: { selector: '[data-test="app-ready"]', state: 'visible' },
+              crop: { selector: '[data-test="panel"]' },
+              permitted_changes: [20, 20, 220, 100],
+              expected_controls: [],
+              expected_fonts: [],
+              actions: [{ type: 'wait', milliseconds: 15000 }],
+            },
+          ],
+        },
+        null,
+        2
+      )
+    );
+    const startupLogDirs = () =>
+      new Set(fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('pvp-log-')));
+    const case9LogDirsBefore = startupLogDirs();
+    const case9Child = spawn(process.execPath, [SMOKE, '--manifest', case9Manifest], { env: process.env });
+    let case9Stdout = '';
+    let case9Stderr = '';
+    case9Child.stdout.on('data', (chunk) => {
+      case9Stdout += chunk;
+    });
+    case9Child.stderr.on('data', (chunk) => {
+      case9Stderr += chunk;
+    });
+    const markerAppeared = await waitUntil(
+      () => spawnSync('pgrep', ['-f', case9Marker], { encoding: 'utf8' }).status === 0,
+      30000,
+      200
+    );
+    report('case9 server process appears before SIGINT', markerAppeared);
+    case9Child.kill('SIGINT');
+    const case9ExitResult = await Promise.race([
+      new Promise((resolve) => case9Child.once('exit', (code, signal) => resolve({ code, signal }))),
+      new Promise((resolve) => setTimeout(() => resolve(null), 30000)),
+    ]);
+    report('case9 smoke.js exits within 30s of SIGINT', case9ExitResult !== null);
+    report(
+      'case9 exit code 130',
+      !!case9ExitResult && case9ExitResult.code === 130,
+      case9ExitResult
+        ? `code=${case9ExitResult.code} signal=${case9ExitResult.signal}`
+        : `stdout=${case9Stdout} stderr=${case9Stderr}`
+    );
+    if (!case9ExitResult) {
+      try {
+        case9Child.kill('SIGKILL');
+      } catch {}
+    }
+    const case9Survivors = spawnSync('pgrep', ['-f', case9Marker], { encoding: 'utf8' });
+    report(
+      'case9 no marker process survives SIGINT',
+      case9Survivors.status === 1 && case9Survivors.stdout.trim() === '',
+      `pgrep status=${case9Survivors.status} stdout=${case9Survivors.stdout}`
+    );
+    const case9LeakedLogDirs = [...startupLogDirs()].filter((name) => !case9LogDirsBefore.has(name));
+    report(
+      'case9 no startup log dir survives SIGINT',
+      case9LeakedLogDirs.length === 0,
+      `leaked=${case9LeakedLogDirs.join(',')}`
+    );
+    for (const name of case9LeakedLogDirs) {
+      fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true });
+    }
+    for (const pid of case9Survivors.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)) {
+      try {
+        process.kill(Number(pid), 'SIGKILL');
+      } catch {}
+    }
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }

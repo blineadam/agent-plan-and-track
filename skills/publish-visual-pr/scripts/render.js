@@ -11,7 +11,11 @@
  *     command exits or startup.timeout_seconds elapses, then calls
  *     fn(url) and always stops the process afterward (SIGTERM, SIGKILL after
  *     10s). Returns fn's resolved value. Throws on a startup failure, with
- *     the captured stdout+stderr tail in the error message.
+ *     the captured stdout+stderr tail in the error message. While the child
+ *     is running, installs SIGINT/SIGTERM handlers that run the same
+ *     cleanup (stop the process tree, remove the startup log directory)
+ *     and exit 130/143, so an interrupted caller leaves nothing behind; the
+ *     handlers are removed once the child stops.
  *
  *   captureSide(browser, url, manifest, outputDir, side)
  *     Opens one clean context per manifest surface on the caller-supplied
@@ -213,6 +217,20 @@ async function withServer(revisionPath, startup, fn) {
   const logPath = path.join(tempDir, 'startup.log');
   const logFd = fs.openSync(logPath, 'a+');
   let child;
+  // One cleanup shared by the finally block and the signal handlers: a
+  // handler's process.exit never returns to this frame, so it must stop the
+  // server and remove the log directory itself.
+  let stopped = null;
+  const stop = () =>
+    (stopped ??= (async () => {
+      process.off('SIGINT', onSigint);
+      process.off('SIGTERM', onSigterm);
+      if (child) await terminate(child);
+      fs.closeSync(logFd);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    })());
+  const onSigint = () => stop().then(() => process.exit(130));
+  const onSigterm = () => stop().then(() => process.exit(143));
   try {
     child = spawn(command[0], command.slice(1), {
       cwd,
@@ -224,6 +242,8 @@ async function withServer(revisionPath, startup, fn) {
     child.on('error', (error) => {
       spawnError = error;
     });
+    process.on('SIGINT', onSigint);
+    process.on('SIGTERM', onSigterm);
 
     const deadline = Date.now() + timeoutSeconds * 1000;
     while (Date.now() < deadline) {
@@ -243,9 +263,7 @@ async function withServer(revisionPath, startup, fn) {
       `server did not become ready within ${timeoutSeconds} seconds: ${readyUrl}\n${tail(logPath)}`
     );
   } finally {
-    if (child) await terminate(child);
-    fs.closeSync(logFd);
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    await stop();
   }
 }
 
@@ -359,11 +377,14 @@ async function captureSide(browser, url, manifest, outputDir, side) {
       for (const action of surface.actions || []) {
         await act(page, action, side);
       }
+      // An action can start a new font load, so wait again before the
+      // screenshot.
+      await page.waitForFunction("document.fonts.status === 'loaded'");
       const fullPng = path.join(outputDir, `${surface.name}-${side}-full.png`);
       await page.screenshot({ path: fullPng });
       const controls = [];
       for (const expected of surface.expected_controls || []) {
-        const locator = page.getByRole(expected.role, { name: expected.name }).first();
+        const locator = page.getByRole(expected.role, { name: expected.name, exact: true }).first();
         const found = (await locator.count()) > 0;
         controls.push({
           name: expected.name,

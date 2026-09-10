@@ -6,7 +6,8 @@
  * Usage:
  *   node smoke.js --manifest /absolute/path/to/visual-proof.json
  *
- * Validates the manifest (surface name characters, console_exceptions
+ * Validates the manifest (surface name characters, case-insensitive surface
+ * name uniqueness since names become file names, console_exceptions
  * fields), verifies both checkouts (HEAD prefix match, no tracked changes),
  * starts startup.argv once per checkout, captures every surface in a clean
  * headless Chromium context, writes full-viewport screenshots, focused
@@ -66,10 +67,15 @@ function loadManifest(manifestPath) {
         `surface name ${JSON.stringify(surface.name)} must contain only letters, digits, '.', '_', or '-'`
       );
     }
-    if (seenNames.has(surface.name)) {
-      throw new Error(`surface name ${JSON.stringify(surface.name)} is declared more than once`);
+    // Surface names become file names, so a collision differing only in
+    // case is still a collision on a case-insensitive filesystem.
+    const key = surface.name.toLowerCase();
+    if (seenNames.has(key)) {
+      throw new Error(
+        `surface name ${JSON.stringify(surface.name)} collides with another surface name (compared case-insensitively because names become file names)`
+      );
     }
-    seenNames.add(surface.name);
+    seenNames.add(key);
   }
   return manifest;
 }
@@ -142,13 +148,13 @@ function permittedRects(surface, fallback) {
 const PLAYWRIGHT_MISSING_MESSAGE = 'playwright must be resolvable (install it globally or set NODE_PATH)';
 
 async function main() {
-  const { chromium } = render.requirePlaywright();
   const args = parseArgs(process.argv.slice(2));
+  const { chromium } = render.requirePlaywright();
   const manifest = loadManifest(args.manifest);
   const output = path.resolve(manifest.output_dir);
   fs.mkdirSync(output, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true, ...(manifest.browser.launch || {}) });
+  const browser = await chromium.launch({ ...(manifest.browser.launch || {}), headless: true });
   try {
     const basePath = verifyRevision(manifest.base, 'base');
     const headPath = verifyRevision(manifest.head, 'head');
