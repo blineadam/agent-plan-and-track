@@ -165,6 +165,12 @@ Applies to the Node hook scripts under `hooks/` and every bash script
   naming `npx -y chrome-devtools-mcp@latest` for that harness to invoke, and
   never invoke `npx` in the installer script itself): don't flag that case as
   an unpinned dependency.
+- The same pin rule applies to a CI workflow step that installs a
+  third-party package directly (`install.yml`'s `npm install --prefix
+  "$RUNNER_TEMP/playwright" playwright@1.62.1`, mirrored in both the Unix and
+  Windows jobs): pin the exact version rather than letting `npm install`
+  resolve latest. Flag a new `npm install`/`pip install`/similar step in a
+  `.github/workflows/*.yml` job with no version pin on the package.
 - `snake_case` for local variables and functions. Top-level script
   constants (computed-once paths, thresholds, config arrays) use
   `SCREAMING_SNAKE_CASE`, matching env-var-tunable settings.
