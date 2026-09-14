@@ -168,3 +168,18 @@ Two things would reopen this.
 The first is a test the rule can pass and the baseline fails. Every scenario written so far was preserved perfectly without the rule, so nothing has yet shown the rule doing work. Finding a prompt that makes a bare session drop a figure is the prerequisite for measuring anything.
 
 The second is evidence about why over-compression happens at all, and this one decides whether the digest is ever the right home. The digest exists to fix one problem: a rule stated once at the start of a session gets forgotten as the conversation grows, and repeating it on every prompt keeps it in view. If dropped figures come from that kind of forgetting, repetition helps and the rule could earn its place. If they come from the prompt itself, someone asking for twelve words in the same message, then the rule was already present when the figure was dropped, and repeating it would change nothing. All seven cells were single fresh prompts, so they could only ever see the second cause and say nothing about the first.
+
+## The code-modernization plugin stays unadopted
+
+Reviewed 2026-09-13 against [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official)'s `code-modernization` plugin. The plugin itself stays unadopted, whether linked from `migration-discipline` or pulled in as a dependency: it's a slash-command product built for legacy-system modernization, with its own artifact layout, its own subagents, and an Apache 2.0 license, and most of its README is packaging around that product rather than discipline that would generalize to a different migration.
+
+Three ideas from it were folded into `migration-discipline` on 2026-09-13: a mechanical backup for the frozen test oracle using harness-level permission denies, a characterization-test fallback for migrating code that has no usable behavior suite to freeze, and an escalating fan-out ramp for dispatch after the pilot.
+
+The rest stays out:
+
+- Its warning that instruction-shaped comments in analyzed code are untrusted input is mostly relevant to third-party legacy code the migrator doesn't own, not a port of one's own code, which is what this skill assumes.
+- Its version-delta catalog duplicates what Work-Queue Batching already captures by working from whatever the broad validation command actually reports broke.
+- Its COCOMO-based complexity index has no consumer here.
+- Its human-approval brief gate is already covered by `plan-and-track`'s check-in step.
+
+What would reopen this: a migration of untrusted third-party legacy code, where the untrusted-input warning about instruction-shaped comments would earn its own clause in Worker Briefs.
