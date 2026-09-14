@@ -175,6 +175,11 @@ Reviewed 2026-09-13 against [anthropics/claude-plugins-official](https://github.
 
 Three ideas from it were folded into `migration-discipline` on 2026-09-13: a mechanical backup for the frozen test oracle using harness-level permission denies, a characterization-test fallback for migrating code that has no usable behavior suite to freeze, and an escalating fan-out ramp for dispatch after the pilot.
 
-The rest stays out. Its warning about instruction-shaped comments in analyzed code being untrusted input is mostly relevant to third-party legacy code the migrator doesn't own, not a port of one's own code, which is what this skill assumes. Its version-delta catalog duplicates what Work-Queue Batching already captures by working from whatever the broad validation command actually reports broke. Its COCOMO-based complexity index has no consumer here. And its human-approval brief gate is already covered by `plan-and-track`'s check-in step.
+The rest stays out:
+
+- Its warning that instruction-shaped comments in analyzed code are untrusted input is mostly relevant to third-party legacy code the migrator doesn't own, not a port of one's own code, which is what this skill assumes.
+- Its version-delta catalog duplicates what Work-Queue Batching already captures by working from whatever the broad validation command actually reports broke.
+- Its COCOMO-based complexity index has no consumer here.
+- Its human-approval brief gate is already covered by `plan-and-track`'s check-in step.
 
 What would reopen this: a migration of untrusted third-party legacy code, where the untrusted-input warning about instruction-shaped comments would earn its own clause in Worker Briefs.
