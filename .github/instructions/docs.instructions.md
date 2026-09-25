@@ -1,5 +1,5 @@
 ---
-applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md"
+applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md,.ai-style-rules.md"
 excludeAgent: "cloud-agent"
 ---
 

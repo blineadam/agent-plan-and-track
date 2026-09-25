@@ -224,6 +224,9 @@ skill's own origin PR:
   generated prose** (e.g. using an em dash while writing a no-em-dash rule).
 - **Duplicating a source instead of pointing to it.** Match its density; don't
   inflate the instructions file into a second copy.
+- **A directive about a path its bucket's `applyTo` doesn't match.** Copilot
+  loads a bucket only for files its globs cover, so the directive never fires.
+  Widen the glob to that path or move the directive to a bucket that covers it.
 - **Hardcoding a language/stack assumption into the bucket logic.** Derive
   buckets from the files actually present in this project, not from what a
   previous project happened to have.

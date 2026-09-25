@@ -23,9 +23,11 @@ Check two things:
    `CONTRIBUTING.md`, style or review guides, `docs/**/*.md`, or a
    subdirectory's own `README.md`. A README that only says what the project
    is and how to run it doesn't count. Skip `.ai-style-rules.md` itself and
-   anything generated from these rules (a `.github/instructions/` file
-   carrying the copilot-review-instructions marker), since reading those back
-   would count the rules as their own source.
+   anything generated from these rules: a `.github/instructions/` file
+   carrying the copilot-review-instructions marker, and the marker-owned
+   `# Code reviews` section of `.github/copilot-instructions.md` (the rest of
+   that file still counts). Reading those back would count the rules as their
+   own source.
 2. **`.ai-style-rules.md`** at the project root.
 
 | Convention docs | `.ai-style-rules.md` | Mode |
@@ -109,7 +111,7 @@ The project already documents its conventions, so the docs stay the one
 place rules live. Never create `.ai-style-rules.md` in this mode.
 
 1. Read the convention docs and note which rules each one states.
-2. Run first-time steps 1–4. A convention a doc already states is covered:
+2. Run first-time steps 1 to 4. A convention a doc already states is covered:
    don't ask about it or restate it. Code whose majority contradicts a
    documented rule is a strong-signal conflict (the doc or the code has
    drifted), so it goes through step 4 like any other.
