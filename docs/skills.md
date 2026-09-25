@@ -135,7 +135,7 @@ For turning a project's conventions into documentation other agents can read:
 
 | Skill | What it does | Where |
 | --- | --- | --- |
-| **`inherit-legacy-style`** | Captures legacy conventions in `.ai-style-rules.md`. | All 3 |
+| **`inherit-legacy-style`** | Captures legacy conventions in existing docs, else `.ai-style-rules.md`. | All 3 |
 | **`copilot-review-instructions`** | Writes path-scoped review directives and the repo-wide review section. | All 3 |
 
 `inherit-legacy-style` captures enforceable conventions; its hard

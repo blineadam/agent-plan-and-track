@@ -1,5 +1,5 @@
 ---
-applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md"
+applyTo: "rules/**/*.md,skills/**/*.md,agents/**/*.md,docs/**/*.md,README.md,.github/instructions/**/*.md,.ai-style-rules.md"
 excludeAgent: "cloud-agent"
 ---
 
@@ -191,7 +191,7 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   prose sentence per pairing. Flag a new mapping written as prose when a
   table would fit.
 - `.ai-style-rules.md` itself is exempt from this rule: its own dense prose
-  reflects how the `inherit-legacy-style` skill records diffs, not a style
+  reflects the `inherit-legacy-style` skill's own record format, not a style
   target for `docs/*.md` or `README.md`. Don't flag `.ai-style-rules.md`'s
   own paragraph density.
 - Bullets in a doc's own prose use `-`, never `*`; `*` only belongs inside a
@@ -201,21 +201,20 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   outside its fence. Flag any other `*`-marked bullet outside a fenced block in
   `docs/*.md`, `README.md`, or `AGENTS.md`; don't re-flag that known one.
 
-## Style Evolution Log
+## `.ai-style-rules.md` records current state
 
-- `.ai-style-rules.md`'s Style Evolution Log is append-only during a routine
-  incremental update: a new dated entry gets appended, existing entries are
-  never rewritten. Flag a diff that edits or removes an existing log entry
-  outside an announced compaction pass.
-- A compaction pass (triggered once the log holds 10+ entries or exceeds half
-  the file) is the one exception: it promotes any convention that still lives
-  only in an older, still-live entry into the Golden Files/Naming &
-  State-Control/DONTs sections, drops superseded or reverted entries, keeps
-  only the newest 2-3 entries for recency (an entry with an unresolved
-  deferred conflict stays regardless of age), and restamps the header's
-  commit fingerprint to current HEAD. Flag a compaction that silently drops a
-  still-live convention without promoting it first, or one not announced as
-  a compaction.
+- `.ai-style-rules.md` states the conventions that hold now; git history is
+  its change record. Flag a diff that adds a dated log entry or a Style
+  Evolution Log section, or narrates history inside a rule ("since the last
+  round", "was generalized to") instead of stating the current convention.
+- Folding a leftover Style Evolution Log is announced and happens once: it
+  promotes every still-live convention that lives only in a log entry into
+  the Golden Files, Naming & State-Control, or DONTs section, deletes the
+  log, and restamps the header's commit fingerprint to current HEAD. Flag a
+  fold that drops a still-live convention without promoting it first.
+- A convention that `AGENTS.md` or a `docs/*.md` page already states has that
+  doc as its one owner. Flag a diff that restates it in `.ai-style-rules.md`
+  instead of pointing to the doc.
 
 ## Out-of-scope decisions
 

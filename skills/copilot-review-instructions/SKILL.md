@@ -15,7 +15,8 @@ them caught real drift between the documented rules and the generated
 instructions, and the anti-patterns below come straight from that history.
 
 Boundary with [[inherit-legacy-style]]: that skill infers *unwritten*
-conventions from code and records them in `.ai-style-rules.md`. This skill
+conventions from code and records them in the project's own convention docs,
+or in `.ai-style-rules.md` when it has none. This skill
 collects *all* review-worthy material, both written (instructions files, README,
 docs) and inferred (`.ai-style-rules.md`), and converts the combined set into
 Copilot's format. Run [[inherit-legacy-style]] first when you also want the
@@ -223,6 +224,9 @@ skill's own origin PR:
   generated prose** (e.g. using an em dash while writing a no-em-dash rule).
 - **Duplicating a source instead of pointing to it.** Match its density; don't
   inflate the instructions file into a second copy.
+- **A directive about a path its bucket's `applyTo` doesn't match.** Copilot
+  loads a bucket only for files its globs cover, so the directive never fires.
+  Widen the glob to that path or move the directive to a bucket that covers it.
 - **Hardcoding a language/stack assumption into the bucket logic.** Derive
   buckets from the files actually present in this project, not from what a
   previous project happened to have.
