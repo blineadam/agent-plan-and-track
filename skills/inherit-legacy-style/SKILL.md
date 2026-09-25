@@ -1,20 +1,42 @@
 ---
 name: inherit-legacy-style
-description: Capture a legacy codebase's implicit conventions as a standing constraint (.ai-style-rules.md) so AI-generated patches match the existing style instead of drifting toward mainstream pretrained idioms. Use when onboarding onto a hand-written legacy project, when the user worries AI code "doesn't look like our code", or to codify a project's unwritten rules. Language- and framework-agnostic, aligns meta-architecture, not syntax.
+description: Capture a legacy codebase's implicit conventions as a standing constraint (in its existing convention docs, else .ai-style-rules.md) so AI-generated patches match the existing style instead of drifting toward mainstream idioms. Use when onboarding onto a hand-written legacy project, when the user worries AI code "doesn't look like our code", or to codify a project's unwritten rules. Language- and framework-agnostic, aligns meta-architecture, not syntax.
 ---
 
 # Inherit Legacy Style
 
 Prevents AI style drift in legacy projects: scan the codebase for implicit
 conventions, resolve genuine conflicts with the user one at a time, and
-crystallize the consensus into an enforceable `.ai-style-rules.md` at the
-project root. Adapted from the ECC `inherit-legacy-style` skill.
+record the consensus where the project already keeps its rules. A project
+with no convention docs gets an enforceable `.ai-style-rules.md` at the
+project root; a project that already documents its conventions gets the
+uncovered ones proposed into those docs instead, so every rule has exactly
+one owner. Adapted from the ECC `inherit-legacy-style` skill.
 
 ## Step 0: Detect mode
 
-Check for `.ai-style-rules.md` at the project root. Missing → **first-time
-full scan**. Present → **incremental update**. Announce the detected mode and
-scale tier in one line, then proceed. Don't ask the user to pick.
+Check two things:
+
+1. **Convention docs**: markdown that states how code here should be written
+   (naming, structure, error handling, patterns), such as the instructions
+   files (`CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`),
+   `CONTRIBUTING.md`, style or review guides, `docs/**/*.md`, or a
+   subdirectory's own `README.md`. A README that only says what the project
+   is and how to run it doesn't count. Skip `.ai-style-rules.md` itself and
+   anything generated from these rules (a `.github/instructions/` file
+   carrying the copilot-review-instructions marker), since reading those back
+   would count the rules as their own source.
+2. **`.ai-style-rules.md`** at the project root.
+
+| Convention docs | `.ai-style-rules.md` | Mode |
+| --- | --- | --- |
+| None | Missing | First-time full scan |
+| None | Present | Incremental update |
+| Present | Missing | Docs gap scan |
+| Present | Present | Fold into docs |
+
+Announce the detected mode and scale tier in one line, then proceed. Don't
+ask the user to pick.
 
 ## First-time full scan
 
@@ -58,6 +80,9 @@ the header, plus three mandatory sections:
 - **Naming & State-Control Rules**: concrete, checkable conventions.
 - **DONTs**: anti-patterns that must not propagate.
 
+Write every rule, and the header, as the convention that holds now, never as
+the story of how it got there.
+
 **6. Offer persistence** (the user picks; never default to enforcement):
 
 - **Soft (recommended)**: reference `.ai-style-rules.md` from the project's
@@ -78,31 +103,73 @@ conventions (its instructions file, README, and docs), not on
 `.ai-style-rules.md` alone. Skip this offer entirely for projects that don't
 use Copilot review.
 
+## Docs gap scan
+
+The project already documents its conventions, so the docs stay the one
+place rules live. Never create `.ai-style-rules.md` in this mode.
+
+1. Read the convention docs and note which rules each one states.
+2. Run first-time steps 1–4. A convention a doc already states is covered:
+   don't ask about it or restate it. Code whose majority contradicts a
+   documented rule is a strong-signal conflict (the doc or the code has
+   drifted), so it goes through step 4 like any other.
+3. For each uncovered convention, propose an addition to the doc that already
+   owns that topic, or to the instructions file when none does: show the
+   target file and the exact text, written in that doc's own voice and
+   structure. Apply only what the user approves; a declined proposal is
+   dropped, not parked in a new file.
+4. Offer [[copilot-review-instructions]] under first-time step 6's Copilot
+   gate. Offer the soft persistence reference only when the instructions
+   file doesn't already point at the docs that changed.
+
+There is no fingerprint in this mode: the docs are the record, and each run
+is a fresh gap scan.
+
+## Fold into docs
+
+The project has convention docs and a `.ai-style-rules.md` beside them, so
+some rules have two owners and others sit apart from the rest. Announce the
+fold, then:
+
+1. Drop each rule a doc already states.
+2. Propose each remaining rule into the doc that owns its topic, the same way
+   as docs gap scan step 3.
+3. Once every remaining rule has landed in a doc, delete `.ai-style-rules.md`,
+   repoint anything that references it (the instructions file, generated
+   review directives), and re-offer [[copilot-review-instructions]] under the
+   same gate.
+
+If the user declines the fold, or nobody is available to approve doc edits,
+keep the file and run the incremental update below, dropping from the file
+any rule a doc now states and pointing to that doc instead.
+
 ## Incremental update
 
 1. Read the existing `.ai-style-rules.md`; diff from its recorded commit
    fingerprint to HEAD (`--stat` first) to find what changed.
 2. Compare new code against the recorded rules; run only *new* conflicts
    through the one-question-at-a-time protocol.
-3. Append a dated `### [YYYY-MM-DD] Style Evolution Log` entry; never
-   rewrite existing rules.
+3. Record each change in place: add, revise, or remove the rule in its
+   section (Golden Files / Naming & State-Control Rules / DONTs), and restamp
+   the header's fingerprint to HEAD. In a git-tracked project the file keeps
+   no changelog, since the commit that changes it is the change record: no
+   dated entries, and no "since the last round" or "was generalized to"
+   narration inside a rule. Outside git nothing else records the history, so
+   also append a dated `### [YYYY-MM-DD] Style Evolution Log` entry there.
 4. If this update changed any convention and the project uses (or plans to
    use) GitHub Copilot's PR code review, re-offer [[copilot-review-instructions]]
    under the same gate as first-time Step 6, so the generated review files
    refresh against the new rules instead of going stale. Skip the offer when
    nothing review-worthy changed or the project doesn't use Copilot review.
-5. **Compact the log once it's outgrown its purpose.** In a git-tracked
-   project, once the Style Evolution Log holds 10+ entries or exceeds half
-   the file, run a compaction pass: announce it to the user first, never
-   silent. Read every entry; for each convention that lives only in a log
-   entry and is still live (not superseded or reverted by a later entry),
-   promote it into the fitting canonical section (Golden Files / Naming &
-   State-Control Rules / DONTs). Drop superseded and reverted entries
-   outright, and drop every entry older than the newest 2-3, which stay for
-   recency; an entry carrying a still-open deferred conflict stays
-   regardless of age, until the conflict is resolved. Git history is the
-   archive for whatever gets dropped. Restamp the header's commit
-   fingerprint to current HEAD.
+5. **Fold a leftover log.** A git-tracked file that still carries a Style
+   Evolution Log from an earlier version of this skill gets it folded once,
+   announced to the user first, never silent. Promote each convention that
+   lives only in a log entry and is still live (not superseded or reverted by
+   a later entry) into its section, drop every entry, delete the log heading,
+   and rewrite any history narration in the header and sections as current
+   state. Git history is the archive. A still-open deferred conflict from the
+   log goes back through the one-question protocol rather than surviving in
+   the file.
 
 ## Per-turn enforcement
 
@@ -115,10 +182,12 @@ DONTs apply.
 - Skipping the scale measurement: sampling a 30-file project starves it;
   close-reading a 5,000-file repo blows the budget.
 - Stacking conflict questions: strictly one at a time.
-- Overwriting rules during a routine incremental update: always append the
-  evolution log there instead. The announced compaction pass (Incremental
-  update step 5) is the one exception, since rewriting the log is its whole
-  point.
+- Creating `.ai-style-rules.md` beside convention docs, or restating in it
+  what a doc already says: a rule with two owners drifts.
+- Keeping a changelog in a git-tracked project: dated entries, round-by-round
+  diffs, or before-and-after narration inside a rule. The file states the
+  current conventions; git records how they changed.
+- Editing a hand-written doc without the user's approval of the exact text.
 - Defaulting to hard enforcement: persistence strength is the user's call.
 - Judging syntax or stack quality: this aligns meta-architecture only.
 - Copying bugs from exemplar files: reuse structure, flag defects.

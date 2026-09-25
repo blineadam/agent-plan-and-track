@@ -111,7 +111,7 @@ Start by generating the harness's project instructions (`CLAUDE.md`, or
 
 ```text
 /init                         # create project instructions
-/inherit-legacy-style         # capture conventions in .ai-style-rules.md
+/inherit-legacy-style         # capture unwritten conventions
 /copilot-review-instructions  # on GitHub, teach Copilot those conventions
 ```
 

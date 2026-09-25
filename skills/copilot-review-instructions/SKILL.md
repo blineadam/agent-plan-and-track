@@ -15,7 +15,8 @@ them caught real drift between the documented rules and the generated
 instructions, and the anti-patterns below come straight from that history.
 
 Boundary with [[inherit-legacy-style]]: that skill infers *unwritten*
-conventions from code and records them in `.ai-style-rules.md`. This skill
+conventions from code and records them in the project's own convention docs,
+or in `.ai-style-rules.md` when it has none. This skill
 collects *all* review-worthy material, both written (instructions files, README,
 docs) and inferred (`.ai-style-rules.md`), and converts the combined set into
 Copilot's format. Run [[inherit-legacy-style]] first when you also want the
