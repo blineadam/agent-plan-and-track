@@ -95,6 +95,9 @@ The safety rules in section 7 apply to the local file as much as to production o
 Logs outlive the code that wrote them and travel to systems with wider access than the service had, so treat every field as something that will be read by someone who was not meant to see it.
 
 - Never log secrets, tokens, passwords, session IDs, connection strings, or full personal data. Build each event from an allowlist of fields rather than dumping an object or a whole request or response body.
+- Treat error messages, stack traces, and URLs as untrusted text. A database or validation error often quotes the offending value, such as an email address, and a URL's query string can carry a token. Log the error type and code, strip query strings, and keep a raw message only after checking what it can contain.
+- When a personal value is needed to correlate events, log a stable hash or a masked form, such as the last four characters, instead of the value itself.
+- Turn on the logging library's own redaction for known sensitive field names (password, token, authorization, cookie, email) as a backstop. The allowlist is still the primary control, since redaction only catches the names it knows.
 - Neutralize newlines and other control characters in any value a user controls. A value that contains a line break can forge a second, fake log line. Escape the break (write `\n` as two characters) or encode the value, rather than trusting the input to be a single line.
 - Bound the length of every free-text field and mark the cut, for example a trailing `...[truncated 4096 bytes]`, so one oversized value cannot bury the line or blow the sink's size limit.
 
@@ -117,7 +120,7 @@ Logging is code and can be wrong, so check the output rather than the call.
 1. For each new or changed code path, force one real failure: a bad input, a stubbed timeout, a blocked dependency.
 2. Capture the real emitted line, not the logging call as written.
 3. Check that the line alone tells you what failed, where, which identifiers were involved, and what to do next, without opening the source.
-4. Spot-check the captured output for secrets and for unescaped user input.
+4. Spot-check the captured output for secrets, personal data, and unescaped user input, including inside error messages.
 
 When a plan adds a new entry point or a new failure path, the plan step carries this as its verify clause (see [[plan-and-track]]), so completion is judged on the forced-failure line.
 
