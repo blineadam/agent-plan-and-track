@@ -58,9 +58,10 @@ quality):
    logic → helpers → exports).
 2. **State & control flow**: naming for async state, pagination, flags.
 3. **Infrastructure placement**: where cross-cutting utilities live
-   (interceptors, formatters, middleware).
+   (interceptors, formatters, middleware); the logger: library, where it is
+   configured, output format, field names, correlation-ID handling.
 4. **Error handling**: try/catch vs global handler vs Result returns;
-   null-check habits.
+   null-check habits; where errors get logged and what each level means.
 
 **3. Filter noise before involving the user.** A minority pattern under 5%
 of occurrences *and* fewer than 10 instances is weak signal: majority wins,

@@ -44,6 +44,14 @@ work, then publish or capture what the session taught you.
   files, one mechanical change, possibly parallel agents. Layers on
   `plan-and-track` and `efficient-frontier`, and keeps a durable
   `## Migration State` block in the project's `.tasks/todo.md`.
+- **`logging-practices`** (skill, adapted from the logging parts of
+  [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills)'s
+  observability-and-instrumentation skill) kicks in when a new entry
+  point, failure path, or external call is built, or logging is added or
+  reviewed. Reuses
+  the project's existing logger, shapes events so a person or an LLM can
+  diagnose a failure from one line, and requires forcing one failure and
+  reading the emitted line before the work counts as done.
 
 ### Finish, learn, and publish
 
