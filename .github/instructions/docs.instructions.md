@@ -98,7 +98,10 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   `ayghri/i-have-adhd`). No in-file HTML comment or `LICENSE.txt` for this
   case; that's only for the wholesale-vendored case above. Flag a rewritten,
   externally-inspired skill or rule merged in without that one-line
-  `AGENTS.md` credit.
+  `AGENTS.md` credit, unless the idea came from a private or
+  employer-internal repository. That case is the one exception and gets no
+  credit anywhere, since naming the source would disclose someone else's
+  code and no license obliges it: don't flag the missing credit.
 
 ## Subagent definition files
 
