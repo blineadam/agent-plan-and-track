@@ -50,7 +50,8 @@ work, then publish or capture what the session taught you.
   point, failure path, or external call is built, or logging is added or
   reviewed. Reuses
   the project's existing logger, shapes events so a person or an LLM can
-  diagnose a failure from one line, and requires forcing one failure and
+  diagnose a failure from one line, keeps a gitignored local log file an
+  agent can read, and requires forcing one failure and
   reading the emitted line before the work counts as done.
 
 ### Finish, learn, and publish

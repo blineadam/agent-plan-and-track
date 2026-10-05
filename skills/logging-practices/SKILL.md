@@ -17,8 +17,8 @@ Before writing a log call, find what the project already has: the logger, where 
 - Never add a second logging library, and never rename or reshape fields that existing dashboards, queries, or tests may depend on.
 - Scattered print or console calls with no shared module count as no logger, even when a logging library sits unused in the dependencies.
 - A thin homemade wrapper around print or console (no level control, no structured fields, no context binding) still gets used inside a feature change, so one change does not split the codebase across two loggers. Unless a convention doc records the wrapper as deliberate, say in your report that an established library would replace it, as its own change, naming the library.
-- With no logger at all, use the language's standard logging facility or a well-established logging library, preferring one already installed. Do not hand-roll print or echo calls.
-- Writing straight to stdout or stderr is fine only where that is the accepted convention, such as a shell script or a small CLI whose stdout is its output contract. Diagnostics then go to stderr so they never corrupt the output.
+- With no logger at all, use the standard library's leveled logging module, or a well-established logging library when the standard library offers none, preferring one already installed. A print or console primitive is not a logging module, and serializing JSON into one by hand is still hand-rolling. Where only print or console ships with the language, adding the ecosystem's most widely used logging library is a dependency worth taking.
+- Writing straight to stdout or stderr is fine only where that output is the program's interface: a shell script, or a CLI whose output a person reads at a terminal or another program consumes through a pipe. A script that runs unattended, such as a sync job, a cron task, or a CI step, is a unit of work and gets a logger.
 - A logger's own sink may legitimately be stdout or stderr (containers and twelve-factor apps do this). The rule is about not bypassing a logger, not about where the logger writes.
 
 ## 2. Name the questions
@@ -64,9 +64,9 @@ Include, where they apply:
 - What was being attempted when it failed.
 - A next-action hint when one is known.
 
-## 5. Levels
+## 5. Levels and volume
 
-Use the project's level scheme. When it has none written down, this is a sound default.
+Use the project's level scheme and its existing level switch, such as a `LOG_LEVEL` environment variable or a config setting. When it has none written down, pick the level by who has to act.
 
 | Level | Meaning | Action |
 |---|---|---|
@@ -75,15 +75,33 @@ Use the project's level scheme. When it has none written down, this is a sound d
 | info | A significant business event, such as a job finishing or an order placed | None |
 | debug | Diagnostic detail | Off by default in production |
 
-## 6. Safety
+- A caller's bad input, such as a validation failure or a 4xx response, is warn or info, not error. Nothing in this system broke.
+- An expected, handled upstream failure is warn. Each retry is warn. When retries run out and the operation fails for good, that is one error line, logged where it is handled; when a fallback then succeeds, the outcome stays warn.
+- At info, emit the unit-of-work summary plus real state changes, such as a job starting or a config reload. Step-by-step and per-item detail is debug, which stays off in production.
+- Each call site picks its event's level, but the threshold that filters them comes from the level switch, never a hardcoded value. Never ship debug on by default, and remove temporary troubleshooting lines before the work is done.
+
+## 6. Where logs go
+
+One logger, two outputs, both configured where the logger is set up.
+
+- The console is for the person running the code: readable, and colored only when the output is a terminal.
+- When a service or job runs in local development, also write structured one-event-per-line output to a file at a stable path such as `logs/app.log`. Use the library's own rotating file handler with a size cap, and gitignore the whole log directory so rotated backups such as `app.log.1` are covered too. Record the path in the project's instructions file (AGENTS.md, CLAUDE.md) so an agent reads the file instead of asking for pasted terminal output.
+- A deployed service writes to stdout only, and the platform collects it. Containers and serverless functions get no log files, since their disks are short-lived or read-only.
+
+The safety rules in section 7 apply to the local file as much as to production output.
+
+## 7. Safety
 
 Logs outlive the code that wrote them and travel to systems with wider access than the service had, so treat every field as something that will be read by someone who was not meant to see it.
 
 - Never log secrets, tokens, passwords, session IDs, connection strings, or full personal data. Build each event from an allowlist of fields rather than dumping an object or a whole request or response body.
+- Treat error messages, stack traces, and URLs as untrusted text. A database or validation error often quotes the offending value, such as an email address, and a URL's query string can carry a token. Log the error type and code, strip query strings, and keep a raw message only after checking what it can contain.
+- When events about one person need correlating, log an opaque ID the system already has, such as the internal user ID, or a keyed HMAC whose key stays out of the logs. Never log a plain hash: anyone can hash candidate emails or phone numbers and match the digest. Mask a value only when the visible part cannot identify the person, and treat any derived identifier as sensitive data too.
+- Turn on the logging library's own redaction for known sensitive field names (password, token, authorization, cookie, email) as a backstop. The allowlist is still the primary control, since redaction only catches the names it knows.
 - Neutralize newlines and other control characters in any value a user controls. A value that contains a line break can forge a second, fake log line. Escape the break (write `\n` as two characters) or encode the value, rather than trusting the input to be a single line.
 - Bound the length of every free-text field and mark the cut, for example a trailing `...[truncated 4096 bytes]`, so one oversized value cannot bury the line or blow the sink's size limit.
 
-## 7. Logs an LLM can use
+## 8. Logs an LLM can use
 
 An agent debugging a failure reads the log the way a person does with a search tool and a short attention span. These choices help a human reader equally.
 
@@ -95,18 +113,18 @@ An agent debugging a failure reads the log the way a person does with a search t
 - No ANSI color codes or spinner redraws when the output is not a terminal, since they arrive as escape garbage in a captured log.
 - Timestamps in UTC ISO-8601, so lines from different hosts order correctly without a timezone guess.
 
-## 8. Verify
+## 9. Verify
 
 Logging is code and can be wrong, so check the output rather than the call.
 
 1. For each new or changed code path, force one real failure: a bad input, a stubbed timeout, a blocked dependency.
 2. Capture the real emitted line, not the logging call as written.
 3. Check that the line alone tells you what failed, where, which identifiers were involved, and what to do next, without opening the source.
-4. Spot-check the captured output for secrets and for unescaped user input.
+4. Spot-check the captured output for secrets, personal data, and unescaped user input, including inside error messages.
 
 When a plan adds a new entry point or a new failure path, the plan step carries this as its verify clause (see [[plan-and-track]]), so completion is judged on the forced-failure line.
 
-## 9. Red flags
+## 10. Red flags
 
 - A new retry, queue, fallback, or external call with no new log line.
 - Log messages built by string interpolation instead of structured fields.
@@ -116,6 +134,7 @@ When a plan adds a new entry point or a new failure path, the plan step carries 
 - A catch that swallows an error, or turns it into a null or a bare status code, without a line carrying the cause.
 - The same error logged at every layer it propagates through.
 - Secrets, tokens, or whole request bodies in output.
+- A deployed service writing log files, or a local log file that git would commit.
 - A raw user-supplied value written into a line without escaping.
 - Logging that was never exercised: no forced failure and no captured line.
 
