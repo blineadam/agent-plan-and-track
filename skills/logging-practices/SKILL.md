@@ -76,16 +76,16 @@ Use the project's level scheme and its existing level switch, such as a `LOG_LEV
 | debug | Diagnostic detail | Off by default in production |
 
 - A caller's bad input, such as a validation failure or a 4xx response, is warn or info, not error. Nothing in this system broke.
-- An expected, handled upstream failure is warn. Each retry is warn, and the attempt that gives up is one error line, logged where it is handled.
+- An expected, handled upstream failure is warn. Each retry is warn. When retries run out and the operation fails for good, that is one error line, logged where it is handled; when a fallback then succeeds, the outcome stays warn.
 - At info, emit the unit-of-work summary plus real state changes, such as a job starting or a config reload. Step-by-step and per-item detail is debug, which stays off in production.
-- Never hardcode a level in code or ship debug on by default, and remove temporary troubleshooting lines before the work is done.
+- Each call site picks its event's level, but the threshold that filters them comes from the level switch, never a hardcoded value. Never ship debug on by default, and remove temporary troubleshooting lines before the work is done.
 
 ## 6. Where logs go
 
 One logger, two outputs, both configured where the logger is set up.
 
 - The console is for the person running the code: readable, and colored only when the output is a terminal.
-- When a service or job runs in local development, also write structured one-event-per-line output to a file at a stable path such as `logs/app.log`. Use the library's own rotating file handler with a size cap, and gitignore the file. Record the path in the project's instructions file (AGENTS.md, CLAUDE.md) so an agent reads the file instead of asking for pasted terminal output.
+- When a service or job runs in local development, also write structured one-event-per-line output to a file at a stable path such as `logs/app.log`. Use the library's own rotating file handler with a size cap, and gitignore the whole log directory so rotated backups such as `app.log.1` are covered too. Record the path in the project's instructions file (AGENTS.md, CLAUDE.md) so an agent reads the file instead of asking for pasted terminal output.
 - A deployed service writes to stdout only, and the platform collects it. Containers and serverless functions get no log files, since their disks are short-lived or read-only.
 
 The safety rules in section 7 apply to the local file as much as to production output.
