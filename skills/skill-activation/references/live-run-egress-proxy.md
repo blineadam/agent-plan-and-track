@@ -143,3 +143,12 @@ ClientHello would move the real destination out of view entirely. The last two
 are the frontend operator's control rather than this config's, and today
 `dig HTTPS api.anthropic.com` advertises no `ech=` parameter; re-check that
 rather than assume it.
+
+## Docker Desktop on macOS
+
+The `DOCKER-USER` chain lives inside Docker Desktop's VM, so the internal-network route is the practical one on a Mac. This layout held on Docker Desktop 29.8 with a behavioral `--run`:
+
+- Create the sandbox network with `docker network create --internal`, start the proxy on the default bridge, then `docker network connect --ip` it to the internal network at the address `http_port` binds. The sandbox joins only the internal network, so the proxy is its sole route out.
+- Start the sandbox with `--dns 127.0.0.1`. With it, an external name lookup from inside the sandbox failed, and the CONNECT proxy needs no sandbox DNS. Prove both, along with the denied and terminated cases, before spending.
+- Pass the credential by name, `-e CLAUDE_CODE_OAUTH_TOKEN`, with the value set only on the `docker run` command, so it never appears in the argument list.
+- Write `--run` results inside the container and copy them to a mounted directory after the runner exits. The runner writing straight into a directory bind-mounted from macOS failed with `EACCES` before any case spawned.
