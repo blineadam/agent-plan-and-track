@@ -17,8 +17,8 @@ Before writing a log call, find what the project already has: the logger, where 
 - Never add a second logging library, and never rename or reshape fields that existing dashboards, queries, or tests may depend on.
 - Scattered print or console calls with no shared module count as no logger, even when a logging library sits unused in the dependencies.
 - A thin homemade wrapper around print or console (no level control, no structured fields, no context binding) still gets used inside a feature change, so one change does not split the codebase across two loggers. Unless a convention doc records the wrapper as deliberate, say in your report that an established library would replace it, as its own change, naming the library.
-- With no logger at all, use the language's standard logging facility or a well-established logging library, preferring one already installed. Do not hand-roll print or echo calls.
-- Writing straight to stdout or stderr is fine only where that is the accepted convention, such as a shell script or a small CLI whose stdout is its output contract. Diagnostics then go to stderr so they never corrupt the output.
+- With no logger at all, use the standard library's leveled logging module, or a well-established logging library when the standard library offers none, preferring one already installed. A print or console primitive is not a logging module, and serializing JSON into one by hand is still hand-rolling. Where only print or console ships with the language, adding the ecosystem's most widely used logging library is a dependency worth taking.
+- Writing straight to stdout or stderr is fine only where that output is the program's interface: a shell script, or a CLI whose output a person reads at a terminal or another program consumes through a pipe. A script that runs unattended, such as a sync job, a cron task, or a CI step, is a unit of work and gets a logger.
 - A logger's own sink may legitimately be stdout or stderr (containers and twelve-factor apps do this). The rule is about not bypassing a logger, not about where the logger writes.
 
 ## 2. Name the questions
@@ -85,7 +85,7 @@ Use the project's level scheme and its existing level switch, such as a `LOG_LEV
 One logger, two outputs, both configured where the logger is set up.
 
 - The console is for the person running the code: readable, and colored only when the output is a terminal.
-- In local development, also write structured one-event-per-line output to a file at a stable path such as `logs/app.log`. Use the library's own rotating file handler with a size cap, and gitignore the file. Record the path in the project's instructions file (AGENTS.md, CLAUDE.md) so an agent reads the file instead of asking for pasted terminal output.
+- When a service or job runs in local development, also write structured one-event-per-line output to a file at a stable path such as `logs/app.log`. Use the library's own rotating file handler with a size cap, and gitignore the file. Record the path in the project's instructions file (AGENTS.md, CLAUDE.md) so an agent reads the file instead of asking for pasted terminal output.
 - A deployed service writes to stdout only, and the platform collects it. Containers and serverless functions get no log files, since their disks are short-lived or read-only.
 
 The safety rules in section 7 apply to the local file as much as to production output.
