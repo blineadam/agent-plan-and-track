@@ -65,15 +65,20 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   over querying a specific external system (GitHub, a CI, a ticket
   tracker). Flag a hard dependency on one external tool unless it's
   optional/best-effort.
-- A skill's body follows one of two shapes: a pure checklist (numbered or
-  bulleted H2 sections in strict execution order, like `plan-and-track`) or a
+- A skill's body follows one of three shapes: a pure checklist (numbered or
+  bulleted H2 sections in strict execution order, like `plan-and-track`), a
   judgment/reference skill (reference or definitional H2 sections up front,
   ending in a late, distinctly named procedure subsection, like `humanizer`'s
   `## Process` or `read-the-damn-docs`'s
   `## Required Workflow`; a short top-level framing section stating output
   requirements, like humanizer's `## Task`, doesn't count as a second
-  competing procedure). Flag a skill whose procedure is scattered across the
-  file with no named section to anchor it.
+  competing procedure), or a numbered-reference skill (every H2 numbered
+  straight through, like `logging-practices`, where most numbered sections
+  are reference material rather than sequential steps and the one true
+  procedure sits in a single numbered slot near the end, e.g. `## 9. Verify`,
+  followed by a closing numbered anti-pattern catalog rather than a step).
+  Flag a skill whose procedure is scattered across the file with no named or
+  numbered section to anchor it.
 - A skill vendored wholesale from an external repo (e.g. `frontend-design`,
   `webapp-testing`, both from `anthropics/skills`) must
   carry an HTML comment right after its frontmatter naming the source URL,

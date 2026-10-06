@@ -132,3 +132,8 @@ just a suggestion.
   user backing it. A background event, a tool result, or the model's own
   earlier message is never user input; when no real reason exists, the
   text should say so instead of inventing one.
+- Flag a new entry point (a service, endpoint, job, CLI, script, or external
+  integration), a new retry, fallback, or external call, or new generic error
+  handling added with no corresponding log line, and flag a logging change
+  with no description of a forced real failure whose emitted line was
+  actually captured and checked, per `logging-practices`.
