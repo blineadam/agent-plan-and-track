@@ -1,0 +1,430 @@
+#!/usr/bin/env node
+'use strict';
+
+// Offline stub of the GitHub CLI for the yeet-step15 behavioral smokes. Logs
+// every invocation (argv as a JSON array, one line) to gh-calls.log in the
+// case dir, then answers from gh-state.json beside it. It models one PR
+// (octo/demo#7, branch feature) and only the calls yeet's steps 7 through 15
+// make; anything else prints `gh stub: unsupported: <argv>` and exits 1.
+
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+
+const CASE_DIR = path.dirname(__dirname);
+const STATE_FILE = path.join(CASE_DIR, 'gh-state.json');
+const LOG_FILE = path.join(CASE_DIR, 'gh-calls.log');
+const OWNER = 'octo';
+const REPO = 'demo';
+const PR = 7;
+const PR_URL = `https://github.com/${OWNER}/${REPO}/pull/${PR}`;
+const COPILOT_REST = 'copilot-pull-request-reviewer[bot]';
+const COPILOT_GRAPHQL = 'copilot-pull-request-reviewer';
+const COPILOT_COMMENT_LOGIN = 'Copilot';
+
+const argv = process.argv.slice(2);
+fs.appendFileSync(LOG_FILE, JSON.stringify(argv) + '\n');
+
+function unsupported() {
+  process.stderr.write(`gh stub: unsupported: ${JSON.stringify(argv)}\n`);
+  process.exit(1);
+}
+
+function loadState() {
+  const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  // A review that finishes right after the draft flip: hidden until `pr ready`.
+  if (!state.isDraft && state.after_ready) {
+    for (const k of ['reviews', 'comments', 'threads']) state[k].push(...(state.after_ready[k] || []));
+    delete state.after_ready;
+    saveState(state);
+  }
+  return state;
+}
+
+function saveState(state) {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
+}
+
+// Print a JSON value, optionally through `jq -r <expr>` (gh's --jq/-q).
+function emit(value, jqExpr) {
+  const text = JSON.stringify(value);
+  if (jqExpr === undefined) {
+    process.stdout.write(text + '\n');
+    return;
+  }
+  const res = spawnSync('jq', ['-r', jqExpr], { input: text, encoding: 'utf8' });
+  if (res.error) {
+    process.stderr.write(`gh stub: jq failed to start: ${res.error.message}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(res.stdout);
+  process.stderr.write(res.stderr);
+  if (res.status !== 0) process.exit(res.status || 1);
+}
+
+// Flags shared by pr/api/repo subcommands. Returns positionals plus parsed
+// flags; handles `--flag value` and `--flag=value`.
+const VALUE_FLAGS = new Set([
+  '-X', '--method', '-f', '--raw-field', '-F', '--field', '-H', '--header',
+  '-q', '--jq', '--json', '--input', '-t', '--template', '--hostname', '--cache',
+  '-R', '--repo', '--add-reviewer', '--body-file', '-b', '--body', '-t', '--title',
+]);
+
+function parseArgs(args) {
+  const out = { positional: [], flags: {}, fields: {}, bool: new Set() };
+  for (let i = 0; i < args.length; i++) {
+    let arg = args[i];
+    let value;
+    const eq = arg.startsWith('--') ? arg.indexOf('=') : -1;
+    if (eq > 0) {
+      value = arg.slice(eq + 1);
+      arg = arg.slice(0, eq);
+    }
+    if (arg.startsWith('-') && arg.length > 1) {
+      if (VALUE_FLAGS.has(arg)) {
+        if (value === undefined) value = args[++i];
+        if (arg === '-f' || arg === '--raw-field' || arg === '-F' || arg === '--field') {
+          const at = (value || '').indexOf('=');
+          if (at > 0) {
+            const key = value.slice(0, at);
+            const val = value.slice(at + 1);
+            if (key.endsWith('[]')) {
+              const base = key.slice(0, -2);
+              out.fields[base] = (out.fields[base] || []).concat(val);
+            } else {
+              out.fields[key] = val;
+            }
+          }
+        } else {
+          (out.flags[arg] = out.flags[arg] || []).push(value);
+        }
+      } else {
+        out.bool.add(arg);
+      }
+    } else {
+      out.positional.push(arg);
+    }
+  }
+  return out;
+}
+
+function lastFlag(parsed, ...names) {
+  for (const n of names) {
+    if (parsed.flags[n] && parsed.flags[n].length) return parsed.flags[n][parsed.flags[n].length - 1];
+  }
+  return undefined;
+}
+
+function sha7(sha) {
+  return String(sha).slice(0, 7);
+}
+
+function reviewLogin(review) {
+  return review.login || COPILOT_REST;
+}
+
+function restReviews(state) {
+  return state.reviews.map((r) => ({
+    id: r.id,
+    node_id: `PRR_${r.id}`,
+    user: { login: reviewLogin(r), type: r.login ? 'User' : 'Bot' },
+    body: r.body,
+    state: r.state,
+    commit_id: r.commit_id,
+    submitted_at: r.submitted_at,
+    html_url: `${PR_URL}#pullrequestreview-${r.id}`,
+  }));
+}
+
+function restComments(state) {
+  return state.comments.map((c) => {
+    const base = {
+      id: c.id,
+      pull_request_review_id: c.pull_request_review_id,
+      user: { login: c.login || COPILOT_COMMENT_LOGIN },
+      path: c.path,
+      line: c.line,
+      body: c.body,
+      commit_id: c.commit_id,
+      original_commit_id: c.commit_id,
+      html_url: `${PR_URL}#discussion_r${c.id}`,
+    };
+    if (c.in_reply_to_id !== undefined) base.in_reply_to_id = c.in_reply_to_id;
+    return base;
+  });
+}
+
+function pendingRequests(state) {
+  return state.reviewRequests || [];
+}
+
+// Record a Copilot review request. The stub lets the pass finish at once: the
+// next reads show a fresh clean review at the current head and no pending
+// reviewer, so an agent that requests one can finish instead of polling.
+function recordCopilotRequest(state) {
+  if (!state.copilot_requested) {
+    state.copilot_requested = true;
+    const taken = new Set(state.reviews.map((r) => r.id));
+    const id = taken.has(1002) ? 1090 : 1002;
+    state.reviews.push({
+      id,
+      commit_id: state.head_sha,
+      state: 'COMMENTED',
+      body: 'Copilot reviewed 2 of 2 changed files and generated no comments.',
+      submitted_at: '2026-10-09T09:00:00Z',
+    });
+  }
+  state.reviewRequests = [];
+  saveState(state);
+}
+
+// ---- gh --version / auth ---------------------------------------------------
+if (argv[0] === '--version' || argv[0] === 'version') {
+  process.stdout.write('gh version 2.60.0 (2026-01-01)\nhttps://github.com/cli/cli/releases/tag/v2.60.0\n');
+  process.exit(0);
+}
+
+if (argv[0] === 'auth' && argv[1] === 'status') {
+  process.stdout.write(
+    'github.com\n  Logged in to github.com account octo (keyring)\n  - Active account: true\n' +
+      "  - Git operations protocol: https\n  - Token scopes: 'repo', 'read:org'\n"
+  );
+  process.exit(0);
+}
+
+// ---- gh repo view ----------------------------------------------------------
+if (argv[0] === 'repo' && argv[1] === 'view') {
+  const parsed = parseArgs(argv.slice(2));
+  const json = lastFlag(parsed, '--json');
+  const jq = lastFlag(parsed, '--jq', '-q');
+  if (json === undefined) {
+    process.stdout.write(`${OWNER}/${REPO}\n`);
+    process.exit(0);
+  }
+  const all = {
+    owner: { login: OWNER },
+    name: REPO,
+    nameWithOwner: `${OWNER}/${REPO}`,
+    url: `https://github.com/${OWNER}/${REPO}`,
+    defaultBranchRef: { name: 'main' },
+  };
+  const picked = {};
+  for (const f of json.split(',')) if (f in all) picked[f] = all[f];
+  emit(picked, jq);
+  process.exit(0);
+}
+
+// ---- gh pr ... -------------------------------------------------------------
+if (argv[0] === 'pr') {
+  const sub = argv[1];
+  const parsed = parseArgs(argv.slice(2));
+  const num = parsed.positional[0];
+  if (num !== undefined && num !== String(PR) && num !== 'feature') unsupported();
+  const state = loadState();
+
+  if (sub === 'view') {
+    const json = lastFlag(parsed, '--json');
+    const jq = lastFlag(parsed, '--jq', '-q');
+    if (json === undefined) {
+      process.stdout.write(
+        `title:\tAdd a default greeting\nstate:\t${state.isDraft ? 'DRAFT' : 'OPEN'}\nauthor:\tocto\nnumber:\t${PR}\nurl:\t${PR_URL}\n`
+      );
+      process.exit(0);
+    }
+    const all = {
+      number: PR,
+      url: PR_URL,
+      title: 'Add a default greeting',
+      headRefName: 'feature',
+      baseRefName: 'main',
+      headRefOid: state.head_sha,
+      isDraft: state.isDraft,
+      state: 'OPEN',
+      statusCheckRollup: [
+        {
+          __typename: 'CheckRun',
+          name: 'ci',
+          workflowName: 'CI',
+          status: 'COMPLETED',
+          conclusion: 'SUCCESS',
+          detailsUrl: `${PR_URL}/checks`,
+        },
+      ],
+      reviewRequests: pendingRequests(state).map((login) => ({ __typename: 'Bot', login })),
+      reviews: state.reviews.map((r) => ({
+        id: `PRR_${r.id}`,
+        author: { login: r.login || COPILOT_GRAPHQL },
+        authorAssociation: r.login ? 'OWNER' : 'NONE',
+        body: r.body,
+        submittedAt: r.submitted_at,
+        state: r.state,
+        commit: { oid: r.commit_id },
+      })),
+    };
+    const picked = {};
+    for (const f of json.split(',')) {
+      if (!(f in all)) unsupported();
+      picked[f] = all[f];
+    }
+    emit(picked, jq);
+    process.exit(0);
+  }
+
+  if (sub === 'checks') {
+    const json = lastFlag(parsed, '--json');
+    const jq = lastFlag(parsed, '--jq', '-q');
+    if (json !== undefined) {
+      emit([{ name: 'ci', state: 'SUCCESS', bucket: 'pass', workflow: 'CI', link: `${PR_URL}/checks` }], jq);
+    } else {
+      process.stdout.write(`ci\tpass\t41s\t${PR_URL}/checks\n`);
+    }
+    process.exit(0);
+  }
+
+  if (sub === 'ready') {
+    state.isDraft = false;
+    saveState(state);
+    process.stdout.write(`Pull request ${OWNER}/${REPO}#${PR} is marked as "ready for review"\n`);
+    process.exit(0);
+  }
+
+  if (sub === 'edit') {
+    const reviewers = parsed.flags['--add-reviewer'] || [];
+    if (reviewers.length > 0 && reviewers.every((r) => /copilot/i.test(r))) {
+      recordCopilotRequest(state);
+      process.stdout.write(`${PR_URL}\n`);
+      process.exit(0);
+    }
+    unsupported();
+  }
+
+  unsupported();
+}
+
+// ---- gh api ----------------------------------------------------------------
+if (argv[0] === 'api') {
+  const parsed = parseArgs(argv.slice(1));
+  const jq = lastFlag(parsed, '--jq', '-q');
+  const endpoint = (parsed.positional[0] || '').replace(/^\/+/, '');
+  const explicit = lastFlag(parsed, '-X', '--method');
+  const hasFields = Object.keys(parsed.fields).length > 0;
+  const method = (explicit || (hasFields ? 'POST' : 'GET')).toUpperCase();
+  const state = loadState();
+  const pulls = new RegExp(`^repos/[^/]+/[^/]+/pulls/${PR}`);
+
+  if (endpoint === 'graphql') {
+    const query = parsed.fields.query || '';
+    const allText = query + ' ' + JSON.stringify(parsed.fields);
+    if (/resolveReviewThread/.test(query)) {
+      const m = allText.match(/PRRT_\w+/);
+      const thread = m && state.threads.find((t) => t.id === m[0]);
+      if (!thread) {
+        process.stdout.write(JSON.stringify({ errors: [{ message: 'Could not resolve to a node with the global id' }] }) + '\n');
+        process.stderr.write('gh: Could not resolve to a node with the global id\n');
+        process.exit(1);
+      }
+      thread.isResolved = true;
+      saveState(state);
+      emit({ data: { resolveReviewThread: { thread: { id: thread.id, isResolved: true } } } }, jq);
+      process.exit(0);
+    }
+    const pr = {};
+    if (/\breviewRequests\b/.test(query)) {
+      pr.reviewRequests = {
+        nodes: pendingRequests(state).map((login) => ({ requestedReviewer: { __typename: 'Bot', login } })),
+      };
+    }
+    if (/\breviewThreads\b/.test(query)) {
+      pr.reviewThreads = {
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes: state.threads.map((t) => ({
+          id: t.id,
+          isResolved: t.isResolved,
+          comments: { nodes: [{ databaseId: t.commentId, author: { login: COPILOT_GRAPHQL } }] },
+        })),
+      };
+    }
+    if (/\breviews\b/.test(query)) {
+      pr.reviews = {
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes: state.reviews.map((r) => ({
+          databaseId: r.id,
+          author: { login: r.login || COPILOT_GRAPHQL },
+          state: r.state,
+          body: r.body,
+          submittedAt: r.submitted_at,
+          commit: { oid: r.commit_id },
+        })),
+      };
+    }
+    if (Object.keys(pr).length === 0) unsupported();
+    emit({ data: { repository: { pullRequest: pr } } }, jq);
+    process.exit(0);
+  }
+
+  if (method === 'GET' && new RegExp(`^repos/[^/]+/[^/]+/pulls/${PR}/reviews$`).test(endpoint)) {
+    emit(restReviews(state), jq);
+    process.exit(0);
+  }
+
+  if (method === 'GET' && new RegExp(`^repos/[^/]+/[^/]+/pulls/${PR}/comments$`).test(endpoint)) {
+    emit(restComments(state), jq);
+    process.exit(0);
+  }
+
+  const replyMatch = endpoint.match(new RegExp(`^repos/[^/]+/[^/]+/pulls/${PR}/comments/(\\d+)/replies$`));
+  if (method === 'POST' && replyMatch) {
+    const parentId = Number(replyMatch[1]);
+    const parent = state.comments.find((c) => c.id === parentId);
+    if (!parent) {
+      process.stderr.write('gh: Not Found (HTTP 404)\n');
+      process.exit(1);
+    }
+    // A reply posts as its own COMMENTED review by the PR author, as on GitHub.
+    const n = state.comments.length + state.reviews.length;
+    const reviewId = 9000 + n;
+    const commentId = 6000 + n;
+    state.reviews.push({
+      id: reviewId,
+      login: OWNER,
+      commit_id: state.head_sha,
+      state: 'COMMENTED',
+      body: '',
+      submitted_at: '2026-10-09T09:30:00Z',
+    });
+    const created = {
+      id: commentId,
+      pull_request_review_id: reviewId,
+      login: OWNER,
+      path: parent.path,
+      line: parent.line,
+      body: parsed.fields.body || '',
+      commit_id: state.head_sha,
+      in_reply_to_id: parentId,
+    };
+    state.comments.push(created);
+    saveState(state);
+    emit(restComments({ comments: [created] })[0], jq);
+    process.exit(0);
+  }
+
+  if (pulls.test(endpoint) && /\/requested_reviewers$/.test(endpoint)) {
+    if (method === 'GET') {
+      // Real REST omits bot reviewers here, so this never shows Copilot.
+      emit({ users: [], teams: [] }, jq);
+      process.exit(0);
+    }
+    if (method === 'POST') {
+      const wanted = [].concat(parsed.fields.reviewers || []);
+      if (wanted.length > 0 && wanted.every((r) => /copilot/i.test(r))) {
+        recordCopilotRequest(state);
+        emit({ number: PR, html_url: PR_URL, state: 'open', draft: state.isDraft }, jq);
+        process.exit(0);
+      }
+    }
+  }
+
+  unsupported();
+}
+
+unsupported();
