@@ -8,67 +8,54 @@ excludeAgent: "cloud-agent"
 # General review instructions
 
 This repo is a portable set of agent rules/skills/hooks for Claude Code,
-Copilot, and Codex. Full conventions live in `.ai-style-rules.md` at the repo
-root: read it before reviewing. Flag anything below as a review comment, not
-just a suggestion.
+Copilot, and Codex. The repo-wide conventions below come from
+`rules/agent-guidelines.md`, `AGENTS.md`, `docs/skills.md`,
+`docs/installers.md`, and `docs/out-of-scope.md`; code conventions live in
+`.ai-style-rules.md` and are covered by the path-scoped files. Flag anything
+below as a review comment, not just a suggestion.
 
 ## Writing voice
 
-- No emoji anywhere: chat, docs, tables, commit messages, PR descriptions,
-  PR comments.
-- No em dash character in prose. Use a comma, colon, or a separate sentence.
-- Natural, human tone, not combative. No lists or bold-lead bullets for a
-  one-or-two-concept answer that isn't a procedure; a list only when the
-  content is genuinely 3+ distinct items.
-- Avoid canned phrases like "this means X," "inflection point," or "here's
-  the takeaway."
-- In longer prose (README sections, docs, PR descriptions), flag promotional
-  puffery ("boasts," "stands as a testament"), rule-of-three padding, and
-  copula avoidance ("serves as" instead of "is") as AI-writing tells, the
-  same way an em dash or emoji would be flagged.
+- Flag an emoji or an em dash character in prose, docs, code comments,
+  commit messages, or PR comments. A comma, colon, or separate sentence
+  replaces the dash.
+- Flag a combative, dismissive, or overly corrective tone, and flag lists or
+  bold-lead bullets (`**Term**: ...`) for a one-or-two-concept explanation
+  that isn't a procedure. A list belongs only to genuinely 3+ distinct items.
+- Flag punchy transitions, exaggerated claims, and canned patterns such as
+  "this means X," "inflection point," or "here's the takeaway."
+- In longer prose (README sections, docs, PR descriptions), flag the
+  AI-writing tells `docs/skills.md` names for the `humanizer` skill:
+  promotional puffery, filler, rule-of-three padding, and chatbot artifacts.
 
 ## Git and PR hygiene
 
-- No AI self-attribution in commits or PRs: no `Co-Authored-By:` trailer
-  naming an AI/tool, no "Generated with ..." footer, no `Claude-Session:`
-  trailer or claude.ai session link, no other AI/tool self-reference in
-  commit messages, PR titles, or PR bodies.
-- Flag a commit message, PR title/description, code comment, or release
-  note that names `.tasks/todo.md`, `.tasks/lessons.md`, or a todo.md batch
-  number (e.g. "Batch 12"). Those files are gitignored and local-only, so
-  the reference is a dead pointer for anyone without the author's working
-  tree; the change should be described on its own terms instead.
+- Flag AI self-attribution in a commit message, PR title, or PR body: a
+  `Co-Authored-By:` trailer naming an AI/tool, a "Generated with ..."
+  footer, a claude.ai session link, or any other AI/tool self-reference.
+- Flag a commit message, PR title/description, code comment, or release note
+  that names `.tasks/todo.md`, `.tasks/lessons.md`, or a todo.md batch number
+  (e.g. "Batch 12"). Those files are gitignored and local-only, so the
+  reference is a dead pointer for anyone without the author's working tree;
+  the change should be described on its own terms instead.
+- Flag a file, commit message, or PR description that names a private or
+  employer-internal repository, a pull request on one, or the employer, even
+  when evidence from it is why a rule exists. Such evidence is used for its
+  findings only.
 - Flag a destructive or history-altering git operation (`git reset --hard`,
   `git clean`, force-push, rewriting shared history) or a commit/revert that
   overwrites another session's or agent's in-flight work, unless the PR
   description shows it was explicitly requested.
-- Flag a `gh ... pr create`/`pr edit` invocation that passes the PR body
-  inline via `-b`/`--body` with literal `\n` escapes instead of
-  `--body-file`/`-F` backed by a real file or a process-substitution stream
-  of actual newlines. Flag a body edit that deletes an image already present
-  in the existing PR description.
-- Flag a PR description that narrates the review history instead of
-  describing the change as it stands: a walkthrough of what each review
-  round raised and how it was answered, an alternatives-considered essay, or
-  a known-limits appendix. `.github/workflows/pr-body-lint.yml` already
-  blocks the heading-shaped version mechanically, so what needs review
-  judgment here is the same narration written as ordinary prose underneath
-  an allowed heading.
-- Flag a PR description written for density instead of skimming: more than
-  one distinct idea packed into a single paragraph instead of one idea per
-  paragraph, a multi-clause sentence carrying an unpacked colon-chain or
-  parenthetical where separate sentences would read easier, three or more
-  parallel items left as one packed sentence instead of a bulleted list, or
-  an `## Implementation` section covering more than one distinct topic with
-  no `###` subsections to jump to. Flag a spelled-out status collapsed into
-  prose (e.g. "a 401" instead of `` `401 Unauthorized` ``), a literal
-  identifier, filename, flag, or endpoint left unbacktick'd, a run of
-  literal technical values (cipher names, config lines) left inline
-  instead of in a fenced block, and a clickable UI label left unbolded.
+- Flag a committed secret, API key, credential, or `.env` file. A
+  committed-by-convention template (`.env.example`, `.env.sample`) is fine.
+- Flag a PR description that narrates the review history that produced the
+  change instead of describing the change as it stands. The PR body lint
+  blocks the heading-shaped version, so what needs review judgment is the
+  same narration written as ordinary prose under an allowed heading.
 
 ## Scope discipline
 
-- Simplicity first: flag a change that's larger than necessary, touching
+- Simplicity first: flag a change that is larger than necessary, touching
   more files or code than the problem requires.
 - Root causes only: flag temporary fixes, workarounds, or unrequested
   refactors riding along with the real change.
@@ -77,41 +64,40 @@ just a suggestion.
 - Flag leftovers and drive-bys: imports, variables, or functions the change
   orphaned but kept, and edits to adjacent code the request didn't cover
   (reformatting, comment rewrites, fixing pre-existing dead code).
-- Flag unnecessarily complex implementations where a simpler one would
+- Flag an unnecessarily complex implementation where a simpler one would
   clearly do (skip this for trivial, obvious fixes).
 - Flag new code, a pattern, or an abstraction that duplicates something the
   repo already has; the change should say what it reuses, not just what it
   adds.
-- Flag a PR that adds a new skill, hook, rule, or check whose idea
-  `docs/out-of-scope.md` already records as rejected, unless it both says
-  why the decision is being reopened and updates that file's entry to
-  match. An entry left standing as rejected while the change adopts it is
-  the silent contradiction that file's own header warns against.
+- Flag a PR that adds a skill, hook, rule, check, or cross-file migration
+  that `docs/out-of-scope.md` already records as declined, unless it says why
+  the decision is being reopened and updates that entry in place. An entry
+  left standing as declined while the change adopts it is a silent
+  contradiction.
 - Flag a harder-to-reverse approach (schema change, destructive migration,
   forced push) chosen over a smaller, reversible one that would satisfy the
   same request.
-- Flag a PR whose description picks one reading of an ambiguous source
-  request without saying so: it should name the plausible interpretations
-  and which one the change takes, not resolve the ambiguity silently.
+- Flag a PR whose description picks one reading of an ambiguous request
+  without saying so: it should name the plausible interpretations and which
+  one the change takes.
 - Flag a PR that edits a shared rule, setting, or generated config another
   session or harness depends on (`rules/*.md`, hook wiring JSON, installer
-  defaults) with no rationale or approval trail in the description; these
-  should read as deliberate and reviewed, not a silent edit riding along
-  with unrelated work.
+  defaults) with no rationale or approval trail in the description.
 - Flag a PR that adopts or dismisses an external review's suggested fix with
   no visible triage: the finding should be confirmed as real (or rejected)
   against the PR's own context, not accepted or waved off on the reviewer's
   authority alone.
-- Flag a PR that delegates the same repetitive change across every target
-  file to a subagent in one pass, with no evidence a smaller subset was
-  piloted and reviewed first.
 
 ## Verification
 
 - Flag a behavioral change with no demonstrated verification: tests, logs,
   or a described manual check.
-- Flag a bug fix with no regression test, when a test harness already
-  exists in the repo.
+- Flag a change to an artifact meant to change model or agent behavior (a
+  skill, rule, hook, or prompt) whose only stated verification is structural
+  (a lint, an install test, a code review) with no run that observed the
+  actual behavior.
+- Flag a bug fix with no regression test, when a test harness already exists
+  in the repo.
 - Flag a claim that a check, build, or test suite passed when the change
   achieves that by stubbing an implementation, returning a placeholder,
   silencing an error without resolving it, deleting or weakening a test or
@@ -123,17 +109,16 @@ just a suggestion.
 - Flag an assertion about a third-party API, library, or product behavior
   with no cited source (a doc link or file reference) backing it.
 - Flag a claim of a file's origin or authorship (e.g. "hand-authored,"
-  "AI-generated") based only on the absence of a marker or header. Absence
-  is evidence of unknown provenance, not proof of a specific origin; the PR
-  should confirm it via `git log`/`git blame` or by asking, not infer it.
+  "AI-generated") based only on the absence of a marker or header. Absence is
+  evidence of unknown provenance, not proof of a specific origin; the PR
+  should confirm it via `git log`/`git blame` or by asking.
 - Flag a commit message, PR description, code comment, or project artifact
   (e.g. a plan step's owner tag) that states the user asked for, chose,
-  approved, enabled, or disabled something with no actual words from the
-  user backing it. A background event, a tool result, or the model's own
-  earlier message is never user input; when no real reason exists, the
-  text should say so instead of inventing one.
+  approved, enabled, or disabled something with no actual words from the user
+  backing it. When no real reason exists, the text should say so instead of
+  inventing one.
 - Flag a new entry point (a service, endpoint, job, CLI, script, or external
-  integration), a new retry, fallback, or external call, or new generic error
+  integration), a new retry, fallback, or external call, or new error
   handling added with no corresponding log line, and flag a logging change
   with no description of a forced real failure whose emitted line was
-  actually captured and checked, per `logging-practices`.
+  actually checked, per `logging-practices`.
