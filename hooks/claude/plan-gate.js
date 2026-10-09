@@ -84,6 +84,19 @@
  * off (it is a data-loss guard, not a formatting lint); PLANGATE_DISABLED
  * does, and PLANGATE_WARN demotes it like every other deny here.
  *
+ * IN-FLIGHT BATCH WARNING: also once stamped, a .tasks/todo.md write that
+ * removes a `Batch N` heading whose baseline block is not closed out (an
+ * unchecked step, or no Review section) gets a non-blocking warning, since
+ * several sessions can share the file and that batch may be another session's
+ * unfinished work. WARN-ONLY by design and with no ownership tracking: the
+ * hook cannot tell whose batch it is, so it also warns on a session dropping
+ * its own unfinished batch. Fires every time (no once-marker; the message
+ * tells the writer to restore the batch, and a deliberate drop is cheap to
+ * repeat). Like the migration-state guard, PLANGATE_LINT_DISABLED does not
+ * turn it off (a data-loss signal, not a formatting lint); PLANGATE_DISABLED
+ * does. Emitted only when no guard or lint above/below emitted a decision
+ * (a hook run may emit at most one JSON), and fails open on any error.
+ *
  * MAIN-ATTRIBUTION GUARD: also once stamped, a new `(main: <reason>)` tag
  * whose reason attributes an action to the user (e.g. "user disabled
  * subagent delegation this session") rather than stating a fact about the
@@ -108,7 +121,8 @@
  *   PLANGATE_LINT_DISABLED   "1" turns off the .tasks/todo.md content lint
  *                             and the main-attribution guard only (stamp
  *                             gate, scope gate, mutation gate, and the
- *                             migration-state guard still apply).
+ *                             migration-state guard and the in-flight batch
+ *                             warning still apply).
  */
 'use strict';
 
@@ -821,16 +835,20 @@ function emitGateDecision(msg) {
 // PLANGATE_LINT_DISABLED=1, and the whole body is wrapped in try/catch so any
 // simulation/lint error fails open (allows the edit) rather than wedging the
 // gate, consistent with this file's fail-open philosophy everywhere else.
+// Returns true when a decision was emitted, so the caller skips the in-flight
+// batch warning (one decision JSON per run).
 function maybeLintTodoContent(toolName, toolInput) {
-  if (process.env.PLANGATE_LINT_DISABLED === '1') return;
+  if (process.env.PLANGATE_LINT_DISABLED === '1') return false;
   try {
     const sim = simulateResult(toolName, toolInput);
-    if (!sim) return;
+    if (!sim) return false;
     const steps = collectNewUncheckedPlanSteps(sim.baseline, sim.result);
     const offenders = steps.filter((s) => stepTagViolation(s.joined));
-    if (offenders.length) emitGateDecision(lintMsg(offenders));
+    if (!offenders.length) return false;
+    emitGateDecision(lintMsg(offenders));
+    return true;
   } catch {
-    /* fail open: any simulation/lint error allows the edit */
+    return false; // fail open: any simulation/lint error allows the edit
   }
 }
 
@@ -955,6 +973,84 @@ function maybeGuardMainAttribution(toolName, toolInput, stamp) {
   }
 }
 
+// --- In-flight batch warning ---
+
+// `Batch N` heading at H1-H3, the shape the todo.md fixtures use (`## Batch N:
+// title`). A line-only summary like `Batch 40: ...` is not a heading and is
+// ignored on both sides. Group 1 is the batch number.
+const BATCH_HEADING_RE = /^\s{0,3}#{1,3}\s+Batch\s+(\d+)\b/i;
+const H1_RE = /^\s{0,3}#\s/;
+const REVIEW_HEADING_RE = /^\s{0,3}#{2,3}\s+Review\b/im;
+const UNCHECKED_STEP_RE = /^\s*[-*]\s+\[ \]/m;
+
+// Batch number -> { title, closed } for every batch heading in `text`. A
+// block runs from its heading to the line before the next batch heading or
+// the next H1, or EOF. "Closed out" means a Review heading and no unchecked
+// step, the same signal plan-and-track's reconcile uses before compressing a
+// batch. A repeated number keeps its first block.
+function collectBatches(text) {
+  const batches = new Map();
+  let current = null;
+  const finish = () => {
+    if (current && !batches.has(current.num)) {
+      const block = current.lines.join('\n');
+      batches.set(current.num, {
+        title: current.lines[0].trim().replace(/^#+\s+/, ''),
+        closed: REVIEW_HEADING_RE.test(block) && !UNCHECKED_STEP_RE.test(block),
+      });
+    }
+  };
+  for (const line of text.split('\n')) {
+    const m = BATCH_HEADING_RE.exec(line);
+    if (m || H1_RE.test(line)) {
+      finish();
+      current = m ? { num: m[1], lines: [line] } : null;
+    } else if (current) {
+      current.lines.push(line);
+    }
+  }
+  finish();
+  return batches;
+}
+
+function inFlightBatchMsg(dropped) {
+  const shown = dropped.slice(0, 3).map((b) => `  ${b.title.length > 100 ? b.title.slice(0, 100) + '...' : b.title}`);
+  if (dropped.length > 3) shown.push(`  ...and ${dropped.length - 3} more`);
+  return [
+    '[PlanGate] This write removes a batch heading from .tasks/todo.md for a batch that is not closed out (unchecked steps or no Review section), so it may be another session\'s in-flight work:',
+    ...shown,
+    'The write is proceeding. If the batch is not yours, or dropping it was not intended, re-read .tasks/todo.md and put that batch back exactly as it was before your write, leaving everything else as the file now stands.',
+    '(PLANGATE_DISABLED=1 turns this warning off.)',
+  ].join('\n');
+}
+
+// Warn-only: a stamped .tasks/todo.md write whose result no longer has a
+// `Batch N` heading that the baseline had, where that baseline batch was not
+// closed out. No permissionDecision and no once-marker: it fires every time,
+// and ignores PLANGATE_LINT_DISABLED like the migration-state guard (a
+// data-loss signal, not a formatting lint). Cannot see whose batch it is, so
+// it also fires on a session dropping its own unfinished batch. Returns true
+// when a warning was emitted; any error emits nothing.
+function maybeWarnInFlightBatchRemoval(toolName, toolInput) {
+  try {
+    const sim = simulateResult(toolName, toolInput);
+    if (!sim) return false;
+    const after = collectBatches(sim.result);
+    const dropped = [...collectBatches(sim.baseline)]
+      .filter(([num, b]) => !after.has(num) && !b.closed)
+      .map(([, b]) => b);
+    if (!dropped.length) return false;
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: inFlightBatchMsg(dropped) },
+      })
+    );
+    return true;
+  } catch {
+    return false; // fail open: any simulation/check error emits nothing
+  }
+}
+
 function main() {
   let input = {};
   try {
@@ -1032,10 +1128,12 @@ function main() {
     if (fs.existsSync(stamp)) {
       // Guards before lint, exclusively: at most one decision JSON per run,
       // and keeping the Migration State block and catching a misattributed
-      // (main: ...) reason both outrank tag formatting.
+      // (main: ...) reason both outrank tag formatting. The warn-only
+      // in-flight batch check goes last so any deny above wins.
       if (maybeGuardMigrationState(toolName, toolInput, stamp)) process.exit(0);
       if (maybeGuardMainAttribution(toolName, toolInput, stamp)) process.exit(0);
-      maybeLintTodoContent(toolName, toolInput); // may emitGateDecision(lintMsg(...))
+      if (maybeLintTodoContent(toolName, toolInput)) process.exit(0); // emitted emitGateDecision(lintMsg(...))
+      maybeWarnInFlightBatchRemoval(toolName, toolInput);
       process.exit(0);
     }
     try {

@@ -27,6 +27,12 @@
     { "id": "subagent-mutation-deny-names-caller", "expect": "deny" },
     { "id": "main-thread-deny-has-no-subagent-line", "expect": "deny" },
     { "id": "subagent-todo-deny-alt-id-field-names-caller", "expect": "deny" },
-    { "id": "agent-type-only-is-main-thread", "expect": "deny" }
+    { "id": "agent-type-only-is-main-thread", "expect": "deny" },
+    { "id": "write-drops-in-flight-batch-warns", "expect": "warn-context" },
+    { "id": "write-drops-all-checked-no-review-batch-warns", "expect": "warn-context" },
+    { "id": "edit-compresses-closed-batch-silent", "expect": "silent" },
+    { "id": "edit-inserts-new-batch-silent", "expect": "silent" },
+    { "id": "lint-deny-wins-over-in-flight-warning", "expect": "deny" },
+    { "id": "lint-disabled-still-warns-in-flight", "expect": "warn-context" }
   ]
 }
