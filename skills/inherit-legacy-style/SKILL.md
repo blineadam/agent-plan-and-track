@@ -18,17 +18,19 @@ hand-curated, and an `/init` re-run can't clobber what this skill wrote.
 
 Check three things:
 
-1. **Instructions files**: the always-on `CLAUDE.md`, `AGENTS.md`, and
-   `.github/copilot-instructions.md`. Read them in every mode so a rule they
-   already state isn't repeated, but never write a new rule into one. Skip the
-   marker-owned `# Code reviews` section of `.github/copilot-instructions.md`.
+1. **Instructions files**: the always-on `CLAUDE.md`, `AGENTS.md`,
+   `.github/copilot-instructions.md`, and path-scoped
+   `.github/instructions/*.instructions.md`. Read them in every mode so a rule
+   they already state isn't repeated, but never write a new rule into one.
+   Skip anything generated from these rules: a path-scoped file carrying the
+   copilot-review-instructions marker, and the marker-owned `# Code reviews`
+   section of `.github/copilot-instructions.md`.
 2. **On-demand convention docs**: markdown read when needed that states how
    code here should be written (naming, structure, error handling, patterns),
    such as `CONTRIBUTING.md`, style or review guides, `docs/**/*.md`, or a
    subdirectory's own `README.md`. A README that only says what the project
-   is and how to run it doesn't count. Skip `.ai-style-rules.md` itself and
-   any `.github/instructions/` file carrying the copilot-review-instructions
-   marker: reading those back would count the rules as their own source.
+   is and how to run it doesn't count. Skip `.ai-style-rules.md` itself:
+   reading it back would count the rules as their own source.
 3. **`.ai-style-rules.md`** at the project root.
 
 A project whose only convention docs are instructions files, such as a fresh
@@ -95,10 +97,10 @@ states.
 **6. Offer persistence** (the user picks; never default to enforcement):
 
 - **Soft (recommended)**: keep the rules loaded in every session, since they
-  apply to every code-writing task. Each instructions file the project has
-  gets: "Open each code-writing task with the Golden File from
-  `.ai-style-rules.md` you're following and the DONTs that apply." In
-  `CLAUDE.md`, follow it with an
+  apply to every code-writing task. Each of `CLAUDE.md`, `AGENTS.md`, and
+  `.github/copilot-instructions.md` the project has gets: "Open each
+  code-writing task with the Golden File from `.ai-style-rules.md` you're
+  following and the DONTs that apply." In `CLAUDE.md`, follow it with an
   `@.ai-style-rules.md` import line, which Claude Code expands at launch. In
   `AGENTS.md` and `.github/copilot-instructions.md`, whose harnesses document
   no import, follow it with "Read `.ai-style-rules.md` before writing or
