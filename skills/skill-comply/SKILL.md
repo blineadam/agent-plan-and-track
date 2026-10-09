@@ -69,10 +69,9 @@ before using or extending that case.
 Run every scenario in its own fresh process, capturing the trace. **Isolate it.**
 A competing or prompt-injected scenario *will* execute tool calls, so run inside
 a container/VM with restricted mounts and egress allowed only to the model
-provider's API, not sealed off (egress rationale in
-[../skill-activation/references/live-run-isolation.md](../skill-activation/references/live-run-isolation.md),
-proxy allowlist recipe in
-[../skill-activation/references/live-run-egress-proxy.md](../skill-activation/references/live-run-egress-proxy.md)). A `mktemp -d` is a working directory, not a sandbox. Never pass
+provider's API, not sealed off (the egress rationale and a working proxy
+allowlist recipe are in [[skill-activation]]'s live-run isolation section). A
+`mktemp -d` is a working directory, not a sandbox. Never pass
 `--dangerously-skip-permissions`. If you can't containerize, use an explicit
 tool allowlist, not hand-approved prompts: print mode cannot show a permission
 prompt. Pin `--permission-mode default` in the command itself, since a sandbox
