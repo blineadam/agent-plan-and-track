@@ -11,7 +11,8 @@ Applies to shared rule files, skill docs, agent docs, `docs/` reference pages,
 the README, `AGENTS.md`, and the Copilot review-instruction files. Conventions
 come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
 `skills/inherit-legacy-style/SKILL.md`, `README.md`, and the `docs/` pages
-`skills.md`, `installers.md`, `models.md`, and `out-of-scope.md`.
+`skills.md`, `installers.md`, `models.md`, `out-of-scope.md`, and
+`credits.md`.
 
 ## Shared rule files
 
@@ -32,11 +33,12 @@ come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
 
 ## Skill files
 
-- Review a `SKILL.md` frontmatter `description` for routing first: it should
-  front-load the user's intent, concrete trigger terms, and the nearest
-  negative boundary rather than summarize, and keep clauses that prevent
-  known misroutes. About 500 decoded characters is an informational target,
-  not a cap; 1,024 is the format maximum.
+- Review a `SKILL.md` frontmatter `description` for routing first: it is
+  written for routing, never a summary, and front-loads the trigger clause
+  ("Use when X" / "Use BEFORE Y"), since it is the only part loaded into every
+  session. Flag one that summarizes the skill instead, and one that drops a
+  clause preventing a known misroute. About 500 characters is an informational
+  target. `skills/skill-activation/SKILL.md` states the rest of the criteria.
 - Frontmatter values are quoted only when YAML forces it, and the repo was
   audited as already following that. Flag a PR that migrates files to uniform
   quoting or uniform unquoting, and don't flag a value for being quoted or
@@ -44,15 +46,14 @@ come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
 - A skill body takes one of three shapes. A checklist (like `plan-and-track`)
   uses H2 phase sections in execution order holding one imperative
   numbered step list with continuous numbering, a cross-cutting rules
-  section first and a mode section last; `yeet` adds an unnumbered preamble and a closing `## Sources`.
+  section first and a mode section last.
   A reference skill (like `read-the-damn-docs`, `migration-discipline`) uses
   named reference H2s around one distinctly named procedure H2. A numbered
   reference (like `logging-practices`) numbers every H2, with one procedure
   (`## 9. Verify`) and a closing red-flags catalog. Flag a skill whose
-  procedure is scattered with no named or numbered section to anchor it, a
-  `## Prerequisites` section that isn't a real hard-stop dependency check,
-  and a `## Sources` section in a body that asserts no live-observed
-  third-party behavior.
+  procedure is scattered with no named or numbered section to anchor it, and
+  a closing `## Sources` section (as in `yeet`) in a body that asserts no
+  live-observed third-party behavior.
 - Detail a `SKILL.md` offloads lives in a flat `references/<kebab-name>.md`
   beside it. The SKILL.md keeps the condensed rule inline and closes that
   section with a markdown-link pointer (`Read [references/x.md](references/x.md)
@@ -66,18 +67,18 @@ come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
 - Cross-skill references in a skill body use `[[skill-name]]` wiki-link
   syntax instead of duplicating another skill's content.
 - New skills default to portable across Claude, Codex, and Copilot. Flag a
-  skill scoped to one harness whose PR doesn't say why, doesn't record the
-  split in `docs/skills.md`, or adds an installer scope exception for a skill
-  that could be portable.
+  harness-scope exception added to the installers for a skill that could be
+  portable: it belongs there only when the skill cannot be. A harness that
+  can't run a given hook still gets the rule as a skill (`docs/skills.md`).
 - Flag a skill or rule that mandates an output convention (an owner tag, a
   required trailer, a section format) with no paired mechanical check, such
   as a hook lint or a CI assertion, since session attention alone doesn't
   hold a convention over a long run.
-- A skill vendored from an external repo (`frontend-design`, `webapp-testing`)
-  carries an HTML comment right after its frontmatter naming the source URL
-  and the exact edits made (never "lightly edited"), with the upstream
-  license verbatim in a sibling `LICENSE.txt`, and an Apache-2.0 source also
-  gets an entry in the root `NOTICE`. A vendored section of an
+- A skill vendored from an external repo (`frontend-design`, `webapp-testing`,
+  `yeet`) carries an HTML comment right after its frontmatter naming the
+  source URL and the exact edits made (never "lightly edited"), with the
+  upstream license text in a sibling `LICENSE.txt`, and vendored Apache-2.0
+  content also gets an entry in the root `NOTICE`. A vendored section of an
   `agents/*.md` file carries the same comment above that section, with an
   `agents/<name>.LICENSE.txt`. Folding one vendored skill into another extends
   the surviving comment with a sentence naming the folded source. Flag a
@@ -90,23 +91,20 @@ come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
   as an entry in `docs/credits.md` (source, what was taken, upstream
   license) in the same change, per `AGENTS.md`'s Credits and provenance
   section, and an MIT source whose text was adapted also gets its copyright
-  line in the root `LICENSE`, which otherwise stays plain MIT text. Flag one
-  merged without that entry, and flag new credit prose in `AGENTS.md` or a
-  `SKILL.md` or `agents/*.md` body, since those load into agent context. A
-  source that is a private or employer-internal repository gets no credit
-  anywhere, so don't flag its absence; flag a credit that names one.
+  line in the root `LICENSE`. Flag one merged without that entry, and flag
+  upstream-credit prose added to `AGENTS.md` or a `SKILL.md` or `agents/*.md`
+  body instead of `docs/credits.md` (a vendored file's attribution comment is
+  the exception). When a source's license is incompatible with MIT (AGPL-3.0,
+  for example), only ideas may be shared, never a borrowed sentence: flag a
+  change that reproduces such a source's wording. A source that is a private
+  or employer-internal repository gets no credit anywhere, so don't flag its
+  absence; flag a credit that names one.
 
 ## Subagent definition files
 
-- An `agents/*.md` file has frontmatter in the order `name`, `description`,
-  `model`, `effort`, `tools`. Its body is a short role statement, then a plain
+- An `agents/*.md` body is a short role statement, then a plain
   `How to work:` label (not a heading) over bold-lead principles. Flag a
-  reordered or missing field and a `How to work` heading.
-- `model` and `effort` pin in lockstep per role, not per model name:
-  `fable`/`high` for `architect-reviewer`, `security-auditor`, and
-  `fable-advisor`; `opus`/`xhigh` for `planner` (the only `xhigh`);
-  `sonnet`/`high` for `researcher`, `debugger`, and `executor`;
-  `haiku`/`medium` for `mechanic`. Flag a pair that departs from this.
+  `How to work` heading.
 - `tools` is a bare comma-separated subset that encodes authority:
   `Read, Grep, Glob` for read-only reviewers, advisors, and the planner;
   `researcher` adds `WebFetch, WebSearch`; `debugger` adds `Bash`
@@ -124,12 +122,11 @@ come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
 
 ## Copilot review-instruction files
 
-- They live at `.github/instructions/<bucket>.instructions.md`: a repo-wide
-  `applyTo: "**"` bucket plus one per distinct area the sources evidence.
-  Frontmatter sets `applyTo` and a mandatory `excludeAgent: "cloud-agent"`.
-  The body is a one-line H1, a pointer to the sources backing the bucket
-  instead of a restatement, then H2 sections of imperative "Flag ..."
-  directives.
+- They live at `.github/instructions/<bucket>.instructions.md`, shaped as
+  Steps 2-3 of `skills/copilot-review-instructions/SKILL.md` define. Flag a
+  file that departs from that shape, including one missing
+  `excludeAgent: "cloud-agent"`: every file the nightly refresh admits
+  carries it.
 - A file carrying the `<!-- Generated by copilot-review-instructions; ... -->`
   marker is fully owned by that skill: flag a manual edit to one instead of
   changing its source and re-running the skill. A file without the marker

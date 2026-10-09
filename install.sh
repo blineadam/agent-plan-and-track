@@ -699,7 +699,9 @@ install_claude() {
   # Repo-owned model defaults, re-asserted on every install (PT_KEEP_MODEL=1 keeps
   # an existing per-machine choice): opusplan runs Opus in Plan mode and Sonnet for
   # execution; switchModelsOnFlag=true lets Claude Code switch to another model when
-  # a message is flagged by safety measures, instead of pausing the session.
+  # a message is flagged by safety measures, instead of pausing the session. See
+  # https://code.claude.com/docs/en/model-config and
+  # https://code.claude.com/docs/en/settings-reference#switchmodelsonflag.
   set_json_default "$settings" model '"opusplan"' "model default"
   set_json_default "$settings" switchModelsOnFlag true "safety-switch"
   # Repo-owned output-style default, re-asserted on every install (PT_KEEP_MODEL=1
@@ -831,10 +833,11 @@ install_copilot() {
   prune_stale "$HOME/.copilot/agents" "$(agent_names "agent.md")"
   install_digest "$HOME/.copilot/core-rules.md"
   install_instructions "$HOME/.copilot/copilot-instructions.md"
-  # Global model default: "auto" lets Copilot route to the best model per task.
-  # Re-asserted on every install (PT_KEEP_MODEL=1 keeps an existing choice), but
-  # only when the settings file parses as plain JSON: a JSONC file with comments
-  # jq can't round-trip is left untouched (warn).
+  # Repo-owned Copilot model default, re-asserted on every install (PT_KEEP_MODEL=1
+  # keeps an existing per-machine choice): "auto" lets Copilot route to the best
+  # model per task (https://github.blog/changelog/2026-07-01-copilot-cli-auto-model-selection-routes-based-on-task).
+  # Applied only when the settings file parses as plain JSON: a JSONC file with
+  # comments jq can't round-trip is left untouched (warn).
   local csettings="$HOME/.copilot/settings.json"
   if ! command -v jq >/dev/null 2>&1; then
     echo "  model default   -- jq not found; skipping Copilot model default (add \"model\":\"auto\" by hand)"
@@ -902,7 +905,7 @@ install_codex() {
   prune_stale "$HOME/.codex/agents" "$(agent_names toml)"
   install_digest "$HOME/.codex/core-rules.md"
   install_instructions "$HOME/.codex/AGENTS.md"
-  # Plan-mode default, re-asserted on every install: raise reasoning effort in
+  # Repo-owned plan-mode default, re-asserted on every install: raise reasoning effort in
   # Plan mode only, leaving the execution model and effort untouched. Codex has no
   # plan-mode model swap (no opusplan analog), so effort is the only phase-specific
   # lever. Not gated by PT_KEEP_MODEL (that opt-out covers model, output-style, and

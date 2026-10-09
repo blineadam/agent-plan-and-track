@@ -761,6 +761,12 @@ function Install-Claude {
   $settings = Join-Path $base 'settings.json'
   New-Item -ItemType Directory -Force -Path $base | Out-Null
   if (-not (Test-Path -LiteralPath $settings)) { [System.IO.File]::WriteAllText($settings, '{}', $Utf8NoBom) }
+  # Repo-owned model defaults, re-asserted on every install (PT_KEEP_MODEL=1 keeps
+  # an existing per-machine choice): opusplan runs Opus in Plan mode and Sonnet for
+  # execution; switchModelsOnFlag=true lets Claude Code switch to another model when
+  # a message is flagged by safety measures, instead of pausing the session. See
+  # https://code.claude.com/docs/en/model-config and
+  # https://code.claude.com/docs/en/settings-reference#switchmodelsonflag.
   Set-JsonDefault $settings 'model' 'opusplan' 'model default'
   Set-JsonDefault $settings 'switchModelsOnFlag' $true 'safety-switch'
   # Repo-owned output-style default, re-asserted on every install (PT_KEEP_MODEL=1
@@ -872,9 +878,11 @@ function Install-Copilot {
   Install-Digest (Join-Path $base 'core-rules.md')
   Install-Instructions (Join-Path $base 'copilot-instructions.md')
 
-  # Global model default "auto". Re-asserted each install (PT_KEEP_MODEL=1 keeps
-  # an existing choice), but only when settings.json parses as plain JSON: a
-  # JSONC file with comments is left untouched (warn).
+  # Repo-owned Copilot model default, re-asserted on every install (PT_KEEP_MODEL=1
+  # keeps an existing per-machine choice): "auto" lets Copilot route to the best
+  # model per task (https://github.blog/changelog/2026-07-01-copilot-cli-auto-model-selection-routes-based-on-task).
+  # Applied only when settings.json parses as plain JSON: a JSONC file with
+  # comments is left untouched (warn).
   $csettings = Join-Path $base 'settings.json'
   $parses = $true
   if (Test-Path -LiteralPath $csettings) {
@@ -926,7 +934,7 @@ function Install-Codex {
   Remove-StaleInstalled (Join-Path $codex 'agents') (Get-AgentNames 'toml')
   Install-Digest (Join-Path $codex 'core-rules.md')
   Install-Instructions (Join-Path $codex 'AGENTS.md')
-  # Plan-mode default, re-asserted each install: raise reasoning effort in Plan
+  # Repo-owned plan-mode default, re-asserted on every install: raise reasoning effort in Plan
   # mode only. Not gated by PT_KEEP_MODEL (that opt-out covers model,
   # output-style, and artifact settings only).
   Set-TomlDefault (Join-Path $codex 'config.toml') 'plan_mode_reasoning_effort' 'xhigh'

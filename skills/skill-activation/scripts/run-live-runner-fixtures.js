@@ -93,7 +93,7 @@ function writeFakeExecutables(binDir) {
       "  if (prompt.includes('risk-line')) resultEvent.result = 'final-answer-marker';",
       "  process.stdout.write(JSON.stringify(resultEvent) + '\\n');",
       "  if (process.env.FAKE_WRITE_ARTIFACT === '1') {",
-      "    try { fs.writeFileSync(path.join(process.cwd(), 'artifact.txt'), 'fixture output\\n'); } catch {}",
+      "    fs.writeFileSync(path.join(process.cwd(), 'artifact.txt'), 'fixture output\\n');",
       "  }",
       "};",
       "const emitCodex = () => process.stdout.write(JSON.stringify({type:'turn.completed',usage:{input_tokens:1,output_tokens:1}}) + '\\n');",
