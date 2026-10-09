@@ -183,3 +183,11 @@ The rest stays out:
 - Its human-approval brief gate is already covered by `plan-and-track`'s check-in step.
 
 What would reopen this: a migration of untrusted third-party legacy code, where the untrusted-input warning about instruction-shaped comments would earn its own clause in Worker Briefs.
+
+## `.ai-style-rules.md` stays one file
+
+Decided 2026-10-09. The question was whether `inherit-legacy-style` should split `.ai-style-rules.md` into one file per section (Golden Files, Naming & State-Control Rules, DONTs), always or once it passes a size threshold, so an agent could load only the part it needs.
+
+Splitting by section saves nothing. Every code-writing task draws on all three sections at once: it picks a Golden File to follow, applies the naming rules, and checks the DONTs. Three files would mean three reads of the same content. At the time of the decision this repo's file was 2,052 words, roughly 2,700 tokens, which is cheap to read once per task. There is also no load-time cutoff forcing the question: Claude Code loads a `CLAUDE.md` import in full up to 4 MiB ([docs](https://code.claude.com/docs/en/memory)). The roughly 2k-token threshold in `inherit-legacy-style` is the skill's own cost choice, where it moves from an always-on `@import` to a read-before pointer. Growth is handled by the skill's consolidate step, which merges and drops rules and reports the size.
+
+What would reopen this: a file in the 10k-token range whose rules are mostly specific to one area of the codebase. Then the split worth making is by code area rather than by section, through Claude Code's `.claude/rules/*.md` files with a `paths:` glob, which load only when Claude reads or edits a matching file. That mechanism is Claude Code's own, so the other harnesses would still need the single file or an equivalent of their own.
