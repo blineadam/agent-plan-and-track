@@ -764,7 +764,9 @@ function Install-Claude {
   # Repo-owned model defaults, re-asserted on every install (PT_KEEP_MODEL=1 keeps
   # an existing per-machine choice): opusplan runs Opus in Plan mode and Sonnet for
   # execution; switchModelsOnFlag=true lets Claude Code switch to another model when
-  # a message is flagged by safety measures, instead of pausing the session.
+  # a message is flagged by safety measures, instead of pausing the session. See
+  # https://code.claude.com/docs/en/model-config and
+  # https://code.claude.com/docs/en/settings-reference#switchmodelsonflag.
   Set-JsonDefault $settings 'model' 'opusplan' 'model default'
   Set-JsonDefault $settings 'switchModelsOnFlag' $true 'safety-switch'
   # Repo-owned output-style default, re-asserted on every install (PT_KEEP_MODEL=1
@@ -878,8 +880,9 @@ function Install-Copilot {
 
   # Repo-owned Copilot model default, re-asserted on every install (PT_KEEP_MODEL=1
   # keeps an existing per-machine choice): "auto" lets Copilot route to the best
-  # model per task. Applied only when settings.json parses as plain JSON: a JSONC
-  # file with comments is left untouched (warn).
+  # model per task (https://github.blog/changelog/2026-07-01-copilot-cli-auto-model-selection-routes-based-on-task).
+  # Applied only when settings.json parses as plain JSON: a JSONC file with
+  # comments is left untouched (warn).
   $csettings = Join-Path $base 'settings.json'
   $parses = $true
   if (Test-Path -LiteralPath $csettings) {
