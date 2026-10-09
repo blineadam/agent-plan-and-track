@@ -55,7 +55,8 @@ bypass or skip-permissions posture.
 A `file_regex` may set `ref_exists: true` when the file it reads only names
 an artifact, such as a state line pointing at a test file. The regex's first
 capture group, from its first match, must then name an existing file inside
-the case dir, so a run that names an artifact it never wrote fails. It proves
+the case dir, checked on its resolved real path so a symlink out of the case
+dir fails, and a run that names an artifact it never wrote fails. It proves
 the file exists, not what it contains, and the lint rejects it on a regex
 with no capture group.
 

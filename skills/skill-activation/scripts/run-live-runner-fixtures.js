@@ -1434,7 +1434,7 @@ async function testBehavioralRefExists(binDir) {
     flags: 'm',
     ref_exists: true,
   };
-  const ids = ['ref-exists-present', 'ref-exists-missing'];
+  const ids = ['ref-exists-present', 'ref-exists-missing', 'ref-exists-symlink'];
   const corpus = makeBehavioralCorpus(
     root,
     ids.map((id) => ({ id, skill: 'fixture-skill', prompt: 'success', max_turns: 2, fixture: id, assertions: [assertion] }))
@@ -1454,6 +1454,12 @@ async function testBehavioralRefExists(binDir) {
   fs.mkdirSync(path.join(results, 'ref-exists-present', 'tests'));
   fs.writeFileSync(path.join(results, 'ref-exists-present', 'tests', 'char.js'), '// recorded\n');
   fs.writeFileSync(path.join(results, 'ref-exists-missing', 'state.md'), '- Oracle: tests/missing.js\n');
+  // A symlink inside the case dir pointing at a probe kept outside it.
+  const outsideProbe = path.join(root, 'outside-probe.js');
+  fs.writeFileSync(outsideProbe, '// recorded elsewhere\n');
+  fs.writeFileSync(path.join(results, 'ref-exists-symlink', 'state.md'), '- Oracle: tests/char.js\n');
+  fs.mkdirSync(path.join(results, 'ref-exists-symlink', 'tests'));
+  fs.symlinkSync(outsideProbe, path.join(results, 'ref-exists-symlink', 'tests', 'char.js'), 'file');
 
   const check = await runNode(BEHAVIORAL_RUNNER, ['--check', results, corpus], baseEnv(binDir));
   const report = parseReport(check, 'behavioral ref_exists');
@@ -1463,6 +1469,10 @@ async function testBehavioralRefExists(binDir) {
   assert(
     byId['ref-exists-missing'].status === 'fail' && byId['ref-exists-missing'].reason.includes('tests/missing.js'),
     'ref_exists passed, or did not name the path, when the named file is missing'
+  );
+  assert(
+    byId['ref-exists-symlink'].status === 'fail',
+    'ref_exists passed on a symlink to a file outside the case dir'
   );
 
   // The lint rejects ref_exists on a regex with no capture group.

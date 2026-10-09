@@ -34,7 +34,8 @@
  * the BODY still works once the skill has fired, not to test routing again.
  * A `file_regex` with `ref_exists: true` also requires the regex's first
  * capture group, taken from its first match, to name an existing file inside
- * the case dir (same containment rule as `path`), so a file that merely
+ * the case dir (the `path` containment rule, plus its resolved real path,
+ * so a symlink out of the case dir fails), so a file that merely
  * names an artifact can't pass for one that points at a real artifact; the
  * regex must have a capture group. It proves the named file exists, not
  * what it contains.
@@ -838,7 +839,15 @@ function scoreCase(c, resultsDir, dups, runState) {
     }
     if (a.ref_exists === true) {
       const ref = m[1];
-      if (!relPathIsContained(ref) || !isFile(path.join(caseDir, ref))) {
+      const refPath = path.join(caseDir, ref);
+      // isFile follows symlinks, so also require the resolved file to sit
+      // inside the resolved case dir: a symlink to an artifact kept outside
+      // the case dir must not count as one written inside it.
+      const inside = (p) => {
+        const rel = path.relative(fs.realpathSync(caseDir), fs.realpathSync(p));
+        return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+      };
+      if (!relPathIsContained(ref) || !isFile(refPath) || !inside(refPath)) {
         return {
           id,
           status: 'fail',
