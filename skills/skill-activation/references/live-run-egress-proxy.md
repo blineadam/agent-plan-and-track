@@ -12,7 +12,8 @@ Topics, in order:
 - Why `generate-host-certificates=off` is required
 - The `squid.conf` allowlist (CONNECT and SNI ACLs, peek-and-splice)
 - Denying all other egress at the network layer, and what the allowlist cannot see
-- Docker Desktop on macOS
+- Docker Desktop on macOS: build, prove the wall, run, tear down
+- Allowing the npm registry for cases that install packages
 
 Enforcing the allowlist by TLS SNI, not by the CONNECT line's hostname, needs
 Squid built against OpenSSL: Debian and Ubuntu's default `squid` package is
@@ -156,9 +157,201 @@ rather than assume it.
 
 ## Docker Desktop on macOS
 
-The `DOCKER-USER` chain lives inside Docker Desktop's VM, so the internal-network route is the practical one on a Mac. This layout held on Docker Desktop 29.8 with a behavioral `--run`:
+The `DOCKER-USER` chain lives inside Docker Desktop's VM, so the
+internal-network route is the practical one on a Mac. The steps below ran end
+to end, with paid behavioral `--run`s, on Docker Desktop 4.94 (engine 29.8)
+on Apple silicon. Run them from any directory outside the repo; each block
+assumes the variables from the first.
 
-- Create the sandbox network with `docker network create --internal`, create the proxy container on the default bridge with `docker create`, `docker network connect --ip` it to the internal network at the address `http_port` binds, and only then `docker start` it. Squid binds that address at startup, so attaching the network after the container is already running is a race. The sandbox joins only the internal network, so the proxy is its sole route out.
-- Start the sandbox with `--dns 127.0.0.1`. With it, an external name lookup from inside the sandbox failed, and the CONNECT proxy needs no sandbox DNS. Prove both, along with the denied and terminated cases, before spending.
-- Pass the credential by name, `-e CLAUDE_CODE_OAUTH_TOKEN`, with the value set only on the `docker run` command, so it never appears in the argument list.
-- Write `--run` results inside the container and copy them to a mounted directory after the runner exits. The runner writing straight into a directory bind-mounted from macOS failed with `EACCES` before any case spawned.
+### 1. Build the proxy and sandbox images
+
+```bash
+REPO=/path/to/checkout              # the working tree under test
+TOKEN_FILE=/path/to/token-file      # holds the OAuth token and nothing else
+PT=$(mktemp -d)                     # build contexts and copied-out results
+mkdir -p "$PT/proxy" "$PT/sandbox"
+
+# The squid.conf block above, verbatim. For cases that run npm, apply the
+# sed from "Allowing the npm registry" right after this awk, before the build.
+awk '/^```squid$/{f=1;next} /^```$/{f=0} f' \
+    "$REPO/skills/skill-activation/references/live-run-egress-proxy.md" \
+    > "$PT/proxy/squid.conf"
+
+cat > "$PT/proxy/Dockerfile" <<'EOF'
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends squid-openssl openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY squid.conf /etc/squid/squid.conf
+RUN openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=unused" \
+      -keyout /etc/squid/dummy.pem -out /etc/squid/dummy.pem \
+    && chown proxy:proxy /etc/squid/dummy.pem && chmod 600 /etc/squid/dummy.pem
+CMD ["squid", "-N", "-f", "/etc/squid/squid.conf"]
+EOF
+
+cat > "$PT/sandbox/Dockerfile" <<'EOF'
+FROM node:22-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends jq \
+    && rm -rf /var/lib/apt/lists/*
+RUN npm install -g @anthropic-ai/claude-code
+RUN useradd -m -u 1001 runner && mkdir -p /sandbox /work && chown runner /sandbox /work
+USER runner
+ENV HOME=/sandbox
+WORKDIR /work
+EOF
+
+docker build -t pt-smoke-proxy "$PT/proxy"
+docker build -t pt-smoke-sandbox "$PT/sandbox"
+```
+
+The sandbox image needs `jq` because `install.sh` does, and runs as a
+non-root `runner` that owns its `HOME` and `/work`, so nothing below needs a
+root `exec` or a `chown`.
+
+### 2. Create the internal network and start the proxy
+
+```bash
+docker network create --internal --subnet 172.20.0.0/24 \
+    --gateway 172.20.0.254 pt-smoke-net
+docker create --name pt-smoke-proxy pt-smoke-proxy
+docker network connect --ip 172.20.0.1 pt-smoke-net pt-smoke-proxy
+docker start pt-smoke-proxy
+```
+
+Docker claims a subnet's first address as its gateway unless told otherwise,
+so without `--gateway` the attach at 172.20.0.1 fails with "Address already
+in use". If the subnet overlaps a network you already have, pick another and
+change both addresses in `squid.conf` to match.
+
+The proxy is created on the default bridge, which is its own route out, and
+attached to the internal network before it starts: Squid binds its
+`http_port` address at startup, so attaching after `docker start` is a race.
+The sandbox joins only the internal network, so the proxy is its sole route
+out.
+
+### 3. Start the sandbox with the credential
+
+```bash
+P=http://172.20.0.1:3128
+CLAUDE_CODE_OAUTH_TOKEN="$(cat "$TOKEN_FILE")" docker run -d --name ptbox \
+    --network pt-smoke-net --ip 172.20.0.2 --dns 127.0.0.1 \
+    -e CLAUDE_CODE_OAUTH_TOKEN \
+    -e HTTPS_PROXY=$P -e HTTP_PROXY=$P -e https_proxy=$P -e http_proxy=$P \
+    -e NO_PROXY=localhost,127.0.0.1 -e no_proxy=localhost,127.0.0.1 \
+    -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+    pt-smoke-sandbox sleep infinity
+```
+
+The token is passed by name, so its value never appears in an argument list.
+`--dns 127.0.0.1` leaves the sandbox no resolver of its own, which the
+CONNECT proxy does not need. `NO_PROXY` keeps loopback traffic off the proxy:
+without it, a case that starts a stub server and curls it on localhost gets a
+403 from Squid and spends its turns debugging that instead of the task.
+
+### 4. Prove the wall before spending
+
+```bash
+docker exec ptbox curl -sS -o /dev/null -m 20 -w '%{http_code}\n' https://api.anthropic.com/     # 404
+docker exec ptbox curl -sS -k -o /dev/null -m 20 -w '%{http_code}\n' https://example.com/         # 403
+docker exec ptbox env -u HTTPS_PROXY -u https_proxy curl -sS -m 10 https://1.1.1.1/; echo rc=$?    # rc=7
+docker exec ptbox getent hosts example.com; echo rc=$?                                             # rc=2
+docker exec ptbox sh -c 'node -e "require(\"http\").createServer((q,s)=>s.end(\"ok\")).listen(8080)" & s=$!
+    sleep 1; curl -sS -m 5 http://localhost:8080/; echo; kill $s'                                  # ok
+```
+
+The 404 is the provider answering through the splice, the 403 is Squid
+refusing an unlisted destination, `rc=7` is a direct connection with no route
+out, `rc=2` is the missing resolver, and `ok` is loopback bypassing the proxy.
+Any other result means the wall is not the one this doc describes: stop and
+fix it before a paid run.
+
+### 5. Copy the tree in and install
+
+```bash
+git -C "$REPO" ls-files -z --cached --others --exclude-standard \
+    | (cd "$REPO" && tar -c --no-mac-metadata --null -T - -f -) \
+    | docker exec -i ptbox tar -x -C /work
+docker exec -e PT_BYPASS_PERMISSIONS=1 ptbox ./install.sh claude
+```
+
+This copies the working tree as git sees it, uncommitted edits and new
+untracked files included. It carries the fixtures' tracked `.tasks/`
+directories, which any copy that filters out `.tasks` would drop, and leaves
+behind the host's own ignored scratch and the `.git` entry: in a linked
+worktree that entry is a file pointing at a host path, and under a dangling
+pointer git refuses even `git config --global`, so `install.sh`'s global
+excludes step fails "not a git repository". `tar` stops on a tracked file
+deleted from the working tree, so commit or restore deletions first.
+
+To compare against a base revision, install it into a second `HOME`; the arm
+is chosen by `HOME` alone, which decides which skill bodies `claude` loads,
+while both arms run the corpus and runner from `/work`:
+
+```bash
+docker exec ptbox mkdir -p /sandbox/base-src /sandbox/base
+git -C "$REPO" archive main | docker exec -i ptbox tar -x -C /sandbox/base-src
+docker exec -w /sandbox/base-src -e HOME=/sandbox/base -e PT_BYPASS_PERMISSIONS=1 ptbox ./install.sh claude
+```
+
+### 6. Run a subset, copy the results out, score
+
+```bash
+IDS='logging-practices-service-logging|logging-practices-thin-wrapper'   # grep -E alternation of case ids
+FX=/work/skills/skill-activation/fixtures
+SC=/work/skills/skill-activation/scripts
+docker exec ptbox sh -c "jq -c --arg re '^($IDS)\$' 'select(.id|test(\$re))' \
+    $FX/behavioral-cases.jsonl > $FX/subset.jsonl && wc -l < $FX/subset.jsonl"   # one line per id
+docker exec ptbox node $SC/run-behavioral-smokes.js --dry-run $FX/subset.jsonl
+
+# Billable. Add -e HOME=/sandbox/base for the base arm, with its own results dir.
+docker exec -e ACTIVATION_ALLOW_SPEND=1 ptbox \
+    node $SC/run-behavioral-smokes.js --run /tmp/res-new $FX/subset.jsonl
+
+docker cp ptbox:/tmp/res-new "$PT/res-new"
+docker cp ptbox:$FX/subset.jsonl "$PT/subset.jsonl"
+node "$REPO/skills/skill-activation/scripts/run-behavioral-smokes.js" --check "$PT/res-new" "$PT/subset.jsonl"
+```
+
+The subset must sit in the fixtures directory, since the runner resolves
+fixture dirs relative to the corpus file, but `--check` reads only the corpus
+and the results directory, so the copied-out subset works from anywhere.
+Results are written inside the container and copied out afterward: the runner
+writing straight into a directory bind-mounted from macOS failed with
+`EACCES` before any case spawned. Each `--run` needs a results directory that
+does not exist yet. A case takes from under a minute to about eight, so a
+shell with a shorter command timeout should background the `--run`;
+`LIVE_CASE_TIMEOUT_MS` caps each case at 900000 by default. `--check`, like the runner, exits 1 when any case fails or
+scores invalid, so a non-zero exit there is a verdict, not a broken pipeline.
+
+### 7. Tear down
+
+```bash
+docker rm -f ptbox pt-smoke-proxy && docker network rm pt-smoke-net
+```
+
+The proxy's access log records every hostname the run asked for and goes
+with its container; copy it out first with
+`docker cp pt-smoke-proxy:/var/log/squid/access.log "$PT/"` if you want the
+audit trail. To pick up an edited tree, recreate only `ptbox` (steps 3 to 5)
+and leave the proxy and network up.
+
+## Allowing the npm registry for cases that install packages
+
+The logging-practices smokes ask for a service whose right answer is a
+logging library, so with the model API as the only allowed host, `npm
+install` fails and the run measures the agent coping with that instead of
+the skill. For those runs, add `registry.npmjs.org` to both allowlist lines
+in step 1, between the `awk` extraction and the `docker build`:
+
+```bash
+sed -i '' -E '/^acl provider_(host|sni) /s/$/ registry.npmjs.org/' "$PT/proxy/squid.conf"
+grep '^acl provider_' "$PT/proxy/squid.conf"    # both lines now end in registry.npmjs.org
+```
+
+That is the macOS `sed -i ''` form; GNU sed takes `-i` alone. Both lines need
+the name, for the same reason both ACLs exist. Every allowed host is one more
+place an injected case can send data, and a package registry also hands it
+code to run, so splice it in only for the runs that need it. Rebuilding the
+image afterward is not enough on its own, since the running proxy keeps the
+config it started with: rerun step 1's `awk` and proxy `docker build`, then
+`docker rm -f pt-smoke-proxy` and repeat step 2's `docker create`, `docker
+network connect`, and `docker start` (the network itself can stay).
