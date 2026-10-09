@@ -34,6 +34,15 @@
     { "id": "edit-compresses-closed-batch-silent", "expect": "silent" },
     { "id": "edit-inserts-new-batch-silent", "expect": "silent" },
     { "id": "lint-deny-wins-over-in-flight-warning", "expect": "deny" },
-    { "id": "lint-disabled-still-warns-in-flight", "expect": "warn-context" }
+    { "id": "lint-disabled-still-warns-in-flight", "expect": "warn-context" },
+    { "id": "review-without-goal-line-denied", "expect": "deny" },
+    { "id": "review-goal-met-yes-allowed", "expect": "silent" },
+    { "id": "review-goal-met-partial-with-gap-allowed", "expect": "silent" },
+    { "id": "review-goal-met-partial-empty-gap-denied", "expect": "deny" },
+    { "id": "legacy-review-without-goal-line-allowed", "expect": "silent" },
+    { "id": "review-goal-line-warn-mode", "expect": "warn-context" },
+    { "id": "review-goal-line-lint-disabled-allowed", "expect": "silent" },
+    { "id": "review-in-new-batch-denied", "expect": "deny" },
+    { "id": "goal-line-deny-wins-over-in-flight-warning", "expect": "deny" }
   ]
 }

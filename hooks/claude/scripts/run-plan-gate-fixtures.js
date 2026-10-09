@@ -590,6 +590,147 @@ async function lintDisabledStillWarnsInFlight() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+// --- Review goal-line lint cases ---
+//
+// Same shape as the in-flight cases: real baseline on disk, stamp the
+// session, then a Write/Edit event. Expectations come from the lint's stated
+// contract, not from running it: a Review heading new to its `Batch N` block
+// needs `Goal met: yes` or `Goal met: partial: <non-empty gap>`, and Reviews
+// already on disk never count. Each allow case ends with a liveness deny on
+// the same baseline, so a silent no-op can't score as a pass.
+
+const GOAL_BASELINE = '# Todo\n\n## Batch 50: goal work\n### Plan\n- [x] done step (executor)\n';
+
+function goalReview(lines) {
+  return GOAL_BASELINE + '### Review\nShipped.\n' + lines;
+}
+
+function assertGoalLineDeny(stdout, batchPattern) {
+  assert.notStrictEqual(atMostOneJson(stdout), null);
+  const reason = denyReason(stdout);
+  assert.match(reason, /needs a goal line/);
+  assert.match(reason, batchPattern);
+  return reason;
+}
+
+async function reviewWithoutGoalLineDenied() {
+  const f = fixture();
+  const session = 'sess-goal-missing';
+  const todo = writeTodo(f.root, GOAL_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assertGoalLineDeny(run(writeEvent(session, todo, goalReview('')), f.env), /Batch 50: goal work/);
+  // No once-marker: the identical retry is denied again.
+  assertGoalLineDeny(run(writeEvent(session, todo, goalReview('')), f.env), /Batch 50: goal work/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function reviewGoalMetYesAllowed() {
+  const f = fixture();
+  const session = 'sess-goal-yes';
+  const todo = writeTodo(f.root, GOAL_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assert.strictEqual(run(writeEvent(session, todo, goalReview('Goal met: yes\n')), f.env), '');
+  assertGoalLineDeny(run(writeEvent(session, todo, goalReview('')), f.env), /Batch 50: goal work/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function reviewGoalMetPartialWithGapAllowed() {
+  const f = fixture();
+  const session = 'sess-goal-partial';
+  const todo = writeTodo(f.root, GOAL_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  // Edit path, list-item form.
+  const added = '- [x] done step (executor)\n### Review\nShipped.\n- Goal met: partial: file is still 40 lines over its size limit\n';
+  assert.strictEqual(run(editEvent(session, todo, '- [x] done step (executor)\n', added), f.env), '');
+  assertGoalLineDeny(run(writeEvent(session, todo, goalReview('')), f.env), /Batch 50: goal work/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function reviewGoalMetPartialEmptyGapDenied() {
+  const f = fixture();
+  const session = 'sess-goal-empty-gap';
+  const todo = writeTodo(f.root, GOAL_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  // The gap must sit on the Goal met line itself, not be borrowed from the next line.
+  assertGoalLineDeny(
+    run(writeEvent(session, todo, goalReview('Goal met: partial: \nVerified with npm test.\n')), f.env),
+    /Batch 50: goal work/
+  );
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function legacyReviewWithoutGoalLineAllowed() {
+  const f = fixture();
+  const session = 'sess-goal-legacy';
+  const todo = writeTodo(f.root, BATCH_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  // Batch 40's Review is already on disk with no goal line: editing its
+  // text, or adding a tagged step to Batch 41, is never linted.
+  assert.strictEqual(run(editEvent(session, todo, 'Shipped.\n', 'Shipped and tagged.\n'), f.env), '');
+  assert.strictEqual(
+    run(editEvent(session, todo, '- [ ] pending step (executor)\n', '- [ ] pending step (executor)\n- [ ] next step; verify: npm test (executor)\n'), f.env),
+    ''
+  );
+  // Liveness: a Review newly added to Batch 41 on this same baseline is linted,
+  // and the legacy Batch 40 Review is not named.
+  const reason = assertGoalLineDeny(
+    run(editEvent(session, todo, '- [ ] pending step (executor)\n', '- [ ] pending step (executor)\n### Review\nDone.\n'), f.env),
+    /Batch 41: in-flight work/
+  );
+  assert.doesNotMatch(reason, /Batch 40/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function reviewGoalLineWarnMode() {
+  const f = fixture();
+  const session = 'sess-goal-warn';
+  const todo = writeTodo(f.root, GOAL_BASELINE);
+  const env = { ...f.env, PLANGATE_WARN: '1' };
+  assert.strictEqual(run(skillEvent(session), env), '');
+  const parsed = atMostOneJson(run(writeEvent(session, todo, goalReview('')), env));
+  assert.notStrictEqual(parsed, null);
+  assert.deepStrictEqual(Object.keys(parsed), ['hookSpecificOutput']);
+  assert.strictEqual(parsed.hookSpecificOutput.permissionDecision, undefined);
+  assert.match(parsed.hookSpecificOutput.additionalContext, /needs a goal line/);
+  assert.match(parsed.hookSpecificOutput.additionalContext, /Warn-only mode/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function reviewGoalLineLintDisabledAllowed() {
+  const f = fixture();
+  const session = 'sess-goal-lintoff';
+  const todo = writeTodo(f.root, GOAL_BASELINE);
+  const env = { ...f.env, PLANGATE_LINT_DISABLED: '1' };
+  assert.strictEqual(run(skillEvent(session), env), '');
+  assert.strictEqual(run(writeEvent(session, todo, goalReview('')), env), '');
+  // Liveness: the same write in the same session without the opt-out is denied.
+  assertGoalLineDeny(run(writeEvent(session, todo, goalReview('')), f.env), /Batch 50: goal work/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function reviewInNewBatchDenied() {
+  const f = fixture();
+  const session = 'sess-goal-new-file';
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  // No baseline on disk: every Review in the written file is new.
+  assertGoalLineDeny(run(writeEvent(session, todoPath(f.root), goalReview('')), f.env), /Batch 50: goal work/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function goalLineDenyWinsOverInFlightWarning() {
+  const f = fixture();
+  const session = 'sess-goal-wins';
+  const todo = writeTodo(f.root, BATCH_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  // Drops in-flight Batch 41 AND adds a Review without the line to a new
+  // Batch 42: one JSON, the goal-line deny; no in-flight warning.
+  const content = '# Todo\n\n' + BATCH_CLOSED + '## Batch 42: new work\n### Plan\n- [x] new step (executor)\n### Review\nDone.\n';
+  const stdout = run(writeEvent(session, todo, content), f.env);
+  assertGoalLineDeny(stdout, /Batch 42: new work/);
+  assert.doesNotMatch(stdout, /in-flight work/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 const HANDLERS = {
   'npm-test-silent': npmTestSilent,
   'git-push-help-silent': gitPushHelpSilent,
@@ -626,6 +767,15 @@ const HANDLERS = {
   'edit-inserts-new-batch-silent': editInsertsNewBatchSilent,
   'lint-deny-wins-over-in-flight-warning': lintDenyWinsOverInFlightWarning,
   'lint-disabled-still-warns-in-flight': lintDisabledStillWarnsInFlight,
+  'review-without-goal-line-denied': reviewWithoutGoalLineDenied,
+  'review-goal-met-yes-allowed': reviewGoalMetYesAllowed,
+  'review-goal-met-partial-with-gap-allowed': reviewGoalMetPartialWithGapAllowed,
+  'review-goal-met-partial-empty-gap-denied': reviewGoalMetPartialEmptyGapDenied,
+  'legacy-review-without-goal-line-allowed': legacyReviewWithoutGoalLineAllowed,
+  'review-goal-line-warn-mode': reviewGoalLineWarnMode,
+  'review-goal-line-lint-disabled-allowed': reviewGoalLineLintDisabledAllowed,
+  'review-in-new-batch-denied': reviewInNewBatchDenied,
+  'goal-line-deny-wins-over-in-flight-warning': goalLineDenyWinsOverInFlightWarning,
 };
 
 async function main() {

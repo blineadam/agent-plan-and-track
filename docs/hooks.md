@@ -356,7 +356,25 @@ without that line, wrote through a Bash heredoc instead of stopping.
 
 Once a session is stamped, writes to `.tasks/todo.md` are content-linted. A new
 unchecked `## Plan` step must carry a trailing owner tag, and `(main)` needs a
-colon-separated reason. `PLANGATE_LINT_DISABLED=1` turns off only this lint.
+colon-separated reason. `PLANGATE_LINT_DISABLED=1` turns off this lint and the Review goal-line lint below.
+
+### Review goal-line lint
+
+A stamped `.tasks/todo.md` write that adds a `Review` heading (H2 or H3) to a
+`Batch N` block must carry a `Goal met: yes` or `Goal met: partial: <gap>`
+line, with a non-empty gap, between that heading and the end of the batch
+block. "Adds" means the same-numbered batch in the on-disk baseline had no
+Review, or the batch is new to the file. This backs `plan-and-track`'s
+closeout goal check, which measures the end state against the batch's stated
+goal before the Review is written.
+
+Like the content lint, it denies until the line is present, with no
+once-marker, and `PLANGATE_LINT_DISABLED=1` turns it off. Reviews already on
+disk, including ones written before this lint existed, are never linted.
+Batch blocks are parsed the same way as the in-flight batch warning below, so
+a Review under no `Batch N` heading is not seen. It covers Claude only:
+Codex's `plan-gate-pilot.js` has no `.tasks/todo.md` content lint, and Copilot
+has no plan gate.
 
 ### Migration-state deletion guard
 
@@ -384,8 +402,8 @@ the writer to re-read the file and put that batch back exactly as it was before
 the write, leaving everything else as the file now stands. It fires every time,
 with no once-marker.
 
-It runs last: a migration-state, attribution, or tag-lint deny in the same run
-wins, and a hook run emits at most one JSON. `PLANGATE_LINT_DISABLED` does not
+It runs last: a migration-state, attribution, tag-lint, or goal-line deny in
+the same run wins, and a hook run emits at most one JSON. `PLANGATE_LINT_DISABLED` does not
 cover it, since it is a data-loss signal like the migration-state guard;
 `PLANGATE_DISABLED=1` does. Any error inside the check emits nothing.
 
