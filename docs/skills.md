@@ -84,11 +84,12 @@ work, then publish or capture what the session taught you.
   controls, or new console errors, and uploads the crops into the PR body
   once Copilot review has settled, before the PR is marked ready.
 - **`resolving-merge-conflicts`** (skill) covers an in-progress merge,
-  rebase, or cherry-pick conflict: read both sides' intent before choosing,
-  resolve hunk by hunk without inventing behavior neither side had, then
-  check the callers of anything either side renamed or changed the contract
-  of, since a semantic conflict leaves no textual marker. Finishes the
-  operation rather than aborting out of it.
+  rebase, or cherry-pick conflict, or a pull request whose branch conflicts
+  with its base: read both sides' intent before choosing, resolve hunk by
+  hunk without inventing behavior neither side had, then check the callers
+  of anything either side renamed or changed the contract of, since a
+  semantic conflict leaves no textual marker. Finishes the operation rather
+  than aborting out of it.
 
 A harness that can't run a given hook still gets the rule as a skill.
 That's why Copilot gets gateguard but not delivery-gate: its `agentStop`
