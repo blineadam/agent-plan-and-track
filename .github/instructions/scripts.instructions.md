@@ -175,7 +175,8 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
 
 - `hooks/claude/*.json`, `hooks/codex/*.json`, and `hooks/copilot/*.json`
   each speak that harness's own wire dialect (Claude and Codex use a
-  PascalCase `matcher` plus `hooks[].command`; Copilot uses `version:1`,
+  PascalCase event key such as `PreToolUse` holding a `matcher` plus
+  `hooks[].command`; Copilot uses `version:1`,
   `bash`, and `timeoutSec`). Don't propose normalizing one dialect to match
   another: the differing shape is a harness contract.
 - The checked-in wiring files carry no logic, only a plain
