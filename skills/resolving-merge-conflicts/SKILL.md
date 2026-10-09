@@ -1,13 +1,13 @@
 ---
 name: resolving-merge-conflicts
-description: "Use when resolving an in-progress merge, rebase, or cherry-pick conflict in the working tree: covers identifying the operation type, researching both sides' intent before choosing, resolving hunk by hunk without inventing new behavior, checking for semantic conflicts that leave no textual marker, running the project's own checks, and finishing rather than aborting the operation. Not for planning or executing a large migration or mechanical rewrite across many files, which is migration-discipline, and not for general task planning."
+description: "Use when resolving an in-progress merge, rebase, or cherry-pick conflict in the working tree, or a pull request whose branch conflicts with its base: covers identifying the operation type, researching both sides' intent before choosing, resolving hunk by hunk without inventing new behavior, checking for semantic conflicts that leave no textual marker, running the project's own checks, and finishing rather than aborting the operation. Not for planning or executing a large migration or mechanical rewrite across many files, which is migration-discipline, and not for general task planning."
 ---
 
 # Resolving Merge Conflicts
 
 ## Steps
 
-1. **Assess the state before touching anything.** Determine whether this is a merge, a rebase, or a cherry-pick, since the finishing move differs. Identify every conflicted path.
+1. **Assess the state before touching anything.** Determine whether this is a merge, a rebase, or a cherry-pick, since the finishing move differs. Identify every conflicted path. A pull request that reports conflicts with its base has nothing in progress locally yet, so start one: check out the branch (`gh pr checkout <n>`), fetch the current tip of its base branch from the base repository (in a fork clone that remote is usually `upstream`, not `origin`), and merge that tip into it, since rebasing a pushed branch would need a force-push.
 2. **Research the intent behind both sides.** A conflict is two intentions colliding, and you cannot preserve an intention you have not read. The commit messages and the diffs on each side are always available and are the floor; a PR discussion or a linked issue often is not, so reach for those when they exist rather than treating them as a precondition. A purely local merge with terse commit messages leaves the diffs as the only evidence, which is enough to proceed.
 3. **Resolve hunk by hunk, preserving both intentions where they are compatible.** Where they genuinely conflict, take the side that serves the merge's purpose and record why. The hard rule: never invent new behavior that was in neither side, since a conflict resolution is not the place to slip in a third design.
 4. **Check for semantic conflicts with no textual marker.** A rename or a changed contract on one side that the other side still calls produces no conflict marker at all; git has nothing to report there. After the textual conflicts are resolved, check the callers of anything either side changed.
