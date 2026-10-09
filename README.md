@@ -46,7 +46,9 @@ delegation to subagents.
 
 See [docs/skills.md](docs/skills.md) for the full catalog, including the
 maintenance and design skills. See [docs/models.md](docs/models.md) for model
-defaults, tiered subagents, and per-tool notes.
+defaults, tiered subagents, and per-tool notes. See
+[docs/credits.md](docs/credits.md) for the upstream projects this repo adapts
+from.
 
 ## Install
 

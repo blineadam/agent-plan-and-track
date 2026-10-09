@@ -5,10 +5,6 @@ description: "Strip AI-writing tells (promotional puffery, filler, rule-of-three
 
 # Humanizer
 
-Adapted from [blader/humanizer](https://github.com/blader/humanizer) (MIT),
-based on Wikipedia's ["Signs of AI writing"](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing)
-guide from WikiProject AI Cleanup.
-
 Applies to any user-facing prose read outside the immediate chat turn: README
 sections, docs, commit/PR descriptions, PR comments, blog-style or long-form
 writing, and a rewrite of someone else's draft.

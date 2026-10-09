@@ -10,9 +10,8 @@ always "yes". Asking for *concrete facts* does work: "list every file that
 imports this module" forces a real search, and the investigation itself
 changes the edit that follows.
 
-Adapted from the ECC `gateguard` skill. The protocol below is
-harness-agnostic; installs also get a `PreToolUse` hook (`gateguard.js`) on
-all three harnesses that re-injects it (see the end).
+The protocol below is harness-agnostic; installs also get a `PreToolUse`
+hook (`gateguard.js`) on all three harnesses that re-injects it (see the end).
 
 ## The protocol
 

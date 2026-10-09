@@ -134,7 +134,7 @@ What would reopen this: a review procedure rather than a rule, such as "run the 
 
 ## attention-span's scanning format and output style stay unadopted
 
-Reviewed 2026-09-06 against [alexgreensh/attention-span](https://github.com/alexgreensh/attention-span), which ships three Claude Code output styles built around answer-first, ADHD-friendly delivery. Two of its ideas were adopted as rule bullets, compression-targets-elaboration and artifact-requests-get-the-artifact-alone, and are credited in `AGENTS.md`. Only the second earned a place in the digest; the entry below records why the first did not. The rest is recorded here because most of the project restates rules this repo already carries, and the parts that do not conflict with rules it carries deliberately.
+Reviewed 2026-09-06 against [alexgreensh/attention-span](https://github.com/alexgreensh/attention-span), which ships three Claude Code output styles built around answer-first, ADHD-friendly delivery. Two of its ideas were adopted as rule bullets, compression-targets-elaboration and artifact-requests-get-the-artifact-alone, and are credited in `docs/credits.md`. Only the second earned a place in the digest; the entry below records why the first did not. The rest is recorded here because most of the project restates rules this repo already carries, and the parts that do not conflict with rules it carries deliberately.
 
 Four things were declined:
 
