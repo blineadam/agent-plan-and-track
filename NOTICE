@@ -19,3 +19,6 @@ next to it.
 - The threat-model mode section of agents/security-auditor.md, adapted from
   the security-threat-model skill in https://github.com/openai/skills,
   Copyright OpenAI. License text: agents/security-auditor.LICENSE.txt
+- skills/yeet/, adapted from the yeet skill in https://github.com/openai/skills
+  by way of the port in https://github.com/ben-ranford/skills, Copyright
+  OpenAI. License text: skills/yeet/LICENSE.txt
