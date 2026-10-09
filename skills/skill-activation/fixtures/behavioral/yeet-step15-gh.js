@@ -127,10 +127,6 @@ function lastFlag(parsed, ...names) {
   return undefined;
 }
 
-function sha7(sha) {
-  return String(sha).slice(0, 7);
-}
-
 function reviewLogin(review) {
   return review.login || COPILOT_REST;
 }
