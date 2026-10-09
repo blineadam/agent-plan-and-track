@@ -11,8 +11,9 @@ Copilot's native review-instruction format, so its PR review flags real
 convention violations instead of applying generic defaults.
 
 Boundary with [[inherit-legacy-style]]: that skill infers *unwritten*
-conventions from code and records them in the project's own convention docs,
-or in `.ai-style-rules.md` when it has none. This skill
+conventions from code and records them in the project's on-demand convention
+docs (`CONTRIBUTING.md`, style guides, `docs/`), or in `.ai-style-rules.md`
+when it has none, never in an instructions file. This skill
 collects *all* review-worthy material, both written (instructions files, README,
 docs) and inferred (`.ai-style-rules.md`), and converts the combined set into
 Copilot's format. Run [[inherit-legacy-style]] first when you also want the

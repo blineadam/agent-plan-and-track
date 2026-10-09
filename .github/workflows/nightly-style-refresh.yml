@@ -9,7 +9,9 @@ name: nightly style refresh
 # step commits that fix and comments on the PR, a mechanical step posts
 # those replies and resolves every review thread and waits for the PR's
 # required checks, then a mechanical step squash-merges behind a
-# diff-allowlist guard.
+# diff-allowlist guard. The skill's consolidation pass (merging, dropping,
+# and tightening rules) runs report-only, to the job summary, since no one
+# is there to approve it.
 #
 # Two tokens are in play. The GH_TOKEN secret, a repo-scoped personal
 # access token, is declared by name on every step that writes to GitHub:
@@ -185,7 +187,7 @@ jobs:
           set -euo pipefail
           claude -p --dangerously-skip-permissions "You are running unattended in CI on a fresh checkout of main. No user is available: never ask a question or wait for input, and never invent an answer to a question you'd normally ask a user -- defer it instead as described below. You have no GitHub token: don't run git or gh commands, and don't try to.
 
-          Run /inherit-legacy-style. It will detect its mode itself. Decline its offer to fold .ai-style-rules.md into the project docs, so it falls back to an incremental update of .ai-style-rules.md. If a strong-signal conflict would normally trigger its one-question-at-a-time protocol, do not guess: leave that convention uncaptured and note it as a 'Deferred conflict:' bullet you'll include in the PR body's '## Summary' section below. Decline its offer to add soft/hard persistence wiring (this repo already references .ai-style-rules.md from AGENTS.md). If it offers to invoke /copilot-review-instructions, accept; otherwise run /copilot-review-instructions yourself afterward -- both of its preconditions already hold in this repo.
+          Run /inherit-legacy-style. It will detect its mode itself. Decline its offer to fold .ai-style-rules.md into the project docs, so it falls back to an incremental update of .ai-style-rules.md. If a strong-signal conflict would normally trigger its one-question-at-a-time protocol, do not guess: leave that convention uncaptured and note it as a 'Deferred conflict:' bullet you'll include in the PR body's '## Summary' section below. Run its consolidation pass report-only: apply no merge, drop, or tightening it proposes. Append each proposal and the size estimate to the file \"$GITHUB_STEP_SUMMARY\" whether or not anything else changed, and, if you write a PR summary below, also list them under a 'Proposed consolidation:' bullet in its '## Summary' section. Decline its offer to add soft/hard persistence wiring (this repo already references .ai-style-rules.md from AGENTS.md). If it offers to invoke /copilot-review-instructions, accept; otherwise run /copilot-review-instructions yourself afterward -- both of its preconditions already hold in this repo.
 
           Hard boundary: only .ai-style-rules.md and .github/instructions/*.instructions.md may change. If anything else changed, revert it before finishing.
 
