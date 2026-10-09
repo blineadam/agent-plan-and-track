@@ -15,7 +15,7 @@ conventions from code and records them in the project's on-demand convention
 docs (`CONTRIBUTING.md`, style guides, `docs/`), or in `.ai-style-rules.md`
 when it has none, never in an instructions file. This skill
 collects *all* review-worthy material, both written (instructions files, README,
-docs) and inferred (`.ai-style-rules.md`), and converts the combined set into
+docs, a writing skill's prohibitions on its output file) and inferred (`.ai-style-rules.md`), and converts the combined set into
 Copilot's format. Run [[inherit-legacy-style]] first when you also want the
 implicit-convention layer; it isn't required if the project already documents
 its rules elsewhere.
@@ -56,7 +56,14 @@ which rules each one carries:
    tree (root docs plus many nested READMEs), apply the same scale-tiered
    sampling as the source scan below: index first, read fully only within the
    tier's budget, so this step can't blow the context budget on a large repo.
-4. **A bounded scan of source itself**, scaled to repo size the way
+4. **A skill that writes a file the buckets cover**: when a skill checked into
+   the repo (for example [[inherit-legacy-style]], which maintains
+   `.ai-style-rules.md`) writes or maintains a tracked file Step 2's buckets will cover,
+   read its body for prohibitions on that output file's content, wherever they
+   appear: what the file must not contain. Its layout rules and a line about how
+   the skill itself works (its steps, modes, prompts) aren't one. The skill body
+   is then a source like any other, and the bucket's pointer names it.
+5. **A bounded scan of source itself**, scaled to repo size the way
    [[inherit-legacy-style]] tiers its sampling, to ground the documented rules
    in real examples and to derive the actual directory/extension globs Step 2
    needs. If the scan surfaces an apparently review-worthy convention that no
@@ -112,7 +119,7 @@ phrased as review directives ("flag X"), not instructions for an autonomous
 coding agent, and belong scoped away from Copilot's cloud coding agent.
 
 Body: a one-line H1, a pointer back to whichever source(s) actually back the
-bucket's rules (`.ai-style-rules.md`, the instructions file, the README, or a
+bucket's rules (`.ai-style-rules.md`, the instructions file, the README, a writing skill's `SKILL.md`, or a
 combination) rather than a restatement of them, then a handful of H2 sections
 converting those rules into imperative "Flag ..." review directives.
 Immediately below the frontmatter, add one HTML comment marker:
@@ -125,7 +132,10 @@ Immediately below the frontmatter, add one HTML comment marker:
 
 Check every asserted rule against the real source it cites: the actual Golden
 File, the exact line in the instructions file, the README section. Don't
-transcribe from memory or from what a source merely implies.
+transcribe from memory or from what a source merely implies. For a convention
+taken from a skill body, quote the line in the current `SKILL.md` that states
+it as a requirement on the output file; drop it if the line only describes the
+skill's own procedure.
 
 ## Step 5: Regenerate, don't accumulate
 

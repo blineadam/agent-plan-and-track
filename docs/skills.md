@@ -152,7 +152,9 @@ For turning a project's conventions into documentation other agents can read:
 `inherit-legacy-style` captures enforceable conventions; its hard
 implementation is Claude-only.
 `copilot-review-instructions` writes Copilot-only output from style rules,
-instruction files, the README, and other docs: the path-scoped
+instruction files, the README, other docs, and the prohibitions a writing
+skill states about a file it writes (such as `inherit-legacy-style` for
+`.ai-style-rules.md`): the path-scoped
 `.github/instructions/*.instructions.md` files, plus the `# Code reviews`
 section of `.github/copilot-instructions.md`, which points Copilot's reviewer
 at those sources and names what CI already blocks. It owns only that section
