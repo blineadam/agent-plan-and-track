@@ -1422,6 +1422,79 @@ async function testBehavioralAllowedTools(binDir) {
   );
 }
 
+// file_regex ref_exists: the regex's capture must name a file that exists in
+// the case dir, so a file naming an artifact it never wrote fails.
+async function testBehavioralRefExists(binDir) {
+  const root = path.join(scratchRoot, 'ref-exists');
+  fs.mkdirSync(root, { recursive: true });
+  const assertion = {
+    kind: 'file_regex',
+    path: 'state.md',
+    regex: '^- Oracle: (tests/\\S+)',
+    flags: 'm',
+    ref_exists: true,
+  };
+  const ids = ['ref-exists-present', 'ref-exists-missing', 'ref-exists-symlink'];
+  const corpus = makeBehavioralCorpus(
+    root,
+    ids.map((id) => ({ id, skill: 'fixture-skill', prompt: 'success', max_turns: 2, fixture: id, assertions: [assertion] }))
+  );
+  const results = path.join(root, 'results');
+  for (const id of ids) {
+    fs.mkdirSync(path.join(results, id), { recursive: true });
+    writeJsonl(path.join(results, `${id}.jsonl`), [
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill: 'fixture-skill' } }] },
+      },
+      { type: 'result', subtype: 'success', is_error: false, num_turns: 1, total_cost_usd: 0.01, result: 'done' },
+    ]);
+  }
+  fs.writeFileSync(path.join(results, 'ref-exists-present', 'state.md'), '- Oracle: tests/char.js\n');
+  fs.mkdirSync(path.join(results, 'ref-exists-present', 'tests'));
+  fs.writeFileSync(path.join(results, 'ref-exists-present', 'tests', 'char.js'), '// recorded\n');
+  fs.writeFileSync(path.join(results, 'ref-exists-missing', 'state.md'), '- Oracle: tests/missing.js\n');
+  // A symlink inside the case dir pointing at a probe kept outside it.
+  const outsideProbe = path.join(root, 'outside-probe.js');
+  fs.writeFileSync(outsideProbe, '// recorded elsewhere\n');
+  fs.writeFileSync(path.join(results, 'ref-exists-symlink', 'state.md'), '- Oracle: tests/char.js\n');
+  fs.mkdirSync(path.join(results, 'ref-exists-symlink', 'tests'));
+  fs.symlinkSync(outsideProbe, path.join(results, 'ref-exists-symlink', 'tests', 'char.js'), 'file');
+
+  const check = await runNode(BEHAVIORAL_RUNNER, ['--check', results, corpus], baseEnv(binDir));
+  const report = parseReport(check, 'behavioral ref_exists');
+  const byId = Object.fromEntries(report.cases.map((c) => [c.id, c]));
+  assert(check.code === 1, `ref_exists --check exited ${check.code}, expected 1`);
+  assert(byId['ref-exists-present'].status === 'pass', 'ref_exists failed although the named file exists');
+  assert(
+    byId['ref-exists-missing'].status === 'fail' && byId['ref-exists-missing'].reason.includes('tests/missing.js'),
+    'ref_exists passed, or did not name the path, when the named file is missing'
+  );
+  assert(
+    byId['ref-exists-symlink'].status === 'fail',
+    'ref_exists passed on a symlink to a file outside the case dir'
+  );
+
+  // The lint rejects ref_exists on a regex with no capture group.
+  const lintCorpus = makeBehavioralCorpus(path.join(root, 'lint'), [
+    {
+      id: 'ref-exists-no-group',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'ref-exists-no-group',
+      assertions: [{ ...assertion, regex: '^- Oracle: tests/' }],
+    },
+  ]);
+  const lintRun = await runNode(BEHAVIORAL_RUNNER, ['--dry-run', lintCorpus], baseEnv(binDir));
+  const lintReport = parseReport(lintRun, 'behavioral ref_exists lint');
+  assert(lintRun.code === 1, `ref_exists lint dry-run exited ${lintRun.code}, expected 1`);
+  assert(
+    lintReport.cases[0].problems.some((p) => p.includes('capture group')),
+    'ref_exists without a capture group was not flagged by --dry-run'
+  );
+}
+
 async function testBehavioralZeroMaxDispatchCount(binDir) {
   const root = path.join(scratchRoot, 'zero-max-dispatch');
   fs.mkdirSync(root, { recursive: true });
@@ -2055,6 +2128,7 @@ async function main() {
   await testBehavioralAssertionsAndSetup(binDir);
   await testBehavioralAllowedTools(binDir);
   await testBehavioralZeroMaxDispatchCount(binDir);
+  await testBehavioralRefExists(binDir);
   await testBehavioralDispatchNames(binDir);
   await testBehavioralSetupEnvScrub(binDir);
   await testCodex(binDir, codexRunner);

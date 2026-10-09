@@ -52,6 +52,14 @@ bypass or skip-permissions posture.
 
 ## Assertion kinds
 
+A `file_regex` may set `ref_exists: true` when the file it reads only names
+an artifact, such as a state line pointing at a test file. The regex's first
+capture group, from its first match, must then name an existing file inside
+the case dir, checked on its resolved real path so a symlink out of the case
+dir fails, and a run that names an artifact it never wrote fails. It proves
+the file exists, not what it contains, and the lint rejects it on a regex
+with no capture group.
+
 `response_regex`, `trace_agent_dispatch_count`, and `trace_agent_dispatch_names`
 each hard-fail only what they literally measure, per the narrower-than-its-rule
 disclosure this repo's checks carry: `response_regex` hard-fails when its regex
