@@ -50,8 +50,9 @@ review a batch, for instance): a non-empty array of bare tool names (e.g.
 CLI), each matching `/^[A-Za-z][A-Za-z0-9_]*$/`. No case is ever run with a
 bypass or skip-permissions posture.
 
-A case that needs a CLI the sandbox lacks (`gh`, say) ships a stub in the
-fixture and lets its `setup` put it on the agent's PATH by writing
+A case that needs a CLI the sandbox lacks (`gh`, say) keeps a stub beside its
+`setup`, which copies it into the case dir and puts it on the agent's PATH by
+writing
 `.claude/settings.json` with an `env.PATH` that is an absolute literal (the
 case dir's `bin` prepended to the setup process's own PATH, since settings
 values are not shell-expanded). The `yeet-step15-*` cases do this: their stub

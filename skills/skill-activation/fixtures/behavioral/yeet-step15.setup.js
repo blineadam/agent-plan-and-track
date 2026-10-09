@@ -3,8 +3,9 @@
 // Setup shared by the three yeet-step15-* behavioral cases (stale-head,
 // triaged-head, new-review). Each case dir ships a tiny repo payload
 // (README.md, src/greet.js), a gh-state.json holding the literal placeholders
-// OLD_SHA and HEAD_SHA, and bin/gh, an offline stub of the GitHub CLI that logs
-// every call to gh-calls.log and answers from gh-state.json.
+// OLD_SHA and HEAD_SHA. The offline GitHub CLI stub, which logs every call to
+// gh-calls.log and answers from gh-state.json, lives once beside this script as
+// yeet-step15-gh.js and is copied into each case as bin/gh.
 //
 // This script builds the git side so the stub's state matches real commits:
 // commit 1 (the payload) is OLD_SHA, commit 2 (a small fix to src/greet.js) is
@@ -92,6 +93,8 @@ if (!stateText.includes('OLD_SHA') || !stateText.includes('HEAD_SHA')) {
 }
 fs.writeFileSync(statePath, stateText.split('OLD_SHA').join(oldSha).split('HEAD_SHA').join(headSha));
 
+fs.mkdirSync(path.join(CASE_DIR, 'bin'), { recursive: true });
+fs.copyFileSync(path.join(__dirname, 'yeet-step15-gh.js'), path.join(CASE_DIR, 'bin', 'gh'));
 fs.chmodSync(path.join(CASE_DIR, 'bin', 'gh'), 0o755);
 fs.writeFileSync(path.join(CASE_DIR, 'gh-calls.log'), '');
 

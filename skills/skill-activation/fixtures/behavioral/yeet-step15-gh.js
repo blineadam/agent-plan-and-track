@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
-// Offline stub of the GitHub CLI for the yeet-step15 behavioral smokes. Logs
+// Offline stub of the GitHub CLI for the yeet-step15 behavioral smokes, copied
+// into each case as bin/gh by yeet-step15.setup.js. Logs
 // every invocation (argv as a JSON array, one line) to gh-calls.log in the
 // case dir, then answers from gh-state.json beside it. It models one PR
 // (octo/demo#7, branch feature) and only the calls yeet's steps 7 through 15
@@ -18,6 +19,17 @@ const OWNER = 'octo';
 const REPO = 'demo';
 const PR = 7;
 const PR_URL = `https://github.com/${OWNER}/${REPO}/pull/${PR}`;
+
+// The PR head is wherever branch `feature` sits in the case's bare remote, so a
+// fix the agent pushes moves it, as it would on GitHub.
+function currentHead() {
+  const r = spawnSync('git', ['--git-dir', path.join(CASE_DIR, '.remote.git'), 'rev-parse', 'refs/heads/feature'], { encoding: 'utf8' });
+  if (r.status !== 0) {
+    process.stderr.write(`gh stub: cannot read the PR head from .remote.git: ${r.stderr}`);
+    process.exit(1);
+  }
+  return r.stdout.trim();
+}
 const COPILOT_REST = 'copilot-pull-request-reviewer[bot]';
 const COPILOT_GRAPHQL = 'copilot-pull-request-reviewer';
 const COPILOT_COMMENT_LOGIN = 'Copilot';
@@ -168,7 +180,7 @@ function recordCopilotRequest(state) {
     const id = taken.has(1002) ? 1090 : 1002;
     state.reviews.push({
       id,
-      commit_id: state.head_sha,
+      commit_id: currentHead(),
       state: 'COMMENTED',
       body: 'Copilot reviewed 2 of 2 changed files and generated no comments.',
       submitted_at: '2026-10-09T09:00:00Z',
@@ -237,7 +249,7 @@ if (argv[0] === 'pr') {
       title: 'Add a default greeting',
       headRefName: 'feature',
       baseRefName: 'main',
-      headRefOid: state.head_sha,
+      headRefOid: currentHead(),
       isDraft: state.isDraft,
       state: 'OPEN',
       statusCheckRollup: [
@@ -387,7 +399,7 @@ if (argv[0] === 'api') {
     state.reviews.push({
       id: reviewId,
       login: OWNER,
-      commit_id: state.head_sha,
+      commit_id: currentHead(),
       state: 'COMMENTED',
       body: '',
       submitted_at: '2026-10-09T09:30:00Z',
@@ -399,7 +411,7 @@ if (argv[0] === 'api') {
       path: parent.path,
       line: parent.line,
       body: parsed.fields.body || '',
-      commit_id: state.head_sha,
+      commit_id: currentHead(),
       in_reply_to_id: parentId,
     };
     state.comments.push(created);
