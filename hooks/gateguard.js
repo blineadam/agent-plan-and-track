@@ -509,7 +509,7 @@ function main() {
   // loop-free regardless of whether this call ends up denying or warning.
   // Because the marker is claimed either way, the gate can never verify the
   // demanded facts were actually presented, only that the file was touched
-  // once. A measured A/B (see skills/gateguard/SKILL.md) found the
+  // once. A measured A/B (see docs/hooks.md) found the
   // deny-and-retry loop cost ~20% more turns for an identical edit, no
   // accuracy gain. Copilot keeps deny by default because its warn path has
   // no soft channel (emitWarn degrades to allow + stderr).

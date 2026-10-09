@@ -30,6 +30,26 @@
  * (the on-demand cost), and size-flag on total file lines (in practice the
  * body; frontmatter is only a few lines).
  *
+ * Output fields (JSON):
+ *   harnesses.{claude,copilot,codex}.always_on_tokens  configured-source cost to
+ *       drive down, per harness (that harness's skill frontmatter + instruction
+ *       file + digest + agent routing text). The harnesses are mutually
+ *       exclusive: a session pays one column, never the sum. For Codex this is
+ *       an upper-bound estimate from the installed sources the scanner can see,
+ *       not an exact per-session ledger.
+ *   harnesses.*.skill_body_tokens    on-demand; informational.
+ *   harnesses.*.agent_routing_tokens agent routing text (name + description),
+ *       already folded into always_on_tokens.
+ *   agents[]            each installed agent (all harnesses): path, name,
+ *       routing_tokens, harness.
+ *   repo_inventory      skills from extra dirs passed as arguments: a
+ *       pre-install source listing, not a session cost, so it never inflates a
+ *       harness baseline.
+ *   counts.oversized_skills / oversized_configs  components past size limits.
+ *   skills[] / configs[]  per-component tokens, lines, chars (configs only),
+ *       over_limit (gated on char count for configs), and the harness it was
+ *       classified into.
+ *
  * Thresholds (override via env): SKILL_LINE_LIMIT (400), RULES_CHAR_LIMIT
  * (10000, matching check-digest-preview.js's INLINE_THRESHOLD_CHARS),
  * INSTRUCTIONS_CHAR_LIMIT (20000).

@@ -6,27 +6,34 @@ description: "Strip AI-writing tells (promotional puffery, filler, rule-of-three
 # Humanizer
 
 Adapted from [blader/humanizer](https://github.com/blader/humanizer) (MIT),
-itself based on Wikipedia's ["Signs of AI writing"](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing)
-guide from WikiProject AI Cleanup. Condensed here to fit this repo's skill
-format; see the source for the full pattern list and worked examples.
+based on Wikipedia's ["Signs of AI writing"](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing)
+guide from WikiProject AI Cleanup.
 
-## When this fires
-
-Any user-facing prose that will be read outside the immediate chat turn:
-README sections, docs, commit/PR descriptions, PR comments, blog-style or long-form
-writing, a rewrite of someone else's draft. Not needed for a quick chat reply
-or a code comment: the core writing-voice rule (no emoji, no em dash,
-skimmable, no canned phrasing) already covers those directly.
+Applies to any user-facing prose read outside the immediate chat turn: README
+sections, docs, commit/PR descriptions, PR comments, blog-style or long-form
+writing, and a rewrite of someone else's draft.
 
 ## Task
 
-1. Scan the text for the patterns below.
-2. Rewrite, don't delete: replace AI-isms with natural alternatives and cover
-   everything the original covers; if the original has five paragraphs, the
-   rewrite has five. Preserve meaning and match the intended register
-   (formal, casual, technical).
+1. Identify every instance of the patterns below in the input.
+2. Write a draft rewrite, don't delete: replace AI-isms with natural
+   alternatives and cover everything the original covers; if the original has
+   five paragraphs, the rewrite has five. Preserve meaning and match the
+   intended register (formal, casual, technical). It should read naturally
+   aloud, vary sentence length, and prefer specific detail and simple
+   is/are/has constructions.
 3. Add personality only when the content and voice call for it (see below);
    encyclopedic, technical, legal, or reference text stays neutral.
+4. Ask "what still makes this obviously AI-generated?" and revise to address
+   the remaining tells.
+5. Last pass, after everything else: scan the prose you wrote (not preserved
+   quotations) specifically for `—` and `–`; either one means the pass isn't
+   done.
+
+Keep the draft and the still-AI notes as your own working process; hand back
+the final version, noting only what changed, unless the user asks to see the
+editorial breakdown. For fresh writing, just apply this as a checklist and
+write it clean the first time.
 
 ## Voice calibration (optional)
 
@@ -147,19 +154,3 @@ specific hard-to-fabricate detail, mixed feelings and unresolved tension,
 dated slang or in-jokes tied to a specific year, first-person editorial
 choices the writer can defend, real variety in sentence length, genuine
 asides and self-corrections.
-
-## Process
-
-1. Identify every instance of the patterns above in the input.
-2. Write a draft rewrite: reads naturally aloud, varies sentence length,
-   prefers specific detail and simple is/are/has constructions.
-3. Ask "what still makes this obviously AI-generated?" and note any
-   remaining tells.
-4. Revise into a final rewrite that addresses them. Before finishing, scan
-   the prose you wrote (not preserved quotations) specifically for `—` and
-   `–`: either one means the pass isn't done.
-
-Keep the draft and the still-AI notes as your own working process; hand back
-the final version, noting only what changed, unless the user asks to see the
-editorial breakdown. For fresh writing, just apply this as a checklist and
-write it clean the first time.

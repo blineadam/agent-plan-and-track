@@ -10,10 +10,9 @@ always "yes". Asking for *concrete facts* does work: "list every file that
 imports this module" forces a real search, and the investigation itself
 changes the edit that follows.
 
-Adapted from the ECC `gateguard` skill. The fact protocol below is
-harness-agnostic guidance; installs additionally get a `PreToolUse` hook
-(`gateguard.js`) on all three harnesses that re-injects it as a reminder (a
-blocking gate on Copilot): see the end.
+Adapted from the ECC `gateguard` skill. The protocol below is
+harness-agnostic; installs also get a `PreToolUse` hook (`gateguard.js`) on
+all three harnesses that re-injects it (see the end).
 
 ## The protocol
 
@@ -71,64 +70,29 @@ Claude Code's wiring matches Edit/Write/MultiEdit/NotebookEdit and Codex's
 matches `apply_patch`; Copilot's hook contract has no matcher, so the script
 filters for edit tools itself. On the **first edit to each file per
 session**, it injects the fact demand above: as a non-blocking warning by
-default on Claude and Codex, as a blocking deny by default on Copilot (see
-Why the default is warn, below). Either way the file is marked at that
-moment, so a later edit of the same file in the same session is never
-gated again.
+default on Claude and Codex, as a blocking deny by default on Copilot. Either
+way the file is marked at that moment, so a later edit of the same file in the
+same session is never gated again.
 
 Skipped automatically: subagent tool calls, `.claude/settings*.json` (so hook
 repair is never blocked), and `.tasks/todo.md` / `.tasks/lessons.md`.
 
-Tune via environment variables:
-
-- `GATEGUARD_DISABLED=1`: turn the gate off entirely.
-- `GATEGUARD_WARN=1`: use the non-blocking warning (the fact demand is
-  injected as context instead of blocking). Already the default on Claude
-  and Codex; on Copilot this explicitly opts into warn, which there means
-  allow plus a stderr note (see below).
-- `GATEGUARD_DENY=1`: use the blocking deny instead. Already the default on
-  Copilot. If both `GATEGUARD_DENY=1` and `GATEGUARD_WARN=1` are set, deny
-  wins.
-- `GATEGUARD_EXEMPT_GLOBS`: comma-separated globs to exempt (e.g.
-  `**/generated/**,*.snap`). `*` matches within a path segment, `**` across.
-- `GATEGUARD_FULL_DENIALS`: how many firings per session get the full
-  fact block before condensing to one line to avoid repetitive context
-  (default 3).
+Env vars: `GATEGUARD_DISABLED=1` turns the gate off; `GATEGUARD_WARN=1`
+forces the non-blocking warning; `GATEGUARD_DENY=1` forces the blocking deny
+(wins if both are set); `GATEGUARD_EXEMPT_GLOBS` (comma-separated globs)
+exempts paths (`*` matches within a path segment, `**` across);
+`GATEGUARD_FULL_DENIALS` (default 3) sets how many firings per session carry
+the full fact block. Full details are in the header comment of the installed
+script: `~/.claude/scripts/gateguard.js` (`~/.codex/scripts/` or
+`~/.copilot/scripts/` on the other harnesses).
 
 Copilot's PreToolUse contract is fail-closed, so the script's failure path
 emits an explicit allow decision there; Claude Code and Codex share the same
 hook payload shape. All three harnesses also carry the
 investigate-before-editing rule through the always-on instruction file
-(`rules/agent-guidelines.md`), not the rules digest: the digest deliberately
-drops it, leaving this hook and the instruction file as its only delivery
-paths (see AGENTS.md's rule-delivery section).
+(`rules/agent-guidelines.md`), not the rules digest, so this hook and the
+instruction file are its only delivery paths.
 
-### Why the default is warn
-
-The hook used to deny the first edit and mark the file "checked" at the
-moment of denial, so the retry that followed always passed; the gate had no
-way to confirm the demanded facts were actually presented; it could only
-observe a second tool call. Two data points, neither of which is a direct
-warn-versus-deny comparison:
-
-- Of 1,282 real firings recorded across 167 local sessions, 12 were actually
-  classified, spread across 8 projects; none of those 12 showed the demanded
-  investigation changing the resulting edit. The remaining firings were never
-  classified, so this is a small spot-check, not a full-corpus finding.
-- A controlled A/B (4 runs per arm, one fixture, Sonnet) compared blocking
-  gateguard against gateguard turned off entirely, not warn against deny.
-  The blocking loop cost about 20% more turns and 18% more dollars than the
-  off arm, and still produced an identical edit in 4 of 4 runs per arm.
-
-Ceiling caveat: the control arm (hook off) never failed either, so the A/B
-measures the blocking loop's cost on a task it could pass without the hook,
-and shows no benefit there; it cannot rule out a benefit on a task hard
-enough for the control arm to fail. It never measured warn mode at all, so it
-doesn't show warn matches deny's accuracy, only that deny's extra cost wasn't
-earned back on this one task. One task, one model, not a general verdict on
-fact-forcing. Copilot keeps deny by default because its PreToolUse has no
-soft-warn channel: a warn default there would make the hook silently do
-nothing.
-
-Deliberately not ported from ECC: the destructive-Bash and routine-Bash gates; Claude Code's own permission system already covers destructive commands,
-and a once-per-session gate on the first Bash call is friction without signal.
+Warn is the default on Claude and Codex, deny on Copilot (no soft-warn
+channel there). The maintainer rationale and measurements live in the
+agent-plan-and-track repo's `docs/hooks.md`: context only, nothing to act on.

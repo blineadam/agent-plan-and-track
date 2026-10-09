@@ -8,14 +8,14 @@ description: Audit the always-on context cost of the agent config (skills, instr
 Estimate what the agent config costs in every session and find the bloat. The
 always-on surface (instruction files, the rules digest, every skill's
 frontmatter, and every agent's routing text) loads into the context window on
-*every* turn, before the task even starts. This skill enumerates that surface, estimates its token cost, flags
-oversized components, and sorts each into **keep / lazy-load / remove**.
+*every* turn, before the task even starts. This skill enumerates that surface,
+estimates its token cost, flags oversized components, and sorts each into
+**keep / lazy-load / remove**.
 
-Adapted from the ECC `context-budget` skill for this repo's model. Same
-principle as `rules-distill`: **deterministic collection + LLM judgment**: a
-script enumerates and estimates exhaustively, then you (or a subagent) read the
-findings and recommend trims. Pairs with [[strategic-compact]] (that manages
-the *conversation* growing; this manages the *config* baseline).
+Method: **deterministic collection + LLM judgment**. A script enumerates and
+estimates exhaustively, then you (or a subagent) read the findings and
+recommend trims. [[strategic-compact]] manages the *conversation* growing; this
+manages the *config* baseline.
 
 ## The key distinction: always-on vs on-demand
 
@@ -31,15 +31,10 @@ the *conversation* growing; this manages the *config* baseline).
 The script reports both. Optimize the always-on total first; treat a large body
 as a *lazy-load candidate* only if the skill fires constantly.
 
-## When to use
-
-- The instruction surface feels heavy, or sessions start slow / lose focus.
-- After adding several skills or rules (frontmatter descriptions accumulate).
-- Periodic hygiene: same cadence as a `rules-distill` pass.
-
 ## Phase 1: Measure (deterministic)
 
-Run from the repo root so `./skills` is included alongside the installed dirs:
+Run the script (execute it; read only its header comment for the output fields) from the repo root so
+`./skills` is included alongside the installed dirs:
 
 ```bash
 node skills/context-budget/scripts/scan-context.js ./skills
@@ -47,29 +42,19 @@ node skills/context-budget/scripts/scan-context.js ./skills
 
 It scans `~/.claude/skills`, `~/.copilot/skills`, `~/.agents/skills` (whichever
 exist) plus any dirs you pass, each harness's instruction file, and the
-core-rules digest (`core-rules.md`, plus `core-rules.local.md` where present,
-matching what the digest hook injects). Token estimate is deliberately crude: **words × 1.3**, a relative bloat signal, not a tokenizer. Output JSON fields:
+core-rules digest (`core-rules.md`, plus `core-rules.local.md` where present).
+The token estimate is crude (**words x 1.3**), a relative bloat signal, not a
+tokenizer. Output is JSON, fields documented in the script's header. The ones
+to use:
 
-- `harnesses.{claude,copilot,codex}.always_on_tokens`: **the configured-source
-  number to drive down, per harness** (that harness's skill frontmatter + its
-  instruction file + its digest + its agent routing text). The three harnesses
-  are mutually exclusive: a session pays *one* column, never the sum. For Codex,
-  this is an upper-bound estimate from the installed sources the scanner can
-  see, not an exact per-session token ledger.
-- `harnesses.*.skill_body_tokens`: on-demand; informational.
-- `harnesses.*.agent_routing_tokens`: token cost of agent routing text (name +
-  description) on that harness, folded into `always_on_tokens`.
-- `agents[]`: enumeration of each installed agent (all harnesses), with `path`,
-  `name`, `routing_tokens`, and `harness`.
-- `repo_inventory`: skills from extra dirs you passed (e.g. the repo's own
-  `./skills`). This is a pre-install *source* listing, **not** a session cost;
-  it's reported separately so it never inflates a harness baseline.
-- `counts.oversized_skills` / `oversized_configs`: components past size limits
-  (skills > 400 lines, rules > 10000 chars, instructions > 20000 chars; override
-  via `SKILL_LINE_LIMIT` / `RULES_CHAR_LIMIT` / `INSTRUCTIONS_CHAR_LIMIT`).
-- `skills[]` / `configs[]`: per-component `tokens`, `lines`, `chars` (configs
-  only), `over_limit` (gated on char count for configs), and the `harness` it
-  was classified into.
+- `harnesses.{claude,copilot,codex}.always_on_tokens`: **the number to drive
+  down, per harness** (skill frontmatter + instruction file + digest + agent
+  routing text). The harnesses are mutually exclusive: a session pays *one*
+  column, never the sum. For Codex it is an upper-bound estimate.
+- `counts.oversized_skills` / `oversized_configs`, with per-component entries in
+  `skills[]` / `configs[]`.
+- `harnesses.*.skill_body_tokens` is on-demand and informational; `repo_inventory`
+  is a pre-install source listing, never a session cost.
 
 Report a one-line summary per harness before analysis, e.g.
 `claude: ~1.4k always-on / 6 skills · copilot: ~2.4k / 21 · codex: ~1.2k / 4 (2 oversized total)`.
@@ -87,14 +72,9 @@ For each flagged or heavy component, assign a bucket:
 Guidance:
 
 - **Frontmatter is prime real estate.** Optimize a skill `description` for
-  routing first: front-load user intent, trigger terms, and the nearest negative
-  boundary, and preserve clauses that prevent known misroutes. Aim for a few
-  sentences or a short paragraph, usually about 500 decoded characters when
-  every routing signal survives; shorter and evidence-backed longer descriptions
-  are valid. Push "how" detail into the body, but never trim failure-scar routing
-  clauses just to hit the target. The separate 1,024-character format maximum
-  remains strict; the 500-character review target is informational, not a CI or
-  schema cap.
+  routing first and never trim failure-scar routing clauses just to hit a
+  length target; the length rules (about 500 decoded characters informational,
+  1,024 hard maximum) are in [[skill-activation]].
 - **Oversized body ≠ remove.** If a 500-line skill rarely fires, its body is
   fine: flag it lazy-load only if it also loads constantly.
 - **Instruction files and the digest are the heaviest always-on items.** Trims
@@ -147,10 +127,3 @@ derivable from component count); estimate MCP cost separately with the rough
 heuristic above. Installed plugins remain outside the scanner because only
 enabled plugins cost anything, and determining enabled state requires coupling
 to `installed_plugins.json` plus an undocumented enabled flag.
-
-## Design principles
-
-- **Measure the always-on surface, not the total**: the body you never load is free.
-- **Crude but consistent**: words × 1.3 is a comparison signal; don't over-trust the absolute number.
-- **Trim the description before the body**: frontmatter is paid every turn.
-- **Approval-gated**: the script measures; the user decides what to cut.

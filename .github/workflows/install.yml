@@ -437,6 +437,7 @@ jobs:
           node skills/skill-comply/scripts/run-codex-cases.js --dry-run >/dev/null
           node hooks/codex/scripts/run-plan-gate-pilot-fixtures.js >/dev/null
           node hooks/claude/scripts/run-plan-gate-fixtures.js >/dev/null
+          node hooks/claude/scripts/run-suggest-compact-fixtures.js >/dev/null
           node hooks/scripts/run-git-guard-fixtures.js >/dev/null
           node hooks/scripts/run-delivery-gate-fixtures.js >/dev/null
           node hooks/scripts/run-core-rules-digest-fixtures.js >/dev/null
@@ -1240,6 +1241,7 @@ jobs:
           node skills\skill-comply\scripts\run-codex-cases.js --dry-run | Out-Null; Assert-Node 'skill-comply Codex dry-run'
           node hooks\codex\scripts\run-plan-gate-pilot-fixtures.js | Out-Null; Assert-Node 'Codex plan-gate fixtures'
           node hooks\claude\scripts\run-plan-gate-fixtures.js | Out-Null; Assert-Node 'Claude plan-gate fixtures'
+          node hooks\claude\scripts\run-suggest-compact-fixtures.js | Out-Null; Assert-Node 'Claude suggest-compact fixtures'
           node hooks\scripts\run-git-guard-fixtures.js | Out-Null; Assert-Node 'git-guard fixtures'
           node hooks\scripts\run-delivery-gate-fixtures.js | Out-Null; Assert-Node 'delivery-gate fixtures'
           node hooks\scripts\run-core-rules-digest-fixtures.js | Out-Null; Assert-Node 'core-rules-digest fixtures'

@@ -1,0 +1,22 @@
+# Where logs go and safety: details
+
+Read this when configuring a log file or deployed sink, or when choosing what a log field may contain (redaction, hashing of identifiers, error messages, user-controlled values). SKILL.md sections 6 and 7 carry the rules in short form; this file carries the full text.
+
+## Local file sink
+
+When a service or job runs in local development, also write structured one-event-per-line output to a file at a stable path such as `logs/app.log`. Use the library's own rotating file handler with a size cap (when nothing in the project provides one, that is section 1's trigger to adopt a logging library, not a reason to write a rotator), and gitignore the whole log directory so rotated backups such as `app.log.1` are covered too. Record the path in the project's instructions file (AGENTS.md, CLAUDE.md) so an agent reads the file instead of asking for pasted terminal output, and confirm that path is the one the logger really produces: a rotating handler that appends its own suffix leaves nothing at the name you documented, so point the docs at a stable name the handler maintains. Decide what counts as local development from the signal the project already uses (`NODE_ENV`, a config profile, a deployment flag) rather than inventing one; if the server side has none, adding it is part of this change and belongs in the deployment config too.
+
+## Deployed sink
+
+A deployed service writes to stdout and lets the platform collect it, because a container's or a function's disk is short-lived or read-only and anything written there is lost with the instance. Where the deployment genuinely has durable storage and no collector, such as a single host with a mounted volume, a rotating file with a size cap and a retention limit is a reasonable second sink rather than a violation. What this rules out is an unbounded file on a disk that nothing reads and nothing keeps.
+
+## Safety
+
+Logs outlive the code that wrote them and travel to systems with wider access than the service had, so treat every field as something that will be read by someone who was not meant to see it.
+
+- Untrusted text: error messages, stack traces, and URLs. A database or validation error often quotes the offending value, such as an email address, and a URL's query string can carry a token. Log the error type and code, strip query strings, and keep a raw message only after checking what it can contain.
+- Correlating events about one person: log an opaque ID the system already has, such as the internal user ID, or a keyed HMAC whose key stays out of the logs. Never log a plain hash: anyone can hash candidate emails or phone numbers and match the digest. Mask a value only when the visible part cannot identify the person, and treat any derived identifier as sensitive data too.
+- Name-based redaction: turn on the logging library's own redaction for known sensitive field names (password, token, authorization, cookie, email) as a backstop. The allowlist is still the primary control, since redaction only catches the names it knows. Configure it with the exact field names or paths the project emits, which is what a path-based redactor gives you, rather than a pattern that matches anywhere in a name. No generic rule separates a sensitive `access_token` from a diagnostic `token_count`, since both carry `token` however you segment them, so the list has to be the project's own. Check the backstop against the field names you actually emit, not only against the ones it is meant to catch: a field quietly replaced by `[REDACTED]` is a diagnostic you will not notice losing.
+- Value scrubbing: read the credentials the process already holds, its API keys, tokens, and connection strings, when the logger is configured, and strip any occurrence of them from the rendered line. Name-based rules only cover fields someone labelled correctly; this is the layer that catches a key quoted back inside an upstream error message, embedded in a URL, or passed by a call site that did not know what it was holding.
+- Control characters: a value that contains a line break can forge a second, fake log line. Escape the break (write `\n` as two characters) or encode the value, rather than trusting the input to be a single line.
+- Length: bound every free-text field and mark the cut, for example a trailing `...[truncated 4096 bytes]`, so one oversized value cannot bury the line or blow the sink's size limit.

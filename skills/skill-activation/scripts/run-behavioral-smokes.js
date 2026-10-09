@@ -109,7 +109,7 @@
  * and no bypass or skip-permissions flag is ever passed.
  * --run is Claude-only and
  * intended for a unix sandbox; --dry-run / --check are the cross-platform,
- * free modes. See SKILL.md for the full rationale.
+ * free modes. See references/behavioral-smokes.md for the full rationale.
  *
  * Scoring is LIVENESS-FIRST, in this strict order, per case:
  *   1. liveness  - the trace's terminal `result` event must show subtype

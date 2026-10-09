@@ -16,7 +16,7 @@ Read docs before proceeding when any of these are true:
 - The user asks for "latest", "current", "official", "supported", "best practice", "recommended", "today", "now", or "look it up".
 - The needed docs aren't already in the repo or supplied by the user. Search the web for the official docs rather than hoping training data is current.
 - The task adds, upgrades, configures, or imports a package, SDK, framework, plugin, CLI, model, cloud resource, or provider integration.
-- The API is fast-moving or version-sensitive: AI SDKs, OpenAI/Anthropic/Google APIs, Next.js, React, Tailwind, Vite, Nitro, Drizzle, Prisma, Stripe, GitHub, Slack, Notion, browser APIs, deployment platforms, auth libraries, and similar.
+- The API is fast-moving or version-sensitive: SDKs, frameworks, provider and cloud APIs, auth libraries, browser APIs, deployment platforms, and similar.
 - The implementation depends on auth, OAuth scopes, permissions, secrets, webhooks, billing, payments, PII, encryption, data retention, migrations, retries, rate limits, quotas, caching, deploys, or compliance.
 - An error mentions deprecation, unknown options, missing exports, invalid config, unsupported fields, changed defaults, or a version mismatch.
 - The repo has local docs, ADRs, generated schemas, OpenAPI specs, route/action registries, design-system docs, or package-level READMEs that could define the contract.
@@ -47,15 +47,11 @@ Avoid Stack Overflow, old blog posts, random snippets, and memory as the primary
 ## Examples That Must Trigger Docs
 
 - "Add Tailwind to this app." Check the current Tailwind major and its install docs from the web before creating config files or assuming an old PostCSS setup.
-- "Use the AI SDK to stream responses." Verify the current AI SDK major, imports, provider package names, streaming helpers, and server or runtime examples from official docs.
-- "Wire up Stripe webhooks." Read Stripe's current signature verification, event retry, endpoint secret, and framework body-parsing docs before coding.
-- "Fix this Next.js caching bug." Read the docs for the installed Next.js major and router mode before assuming cache invalidation semantics.
-- "Add Drizzle migrations." Read the current Drizzle kit docs and existing repo migration conventions before generating files.
-- "Create a GitHub Action." Read official Actions syntax and permissions docs, especially for `pull_request`, `workflow_run`, OIDC, tokens, and artifacts.
-- "Why does this OAuth flow fail?" Read the provider's scopes, redirect URI, PKCE, token refresh, and app verification docs before changing code.
+- "Wire up Stripe webhooks." Read Stripe's current signature verification, event retry, endpoint secret, and framework raw body-parsing docs before coding.
+- "Why does this OAuth flow fail?" Read the provider's scopes, redirect URI, PKCE, and token refresh docs before changing code.
+- "Create a GitHub Action." Read official Actions syntax and permissions docs, especially OIDC, tokens, and `pull_request` versus `workflow_run`.
+- "Add Drizzle migrations." Read the current Drizzle kit docs and the repo's existing migration conventions before generating files.
 - "Use this repo's plan/comment/action system." Read local docs, route/action registries, schemas, and tests before inventing endpoints or props.
-- "Upgrade Vite, Nitro, or React." Read the migration guide for the exact target major before editing config or imports.
-- "What model should we use?" Read current provider model docs, pricing and limits pages, and SDK examples before recommending.
 
 ## When A Quick Local Read Is Enough
 
