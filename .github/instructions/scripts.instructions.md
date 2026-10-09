@@ -7,281 +7,254 @@ excludeAgent: "cloud-agent"
 
 # Script review instructions
 
-Applies to the Node hook scripts under `hooks/` and every bash script
-(including `install.sh`). See `.ai-style-rules.md` (Golden Files: `gateguard.js`,
-`delivery-gate.js`, `git-guard.js`, `install.sh`) for full detail.
+Applies to the Node hook, guard, and skill scripts, the bash and PowerShell
+installers, hook wiring JSON, and CI workflows. Conventions come from
+`.ai-style-rules.md` (Golden Files: `gateguard.js`, `install.sh`,
+`lint-pr-body.js`; Naming & State-Control; DONTs), `docs/hooks.md`,
+`docs/installers.md`, `docs/models.md`, and `AGENTS.md`.
 
 ## JS hooks
 
-- Must fail open: wrap `main()` in a top-level `try { main() } catch { ...
-  ; process.exit(0) }` and never let an error escape uncaught.
-- No silent `catch {}` with zero recovery action. Assigning or returning a
-  self-evidently safe default (`''`, `null`, `{}`, `[]`) needs no comment;
-  that's the norm across the golden hooks, not just `readStdin()`. Add a
-  one-line comment or stderr diagnostic only when the fallback's safety
-  isn't obvious from the code alone (e.g. it changes control flow).
-- Do not propose factoring the duplicated `readStdin()` / `intEnv()` helpers,
-  or the plan-gate mutation gate's quote-aware classifier pair, into a shared
-  module. `splitShellSegments()` (the tokenizer) is duplicated byte-for-byte
-  across `hooks/claude/plan-gate.js`, `hooks/codex/plan-gate-pilot.js`, and
-  `hooks/git-guard.js`; `detectOutwardMutations()` (the classifier built on
-  top of it) is duplicated only between the two plan-gate files, since
-  `git-guard.js` defines its own `detectDestructiveGit()` instead and only
-  references `detectOutwardMutations()` in comments. Each script installs
-  standalone into a different harness's scripts directory with no shared
-  `node_modules` or relative import root: the duplication is intentional.
-- `camelCase` for variables and functions, except wire-format fields
-  mirrored verbatim from a JSON payload (`tool_name`, `tool_input`,
-  `session_id`), which stay snake_case to match the payload.
-- `require` ordering: alphabetical, Node core modules only, no external npm
-  dependencies.
-- A `PreToolUse` hook fires once per gated file per session and marks it
-  checked at that moment regardless of whether the firing blocks or only
-  warns, so a later edit of the same file is never gated again
-  (`gateguard.js`'s pattern: warn by default on Claude/Codex, deny by default
-  on Copilot, since Copilot's `PreToolUse` has no soft-warn channel). A
-  variant keys the same mark-at-deny-time machinery on a destructive-command
-  *kind* rather than a gated file path (`git-guard.js`: deny-once per kind
-  per session for four of its five kinds, `reset-hard`/`clean-force`/
-  `force-push`/`discard-worktree`; the fifth, `stage-env-file`, keys on the
-  candidate path instead, since two directories can share a filename),
-  reusing the shape rather than inventing new state.
-  The exception is a hook that intentionally gates on an external unlock
-  event outside its own control, in which case repeated denial is by design
-  and must say so explicitly in the hook's own header comment (`plan-gate.js`,
-  unlocked only by a `plan-and-track` Skill invocation). Flag a hook that
-  denies repeatedly with no stated rationale, or a mode-dependent hook whose
-  message text doesn't match the mode that actually fired.
-- A hook maintaining a counter or other state across concurrent
-  invocations (multiple `PreToolUse` calls can fire back to back in the
-  same session) must guard the read-check-write sequence with a lock, not
-  a plain read-then-write (`plan-gate.js`'s `withSessionLock`: an exclusive
-  lockfile, a bounded wait, stale-lock reclaim, and fail-open on any lock
-  error). Flag a new stateful counter with no such guard.
-- A hook that needs to know a file edit's resulting content (to lint it)
-  should simulate the edit in memory against the on-disk baseline, never
-  write a probe to disk, and skip the check entirely (fail open) rather
-  than guess when the simulation can't be exact (e.g. an `old_string` that
-  doesn't match). Flag a lint that writes a temp file to check content, or
-  that guesses at a result it can't derive exactly.
-- A hook that must tell a main-thread tool call apart from a dispatched
-  subagent's checks the same four fields (`agent_id`, `agentId`,
-  `parent_tool_use_id`, `parentToolUseId`; true if any is a non-empty
-  string), copied inline per script rather than shared (`gateguard.js`'s
-  `isSubagent()`, `suggest-compact.js`'s inline check, `plan-gate.js`'s own
-  `isSubagent()`). Flag a new hook that reimplements this differently, or
-  that relies on `agent_type` alone (also set for a whole session launched
-  with `--agent`, which is main-thread). `plan-gate.js` uses its copy to
-  append a line to its gate/scope/mutation deny messages telling a subagent
-  with no Skill tool to stop and report the missing stamp to its caller
-  instead of routing around the gate (a Bash heredoc, a script, an env
-  override); flag a new gate/scope/mutation-style deny message that invites
-  a subagent to take an action it can't perform with no such fallback line.
+- A hook script opens with a JSDoc header (purpose, wire dialects, config env
+  vars) and `'use strict'`, defines `main()` last, and calls it only from a
+  top-level `try { main() } catch { ...fail open... }`. Every hook fails open
+  and never lets an error escape uncaught. `gateguard.js` and `git-guard.js`
+  emit an explicit allow decision on failure because Copilot's `PreToolUse`
+  is fail-closed; the other hooks simply exit 0.
+- Flag a `catch {}` with zero recovery action. A catch either assigns or
+  returns a self-evidently safe default (`''`, `null`, `{}`, `[]`), which needs
+  no comment, or carries a one-line `/* why */` comment or a
+  `process.stderr.write('[Tag] ...')` diagnostic when the fallback changes
+  control flow, retries, or picks a non-obvious value. The one exception is a
+  catch around a best-effort kill of a child process (the
+  `child.kill()`/`process.kill()` fallbacks in the live-run helpers,
+  including `skills/skill-comply/scripts/run-codex-cases.js`, `render.js`, and
+  `run-smoke-fixtures.js`), which may be empty. Don't flag the existing empty
+  catches in the executable probes of `run-activation-cases.js` and
+  `run-behavioral-smokes.js` or in `run-behavioral-smokes.js`'s agents-dir
+  read, which are known defects.
+- Every hook script that reads JSON from stdin uses a `readStdin()` helper that
+  returns `''` on any read failure, then `JSON.parse(readStdin() || '{}')` in
+  its own try/catch that falls back to `{}` or a safe exit.
+  `core-rules-digest.js`'s copy adds an `isTTY` guard and parses in a helper.
+- Don't propose factoring duplicated helpers into a shared module. Each hook
+  script installs standalone into a harness's scripts directory with no
+  shared module root. The intentional copies are `readStdin` (all seven
+  hooks), `intEnv` (`delivery-gate.js`, `gateguard.js`, `suggest-compact.js`;
+  `scan-context.js` and `run-activation-cases.js` carry their own variants),
+  `splitShellSegments` (byte-identical in `hooks/claude/plan-gate.js`,
+  `hooks/codex/plan-gate-pilot.js`, and `hooks/git-guard.js`; never edit one
+  copy alone), and `detectOutwardMutations` (the two plan-gate files, while
+  `git-guard.js` has its own `detectDestructiveGit`).
+- `camelCase` for variables and functions, except wire-format fields mirrored
+  verbatim from a payload the script didn't design (`tool_name`,
+  `tool_input`, `session_id`), which keep their snake_case. A script's own
+  JSON report keys are outside this rule.
+- `require`s are alphabetical, Node core modules only, no npm dependencies.
+  The one exception is `skills/publish-visual-pr/scripts/render.js`, which
+  requires `playwright` at call time; don't flag it. Don't flag
+  `run-activation-cases.js` and `run-behavioral-smokes.js` listing
+  `child_process` last, a known defect.
+- Env var flags are `SCREAMING_SNAKE_CASE`, prefixed by the owning script or
+  skill (`GATEGUARD_DISABLED`, `DELIVERY_GATE_BLOCK`,
+  `COMPACT_CONTEXT_THRESHOLD`), `PT_` for the installers, or a shared family
+  prefix when several sibling scripts read the variable
+  (`LIVE_CASE_TIMEOUT_MS`). Boolean flags read as the string `"1"`, never
+  `true`/`false`, and an unset flag always keeps the safe default: a gate
+  stays on at its default posture and a spend stays refused. Don't flag
+  `scan-context.js`'s unprefixed `SKILL_LINE_LIMIT`, `RULES_CHAR_LIMIT`, and
+  `INSTRUCTIONS_CHAR_LIMIT` or `run-activation-cases.js`'s `DESC_TOKEN_FLOOR`
+  and `DESC_CHAR_CEILING`, a known defect.
+- A hook that must tell a subagent's tool call from a main-thread one checks
+  the same four fields, true if any is a non-empty string: `agent_id`,
+  `agentId`, `parent_tool_use_id`, `parentToolUseId`. Flag a hook that
+  reimplements this differently or relies on `agent_type` alone, which is
+  also set for a whole main-thread session launched with `--agent`. A
+  `plan-gate.js` deny inside a subagent adds a line telling it to stop and
+  report the missing stamp to its caller; flag a change that drops it.
+- Pick the multi-harness mechanism by whether the payload differs. Sniff it at
+  runtime when it does (`detectDialect`: `gateguard.js`, `git-guard.js`);
+  branch on a static flag baked into the wiring when no payload distinguishes
+  the harnesses (`core-rules-digest.js`'s `--copilot`); don't branch when the
+  payload is identical (`delivery-gate.js`, Claude and Codex only). Flag
+  `detectDialect` added to either of the last two.
+- A hook gate marks the gated path checked when it fires, whether it blocks
+  or only warns, so each path gates once per session (`gateguard.js`). A hook
+  gated on an external unlock (`plan-gate.js`, unlocked by a `plan-and-track`
+  Skill invocation) may deny repeatedly, and must say so in its header. A
+  deny-once guard marks at deny time and treats a marker under 2 seconds old
+  as a racing duplicate (`git-guard.js`, plan-gate's migration-state and
+  attribution guards). `git-guard.js` keys four of its kinds per session by
+  kind and `stage-env-file` by path, so a confirmed retry for one directory's
+  `.env` can't disarm the guard for another. Flag a hook that denies
+  repeatedly with no stated rationale.
 
 ## CI guard scripts
 
-- `.github/scripts/*.js` (e.g. `lint-pr-body.js`, `check-digest-preview.js`,
-  `check-split-shell-segments-parity.js`) are a distinct category from the JS
-  hooks above: they enforce a convention this repo's own instruction files
-  already state, from CI, not from a PreToolUse/Stop hook at edit or session
-  time. Their control flow is the opposite of a hook's: they must hard-fail
-  (exit 1) on a real violation, not fail open. Flag a new script under
-  `.github/scripts/` that swallows an error into a soft warning instead of a
-  nonzero exit, or that copies a hook's fail-open
-  `try { main() } catch { ...; process.exit(0) }` shape.
-- `lint-pr-body.js`'s header comment enumerates its findings by number, split
-  into HARD (exit 1) and WARN (stderr-only, exit 0) groups, and it's wired
-  into its own single-purpose `pr-body-lint.yml`; that's its own convention,
-  not a requirement for every guard here. `check-digest-preview.js` and
-  `check-split-shell-segments-parity.js` both describe their check in prose
-  instead and run inside the general `install.yml` smoke job, since each is a
-  smoke-test invariant rather than a PR-shaped lint. All three still ship a
-  same-directory `run-<name>-fixtures.js` (mirroring the hook and skill
-  fixture-runner convention below). Flag a new guard script with no fixture
-  runner.
-- A workflow step that touches PR/issue title, body, or comment text (all
-  attacker-controlled on a fork PR) must pass it through `env:` and write it
-  to a file, never interpolate a `${{ ... }}` expression directly inside a
-  `run:` block: that's template substitution before the shell runs, not a
-  shell-quoted value. Flag a `run:` step that references
-  `${{ github.event.pull_request.body }}` or similar untrusted context data
-  directly instead of through an `env:` var.
+- `.github/scripts/*.js` guards enforce a convention the instruction files
+  state. They share a hook's JSDoc header and `'use strict'`, but
+  `'use strict'` comes right after the shebang, and a guard hard-fails loudly
+  (nonzero exit) on a real violation instead of failing open. Flag a new
+  guard that swallows an error into a soft warning or copies a hook's
+  fail-open `try { main() } catch { ...; process.exit(0) }` shape.
+- `lint-pr-body.js`'s numbered HARD/WARN header and its dedicated
+  `pr-body-lint.yml` workflow are its own convention, not required of every
+  guard. `check-digest-preview.js` describes its HARD findings in prose and
+  runs in `install.yml`.
+- Each guard ships a same-directory `run-<name>-fixtures.js`. Flag a new
+  guard with no fixture runner.
+- Every free fixture runner (hook, guard, or skill) runs in both the bash job
+  and the PowerShell job of `.github/workflows/install.yml`; the
+  `*_ALLOW_SPEND`-gated live runners never do. Flag a new free fixture
+  runner added to only one of the two jobs, and a gated live runner added to
+  either.
 
 ## Skill maintenance scripts
 
-- Node core modules only, no external npm dependencies, same as the hook
-  scripts above; these live at `skills/<name>/scripts/`, each self-contained
-  since sibling skill directories share no `node_modules` or relative-import
-  root.
-  One deliberate exception: `skills/publish-visual-pr/scripts/*.js` may
-  `require('playwright')`, since that skill drives a real Chromium and no
-  core module can; it adds nothing else (pixel diffing runs in a Chromium
-  canvas, not an image library) and resolves the package lazily with a
-  one-line error when it is missing. Do not flag that one require; any
-  other npm dependency under `skills/**/scripts/` is still a violation.
-- Do not propose factoring the bounded-live-run process-control helpers
-  (`liveCaseTimeout()`, `terminateChildTree()`, `handleParentSignal()`, and
-  the timeout/grace/force-kill staging in `runChildCase()`, all gated by a
-  `LIVE_CASE_TIMEOUT_MS` env var) into a shared module. They're duplicated across
-  `skills/skill-activation/scripts/run-activation-cases.js`,
-  `run-behavioral-smokes.js`, and `skills/skill-comply/scripts/run-codex-cases.js`
-  for the same no-shared-root reason as the hook helpers above; the
-  duplication is intentional. The two `skill-activation` runners carry them
-  verbatim, while `run-codex-cases.js` implements the same design with
-  script-specific differences (`fail()` rather than `die()`,
-  `childProcess.spawn()` rather than a destructured `spawn()`, and its own
-  `MAX_CAPTURE_BYTES` cap). Do not flag those differences as inconsistencies
-  to reconcile.
+- Skill scripts live at `skills/<name>/scripts/`, use Node core modules only,
+  and are self-contained, since sibling skills share no module root. The one
+  npm dependency is `playwright`, required lazily by
+  `skills/publish-visual-pr/scripts/render.js` (`smoke.js` and
+  `run-smoke-fixtures.js` reach it through `./render`) so the file loads
+  without it and a missing package is a one-line error. Pixel diffing runs in
+  a Chromium canvas, so don't flag that require; any other npm dependency
+  under `skills/**/scripts/` is a violation.
+- Don't propose factoring the live-run process-control helpers
+  (`liveCaseTimeout`, `terminateChildTree`, `handleParentSignal`,
+  `runChildCase`, `LIVE_CASE_TIMEOUT_MS`) into a shared module. They are
+  verbatim in the two `skill-activation` runners, with a parallel
+  implementation in `skills/skill-comply/scripts/run-codex-cases.js` (`fail()`
+  for `die()`, `childProcess.spawn()`, `MAX_CAPTURE_BYTES` at 32 MiB against
+  `MAX_OUTPUT_BYTES` at 64 MiB). Don't flag those differences for
+  reconciling.
+
+## Workflows
+
+- Flag a `run:` block that interpolates attacker-controlled text (a PR or
+  issue title, body, or comment) with `${{ }}`, which is template substitution
+  before the shell runs, not a quoted value. Pass the text through `env:`,
+  write it to a file with `printf '%s'`, and read the file, as
+  `pr-body-lint.yml` does with `PR_BODY`.
+- Flag a PR that adds `.github/copilot-instructions.md` to the nightly style
+  refresh workflow's diff allowlist. Every file the allowlist admits carries
+  `excludeAgent: "cloud-agent"`, and that file carries none; the risk is what
+  an unattended session writes inside the section the skill owns, which a
+  diff check can't bound.
 
 ## Shell scripts
 
-- Start with `set -euo pipefail`.
-- Gate nonstandard or optional external CLI dependencies before use with
-  `command -v <tool> >/dev/null 2>&1` (keep the `>/dev/null 2>&1`: without
-  it, a successful `command -v` prints the executable's path to stdout,
-  corrupting a script whose stdout is a JSON contract). Exit 1 when the
-  dependency is required for the script to function and can't be
-  remediated; when a single step is optional (e.g. `install.sh`'s Copilot
-  model default), warn and skip that step instead of exiting. Don't flag
-  POSIX core utilities (`wc`, `tr`, `awk`, `sort`, `find`, `grep`, `sed`,
-  ...) for a gate: those are assumed always present.
-- A gate may offer to auto-remediate a missing dependency instead of only
-  erroring (`install.sh`'s `need_jq()` probes a closed, priority-ordered
-  package-manager table and offers to install `jq`), but a system-mutating
-  install must never run silently: gate it on an interactive confirm or an
-  explicit non-interactive opt-in env var, and never let the command shown
-  to the user differ from the one actually executed. Flag a new
-  auto-remediation that installs without confirmation or an opt-in, or that
-  displays one command while running another.
-- Use `mktemp -d` for scratch space with a matching `trap ... EXIT` cleanup.
-- Build JSON via `jq -n --arg` / `--argjson`, not string concatenation.
-- When a script shells out to a third-party CLI via `npx` itself, pin its
-  exact version (`skills@1.5.19`, not `skills@latest`) and check the CLI's
-  own minimum-runtime requirement before invoking it. Flag an unpinned `npx
-  <tool>@latest` where the script itself is the one running `npx`.
-  This doesn't cover an `npx ...@latest` string that a script only writes as
-  config data for another program to launch later, never running it itself
-  (`install-mcp-servers.sh`/`.ps1` hand each harness's own CLI a command line
-  naming `npx -y chrome-devtools-mcp@latest` for that harness to invoke, and
-  never invoke `npx` in the installer script itself): don't flag that case as
-  an unpinned dependency.
-- The same pin rule applies to a CI workflow step that installs a
-  third-party package directly (`install.yml`'s `npm install --prefix
-  "$RUNNER_TEMP/playwright" playwright@1.62.1`, mirrored in both the Unix and
-  Windows jobs): pin the exact version rather than letting `npm install`
-  resolve latest. Flag a new `npm install`/`pip install`/similar step in a
-  `.github/workflows/*.yml` job with no version pin on the package.
-- `snake_case` for local variables and functions. Top-level script
-  constants (computed-once paths, thresholds, config arrays) use
-  `SCREAMING_SNAKE_CASE`, matching env-var-tunable settings.
+- A bash script starts with `#!/usr/bin/env bash`, a header comment on usage
+  and idempotency, and `set -euo pipefail`.
+- Gate dependencies before any work: `install.sh` uses `need_node()` and
+  `need_jq()`, and its siblings use
+  `command -v <tool> >/dev/null 2>&1 || { echo "error: ..." >&2; exit 1; }`.
+  A genuinely optional step (`install.sh`'s Copilot model default) warns and
+  skips instead of exiting. Keep the `>/dev/null 2>&1` on every `command -v`
+  probe, and don't flag POSIX core utilities for a missing gate.
+- Env tuning uses `${VAR:-default}` (`PT_KEEP_MODEL`). JSON and TOML settings
+  edits go through a `mktemp` scratch file and the symlink-safe
+  `write_back`. JSON is built with `jq`, never by string concatenation.
+- The `install-office-skills.sh` and `install-mcp-servers.sh` siblings take a
+  positional `[install|uninstall]` verb, default to install, and validate it
+  against that closed set.
+- A script that shells out to a third-party CLI pins its version
+  (`SKILLS_CLI="skills@1.5.19"`, with `SKILLS_CLI_MIN_NODE` for its Node
+  floor), never `npx <tool>@latest`. The one exception, stated in its header,
+  is `install-mcp-servers.sh` handing each harness's CLI an unpinned
+  `chrome-devtools-mcp@latest` as config data that CLI runs later; don't flag
+  it.
+- When `jq` is missing, `install.sh` may offer to install it through a
+  package manager, but only after an interactive confirmation or the
+  `PT_INSTALL_JQ=1` opt-in; a non-interactive run without it exits with an
+  error. Flag an auto-remediation that installs without one of those.
+- Bash locals and functions are `snake_case` (`need_jq`, `frontmatter_field`,
+  `write_back`); top-level constants are `SCREAMING_SNAKE_CASE`, env-derived
+  or not (`REPO_DIR`, `NON_COPILOT_SKILLS`, `SKILLS_CLI`).
 
 ## Hook wiring files (JSON)
 
 - `hooks/claude/*.json`, `hooks/codex/*.json`, and `hooks/copilot/*.json`
-  each speak that harness's own wire dialect (event key casing, `command`
-  vs `bash`, `timeout` vs `timeoutSec`). Don't propose normalizing one
-  dialect to match another: the differing shape is a harness contract, not
-  an inconsistency.
-- The checked-in `hooks/<harness>/*.json` are pre-substitution templates: a
-  command references its script via a literal `__SCRIPTS__` placeholder
-  (`node "__SCRIPTS__/gateguard.js"`), which the installers bake into a
-  resolved absolute path at install time. Flag a hook JSON that hardcodes an
+  each speak that harness's own wire dialect (Claude and Codex use a
+  PascalCase `matcher` plus `hooks[].command`; Copilot uses `version:1`,
+  `bash`, and `timeoutSec`). Don't propose normalizing one dialect to match
+  another: the differing shape is a harness contract.
+- The checked-in wiring files carry no logic, only a plain
+  `node "__SCRIPTS__/<name>.js"` command; the installers bake the resolved
+  absolute scripts path in at install time. Flag a hook JSON that hardcodes an
   absolute path or a `$HOME` / `%USERPROFILE%` expansion instead of the
   placeholder.
 
 ## File placement
 
-- Don't add a top-level `scripts/` directory. Skill-owned scripts live at
-  `skills/<name>/scripts/`, next to the `SKILL.md` that documents them.
-  Hook scripts live at `hooks/` (shared across harnesses) or
-  `hooks/<harness>/` (that harness's own implementation, e.g.
-  `hooks/claude/suggest-compact.js`, plus the JSON that wires a shared
-  script into that harness's hook contract). Don't reject a harness-specific
-  script under `hooks/<harness>/` as misplaced just because it isn't JSON.
-- A hook's fixture-driven regression tests live one directory level below
-  wherever the hook script itself lives, mirroring the skill
-  scripts/fixtures convention one level down:
-  `hooks/<harness>/scripts/run-<name>-*.js` plus
-  `hooks/<harness>/fixtures/<name>/cases.json` for a harness-specific hook
-  (e.g. `hooks/codex/scripts/run-plan-gate-pilot-fixtures.js` next to
-  `hooks/codex/plan-gate-pilot.js`), or `hooks/scripts/run-<name>-*.js` plus
-  `hooks/fixtures/<name>/cases.json` for a hook shared across all harnesses
-  and installed from `hooks/` itself (e.g.
-  `hooks/scripts/run-git-guard-fixtures.js` next to `hooks/git-guard.js`).
-  Flag a hook test harness placed anywhere else.
+- Flag a new top-level `scripts/` directory. Skill scripts live at
+  `skills/<name>/scripts/`; hook scripts at `hooks/` (shared) or
+  `hooks/<harness>/` (harness-specific, plus the JSON wiring). Don't reject a
+  harness-specific script under `hooks/<harness>/` as misplaced because it
+  isn't JSON.
+- A hook's fixture tests sit one level below the hook:
+  `hooks/<harness>/scripts/run-<name>-*.js` with
+  `hooks/<harness>/fixtures/<name>/cases.json` for a harness-specific hook,
+  or `hooks/scripts/` and `hooks/fixtures/<name>/` for a shared hook. Flag a
+  hook test harness placed anywhere else.
+- `.gitattributes` forces LF on `.sh`, `.js`, `.json`, and `.md` files and
+  CRLF on `.ps1` only. Flag a change that normalizes `.ps1` to LF or forces
+  CRLF onto the LF-required extensions.
 
 ## Installers and cross-platform portability
 
-- A repo-owned managed default (model/effort settings, skill installs)
-  should be overwritten on every install run, not guarded by
-  set-if-absent, unless the target write is genuinely unsafe to clobber
-  (e.g. a config file a JSON tool can't round-trip losslessly).
-- A new Claude managed default (`model`, `switchModelsOnFlag`,
-  `outputStyle`, `enableArtifact`, the plugin disable, the
-  `attribution.commit`/`attribution.pr`/`attribution.sessionUrl` block) is
-  preceded by a comment following the existing "Repo-owned `<name>`,
-  re-asserted on every install" template, adding the `PT_KEEP_MODEL=1`
-  parenthetical when the setting is gated by it (the plugin disable and the
-  attribution block are not: both are ungated, overwritten on every install
-  regardless), plus rationale citing an external doc when the key's
-  semantics aren't obvious from its name alone. Flag a new
-  `set_json_default`/`Set-JsonDefault`/`set_json_path`/`Set-JsonPath` call
-  for a managed default with no such comment (the plugin disable and
-  attribution block are written via the path helpers, not the
-  scalar-default ones).
-- `install.sh` (bash + jq) and `install.ps1` (PowerShell, jq-free) are kept
-  in lockstep, each with a parity note in its header listing the managed
-  surface. Flag a PR that changes one installer's managed surface (a skill,
-  a hook wiring, a default, the digest) without the mirrored change to the
+- `install.sh` (bash + jq) and `install.ps1` (PowerShell 5.1, jq-free) are
+  kept in lockstep, each with a parity note in its header listing the managed
+  surface. Flag a PR that changes one installer's managed surface (a skill, a
+  hook wiring, a default, the digest) without the mirrored change to the
   other.
-- A hook wired as more than one entry (e.g. `plan-gate.js`'s Skill/Edit/Write
-  entry plus its Bash mutation-gate entry, or the Codex pilot's
-  startup-or-resume `SessionStart` entry plus its `apply_patch`
-  Pre/PostToolUse and Bash entries) must check and repair each exact entry
-  (matcher + command) independently, not a single coarse presence check
-  (like a bare `grep -q 'plan-gate'`) for the hook as a whole. Flag an
-  add-if-absent check that would treat the hook as fully installed once any
-  one of its entries exists, since that skips re-adding a newly introduced
-  entry for someone who already has an older version installed.
-- `.gitattributes` forces LF on `*.sh` / `*.js` / `*.json` / `*.md` (a CRLF
-  shebang breaks bash; hook scripts and JSON are read on every platform) and
-  CRLF on `*.ps1` (the Windows-native installer). Flag a change that
-  normalizes `.ps1` to LF or forces CRLF onto the LF-required extensions.
-- CI (`.github/workflows/*.yml`) mirrors its assertions across a unix and a
-  windows job, matching the installer parity above. Flag a new assertion
-  added to only one of the two jobs.
-- `install.sh` and `install.ps1` mirror function-for-function, and the
-  PowerShell name always uses an approved Verb-Noun cmdlet verb. When the
-  bash verb already maps onto one, the mirror looks like a case-transform
-  (`copy_agents` → `Copy-Agents`, since `Copy` is itself approved) and that's
-  fine; only flag a PowerShell helper whose verb isn't a real cmdlet verb at
-  all (an unapproved bash verb like `upsert` must be replaced, e.g.
-  `upsert_toml_default` → `Set-TomlDefault`, not `Upsert-TomlDefault`).
-- Rendering a Codex agent's TOML (`render_codex_agent` /
-  `ConvertTo-CodexAgentToml`) must use the current compatibility mapping:
-  `fable` → `gpt-6-astra`, `opus` → `gpt-5.6-sol`, `sonnet` → `gpt-5.6-terra`,
-  and `haiku` → `gpt-5.6-luna`, while preserving `effort` as
-  `model_reasoning_effort` and the existing `tools` → `sandbox_mode` mapping.
-  Copilot's Markdown renderer
-  (`render_copilot_agent` / `ConvertTo-CopilotAgentMd`) still leaves `model`
-  unset and drops `effort`, since its frontmatter has no matching fields; it
-  translates only `tools` through the closed alias table (`Read`→`read`,
-  `Grep`/`Glob`→`search`, `Edit`/`Write`/`MultiEdit`→`edit`, `Bash`→`execute`,
-  `WebFetch`/`WebSearch`→`web`). Flag a PR that changes either contract.
-- `frontmatter_field` (bash) and `Get-AgentFrontmatterField` (PowerShell)
-  decode a quoted frontmatter value's escapes: single-quoted `''` is a plain
-  global replace (safe, since a doubled single-quote has no adjacency
-  ambiguity), while double-quoted `\"`/`\\` decodes in one left-to-right pass,
-  not sequential global replaces (which mis-handles a backslash immediately
-  before a quote). Both abort the install loudly, naming the file/key/escape,
-  on an escape neither decoder can render, rather than installing a silently
-  corrupted rendered value. Flag a double-quoted decoder that switches to
-  global find-replace instead of a single pass, or that swallows an unhandled
-  escape instead of aborting.
-  The two installers deliberately differ on how the abort propagates through
-  nesting: `install.ps1` safely nests the extractor call inside another
-  function call because PowerShell's `throw` unwinds regardless of nesting,
-  while `install.sh` must assign the extractor's result to its own local
-  variable first, since bash's `set -e` only observes the outer command's
-  exit status and would mask a nested command substitution's abort. Don't
-  flag that divergence as an inconsistency to reconcile.
+- They mirror function for function (`copy_agents`/`Copy-Agents`,
+  `frontmatter_field`/`Get-AgentFrontmatterField`,
+  `render_codex_agent`/`ConvertTo-CodexAgentToml`,
+  `upsert_toml_default`/`Set-TomlDefault`). The PowerShell name uses an
+  approved Verb-Noun verb, substituting the nearest one for an unapproved
+  bash verb (`upsert` becomes `Set-`, `render` becomes `ConvertTo-`); don't
+  flag the casing difference. Two divergences are deliberate and must not be
+  reconciled: `install.ps1` factors its double-quote decoder into
+  `ConvertTo-DecodedDoubleQuoted` while `install.sh` keeps it inline in awk,
+  and `install.sh`'s `render_copilot_agent` assigns `frontmatter_field`'s
+  result to a local first because `set -e` doesn't see a failure inside a
+  command substitution, where `install.ps1` passes the
+  `Get-AgentFrontmatterField` call straight in as `ConvertTo-CopilotTools`'s
+  argument.
+- Both frontmatter decoders treat single-quoted `''` as a plain global
+  replace, decode double-quoted `\"`/`\\` in one left-to-right pass (never
+  sequential global replaces), and abort the install on an escape they can't
+  render. Flag a decoder that switches to sequential replaces or swallows an
+  unhandled escape.
+- A repo-owned managed default is overwritten on every install, not guarded
+  by set-if-absent, unless `PT_KEEP_MODEL=1` gates it. Each `install.sh` and
+  `install.ps1` block that sets one is preceded by a comment reading
+  "Repo-owned `<name>`, re-asserted on every install", plus
+  "(`PT_KEEP_MODEL=1` keeps an existing per-machine choice)" when that opt-out
+  gates it, then the rationale, citing an external doc URL when the key name
+  doesn't make the semantics self-evident. Ungated settings written through
+  `set_json_path`/`Set-JsonPath` omit the parenthetical. Flag a new managed
+  default with no such comment; don't flag `install.ps1`'s
+  `model`/`switchModelsOnFlag` defaults lacking the comment `install.sh`
+  gives them, a known defect.
+- Claude's permission posture is opt-in and never changes on a bare install:
+  `permissions.defaultMode` and `skipDangerousModePermissionPrompt` change
+  only under `PT_BYPASS_PERMISSIONS=1`, and `PT_KEEP_MODEL` doesn't cover
+  them. Flag a change that alters either without that opt-in.
+- Instruction files get repo content inside a marker-delimited managed block;
+  content outside the markers survives re-installs, and a file without
+  markers is left alone. Flag a change that rewrites outside the markers.
+- A hook wired as more than one entry (`plan-gate.js`'s two `PreToolUse`
+  entries, the Codex pilot's `SessionStart` plus `apply_patch` and Bash
+  entries) is checked and repaired one entry at a time (matcher + command),
+  not with a coarse whole-file presence check. Flag an add-if-absent check
+  that treats the hook as installed once any one entry exists, since that
+  skips re-adding a newly introduced entry for someone with an older install.
+- The Codex and Copilot agent renderers must match the mapping tables in
+  `docs/installers.md` and `docs/models.md`: `model` through the
+  compatibility mapping, `effort` carried 1:1 as `model_reasoning_effort`,
+  `sandbox_mode` set to `workspace-write` when `tools` includes Edit or Write
+  and `read-only` otherwise. For Copilot, `model` stays unset, `effort` is
+  dropped, and `tools` map through the closed alias table, with an unknown
+  tool warned to stderr and dropped. Flag a renderer change that disagrees
+  with those tables, or a table change with no matching renderer change.
