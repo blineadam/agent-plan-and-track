@@ -82,8 +82,10 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   `webapp-testing`, both from `anthropics/skills`) must
   carry an HTML comment right after its frontmatter naming the source URL,
   the exact edits made (not a vague "lightly edited"), and pointing at a
-  sibling `LICENSE.txt` with the upstream license text. Flag a vendored
-  skill missing either the attribution comment or the `LICENSE.txt`, and
+  sibling `LICENSE.txt` with the upstream license text, plus an entry in
+  the root `NOTICE` when the upstream license is Apache-2.0. Flag a vendored
+  skill missing the attribution comment, the `LICENSE.txt`, or its `NOTICE`
+  entry, and
   flag a skill whose license forbids redistribution (check the license
   text, don't assume) if it's vendored under `skills/` at all rather than
   fetched live at install time, the way `install-office-skills.sh` handles
@@ -93,16 +95,18 @@ themselves. See `.ai-style-rules.md` for the full convention set.
   must be extended to also name the retired skill's source, not silently
   drop its provenance. Flag a fold-in PR that removes the retired skill
   without adding that second attribution sentence.
-- A skill or standing rule that's merely *inspired by* another repo's idea
-  but rewritten from scratch, not vendored wholesale, gets a one-line
-  "adapted from X" credit instead: in `AGENTS.md`'s Skills section for a
-  skill (e.g. `humanizer`), or in `AGENTS.md`'s rule-mechanism
-  section for a rule folded into `rules/agent-guidelines.md`/
-  `rules/core-rules.md` (e.g. the action-first output rule adapted from
-  `ayghri/i-have-adhd`). No in-file HTML comment or `LICENSE.txt` for this
-  case; that's only for the wholesale-vendored case above. Flag a rewritten,
-  externally-inspired skill or rule merged in without that one-line
-  `AGENTS.md` credit, unless the idea came from a private or
+- A skill, agent, hook, or standing rule that's merely *inspired by*
+  another repo's idea but rewritten, not vendored wholesale, gets its
+  credit as an entry in `docs/credits.md` (source, what was taken, and the
+  upstream license), not in `AGENTS.md`, a `SKILL.md` body, or an
+  `agents/*.md` body, since those load into agent context. No in-file HTML
+  comment or `LICENSE.txt` for this case; that's only for the
+  wholesale-vendored case above. An MIT source whose text was adapted also
+  gets its copyright line in the root `LICENSE`, which otherwise stays the
+  plain MIT text so GitHub's license detection still reads it. Flag a
+  rewritten, externally-inspired change merged without its
+  `docs/credits.md` entry, and flag new credit prose added to `AGENTS.md`
+  or a skill or agent body, unless the idea came from a private or
   employer-internal repository. That case is the one exception and gets no
   credit anywhere, since naming the source would disclose someone else's
   code and no license obliges it: don't flag the missing credit.
