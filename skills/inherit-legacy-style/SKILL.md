@@ -1,6 +1,6 @@
 ---
 name: inherit-legacy-style
-description: Capture a legacy codebase's implicit conventions as a standing constraint (in its existing convention docs, else .ai-style-rules.md) so AI-generated patches match the existing style instead of drifting toward mainstream idioms. Use when onboarding onto a hand-written legacy project, when the user worries AI code "doesn't look like our code", or to codify a project's unwritten rules. Language- and framework-agnostic, aligns meta-architecture, not syntax.
+description: Capture a legacy codebase's implicit conventions as a standing constraint (in its on-demand convention docs, else .ai-style-rules.md, never CLAUDE.md or AGENTS.md) so AI-generated patches match the existing style instead of drifting toward mainstream idioms. Use when onboarding onto a hand-written legacy project, when the user worries AI code "doesn't look like our code", or to codify a project's unwritten rules. Language- and framework-agnostic, aligns meta-architecture, not syntax.
 ---
 
 # Inherit Legacy Style
@@ -8,29 +8,35 @@ description: Capture a legacy codebase's implicit conventions as a standing cons
 Prevents AI style drift in legacy projects: scan the codebase for implicit
 conventions, resolve genuine conflicts with the user one at a time, and
 record the consensus where the project already keeps its rules. A project
-with no convention docs gets an enforceable `.ai-style-rules.md` at the
-project root; a project that already documents its conventions gets the
-uncovered ones proposed into those docs instead, so every rule has exactly
-one owner.
+with no on-demand convention docs gets an enforceable `.ai-style-rules.md` at
+the project root; a project that already documents its conventions there gets
+the uncovered ones proposed into those docs instead, so every rule has exactly
+one owner. New rules never go into an always-on instructions file: it stays
+hand-curated, and an `/init` re-run can't clobber what this skill wrote.
 
 ## Step 0: Detect mode
 
-Check two things:
+Check three things:
 
-1. **Convention docs**: markdown that states how code here should be written
-   (naming, structure, error handling, patterns), such as the instructions
-   files (`CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`),
-   `CONTRIBUTING.md`, style or review guides, `docs/**/*.md`, or a
+1. **Instructions files**: the always-on `CLAUDE.md`, `AGENTS.md`,
+   `.github/copilot-instructions.md`, and path-scoped
+   `.github/instructions/*.instructions.md`. Read them in every mode so a rule
+   they already state isn't repeated, but never write a new rule into one.
+   Skip anything generated from these rules: a path-scoped file carrying the
+   copilot-review-instructions marker, and the marker-owned `# Code reviews`
+   section of `.github/copilot-instructions.md`.
+2. **On-demand convention docs**: markdown read when needed that states how
+   code here should be written (naming, structure, error handling, patterns),
+   such as `CONTRIBUTING.md`, style or review guides, `docs/**/*.md`, or a
    subdirectory's own `README.md`. A README that only says what the project
-   is and how to run it doesn't count. Skip `.ai-style-rules.md` itself and
-   anything generated from these rules: a `.github/instructions/` file
-   carrying the copilot-review-instructions marker, and the marker-owned
-   `# Code reviews` section of `.github/copilot-instructions.md` (the rest of
-   that file still counts). Reading those back would count the rules as their
-   own source.
-2. **`.ai-style-rules.md`** at the project root.
+   is and how to run it doesn't count. Skip `.ai-style-rules.md` itself:
+   reading it back would count the rules as their own source.
+3. **`.ai-style-rules.md`** at the project root.
 
-| Convention docs | `.ai-style-rules.md` | Mode |
+A project whose only convention docs are instructions files, such as a fresh
+repo after `/init`, has no on-demand docs and takes a "None" row.
+
+| On-demand docs | `.ai-style-rules.md` | Mode |
 | --- | --- | --- |
 | None | Missing | First-time full scan |
 | None | Present | Incremental update |
@@ -85,13 +91,22 @@ the header, plus three mandatory sections:
 - **DONTs**: anti-patterns that must not propagate.
 
 Write every rule, and the header, as the convention that holds now, never as
-the story of how it got there.
+the story of how it got there. Leave out a rule an instructions file already
+states.
 
 **6. Offer persistence** (the user picks; never default to enforcement):
 
-- **Soft (recommended)**: reference `.ai-style-rules.md` from the project's
-  instructions file (`CLAUDE.md` / `AGENTS.md` /
-  `.github/copilot-instructions.md`) so it loads every session.
+- **Soft (recommended)**: keep the rules loaded in every session, since they
+  apply to every code-writing task. Each of `CLAUDE.md`, `AGENTS.md`, and
+  `.github/copilot-instructions.md` the project has gets: "Open each
+  code-writing task with the Golden File from `.ai-style-rules.md` you're
+  following and the DONTs that apply." In `CLAUDE.md`, follow it with an
+  `@.ai-style-rules.md` import line, which Claude Code expands at launch. In
+  `AGENTS.md` and `.github/copilot-instructions.md`, whose harnesses document
+  no import, follow it with "Read `.ai-style-rules.md` before writing or
+  editing code." Once the file passes about 2k tokens (words x 1.3, the
+  [[context-budget]] estimate), use the read-before line in `CLAUDE.md` too
+  instead of the import.
 - **Hard (current Claude Code implementation)**: soft, plus a `PreToolUse`
   hook on Edit/Write in `settings.json` for mechanical enforcement. Codex
   supports lifecycle hooks, but this package does not add an equivalent Codex
@@ -112,16 +127,17 @@ use Copilot review.
 The project already documents its conventions, so the docs stay the one
 place rules live. Never create `.ai-style-rules.md` in this mode.
 
-1. Read the convention docs and note which rules each one states.
-2. Run first-time steps 1 to 4. A convention a doc already states is covered:
-   don't ask about it or restate it. Code whose majority contradicts a
-   documented rule is a strong-signal conflict (the doc or the code has
+1. Read the on-demand docs and instructions files and note which rules each
+   one states.
+2. Run first-time steps 1 to 4. A convention any of them already states is
+   covered: don't ask about it or restate it. Code whose majority contradicts
+   a documented rule is a strong-signal conflict (the doc or the code has
    drifted), so it goes through step 4 like any other.
-3. For each uncovered convention, propose an addition to the doc that already
-   owns that topic, or to the instructions file when none does: show the
-   target file and the exact text, written in that doc's own voice and
-   structure. Apply only what the user approves; a declined proposal is
-   dropped, not parked in a new file.
+3. For each uncovered convention, propose an addition to the on-demand doc
+   that already owns that topic, or to the closest on-demand doc when none
+   does (never an instructions file): show the target file and the exact
+   text, written in that doc's own voice and structure. Apply only what the
+   user approves; a declined proposal is dropped, not parked in a new file.
 4. Offer [[copilot-review-instructions]] under first-time step 6's Copilot
    gate. Offer the soft persistence reference only when the instructions
    file doesn't already point at the docs that changed.
@@ -131,13 +147,13 @@ is a fresh gap scan.
 
 ## Fold into docs
 
-The project has convention docs and a `.ai-style-rules.md` beside them, so
+The project has on-demand docs and a `.ai-style-rules.md` beside them, so
 some rules have two owners and others sit apart from the rest. Announce the
 fold, then:
 
-1. Drop each rule a doc already states.
-2. Propose each remaining rule into the doc that owns its topic, the same way
-   as docs gap scan step 3.
+1. Drop each rule an on-demand doc or instructions file already states.
+2. Propose each remaining rule into the on-demand doc that owns its topic,
+   the same way as docs gap scan step 3.
 3. Once every remaining rule has landed in a doc, delete `.ai-style-rules.md`,
    repoint anything that references it (the instructions file, generated
    review directives), and re-offer [[copilot-review-instructions]] under the
@@ -160,17 +176,29 @@ any rule a doc now states and pointing to that doc instead.
    dated entries, and no "since the last round" or "was generalized to"
    narration inside a rule. Outside git nothing else records the history, so
    also append a dated `### [YYYY-MM-DD] Style Evolution Log` entry there.
-4. If this update changed any convention and the project uses (or plans to
+4. **Consolidate.** Merge rules that overlap, drop rules the code no longer
+   follows (checked against the current code, not from memory), and tighten
+   each rule to its checkable core: what to do, where it applies, and any
+   exception, without rationale or examples a reader doesn't need to apply
+   it. Announce each merge and drop with its evidence and apply only what the
+   user approves, like any other convention change; with no one available to
+   approve, report the proposals without applying them. Then report the
+   file's size as words x 1.3 tokens (the [[context-budget]] estimate) and
+   warn when it passes about 2k tokens, since an always-on import that large
+   costs every session; while it's over, the pointer is the read-before line
+   from first-time step 6, not the import.
+5. If this update changed any convention and the project uses (or plans to
    use) GitHub Copilot's PR code review, re-offer [[copilot-review-instructions]]
    under the same gate as first-time Step 6, so the generated review files
    refresh against the new rules instead of going stale. Skip the offer when
    nothing review-worthy changed or the project doesn't use Copilot review.
-5. **Fold a leftover log.** If a git-tracked file still carries a Style
+6. **Fold a leftover log.** If a git-tracked file still carries a Style
    Evolution Log, read `references/fold-leftover-log.md` and fold it once,
    announced to the user first, never silent.
 
 ## Per-turn enforcement
 
-When `.ai-style-rules.md` is loaded, open every code-writing task with a
+In a project with `.ai-style-rules.md`, open every code-writing task with a
 one-line compliance declaration: which Golden File you're following and which
-DONTs apply.
+DONTs apply. If the file isn't already in context, read it first. The Soft
+pointer carries this obligation into sessions where this skill isn't loaded.
