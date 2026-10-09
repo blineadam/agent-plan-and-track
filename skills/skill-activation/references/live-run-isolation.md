@@ -1,8 +1,8 @@
 # Live-run isolation and limits
 
 Covers the billable `--run` modes of `run-activation-cases.js` and
-`run-behavioral-smokes.js`; [[skill-comply]] links here for the isolation and
-egress rationale. The Squid proxy recipe is the separate reference that
+`run-behavioral-smokes.js`; [[skill-comply]] reaches it through this skill's
+isolation section. The Squid proxy recipe is the separate reference that
 SKILL.md names.
 
 ## Isolation
