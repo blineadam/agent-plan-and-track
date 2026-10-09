@@ -21,7 +21,7 @@
  * Case schema (one JSON object per line in the corpus):
  *   { id, skill, prompt, max_turns, fixture, setup?, allowed_tools?,
  *     assertions: [
- *       { kind: "file_regex", path, regex, flags } |
+ *       { kind: "file_regex", path, regex, flags, ref_exists? } |
  *       { kind: "response_regex", regex, flags } |
  *       { kind: "trace_agent_dispatch_count", min, max? } |
  *       { kind: "trace_agent_dispatch_names", expect?, forbid? }
@@ -32,6 +32,12 @@
  * target skill: unlike activation-cases.jsonl (which tests routing on an
  * unnamed prompt), the naming here is deliberate, since the point is to prove
  * the BODY still works once the skill has fired, not to test routing again.
+ * A `file_regex` with `ref_exists: true` also requires the regex's first
+ * capture group, taken from its first match, to name an existing file inside
+ * the case dir (same containment rule as `path`), so a file that merely
+ * names an artifact can't pass for one that points at a real artifact; the
+ * regex must have a capture group. It proves the named file exists, not
+ * what it contains.
  * A `response_regex` assertion hard-fails the case when its regex does not
  * match assistant text (assistant `text` blocks plus the terminal result's
  * `result` string): a match only proves the marker appears at the start of
@@ -441,10 +447,18 @@ function assertionShapeProblems(a) {
       problems.push('missing regex');
     } else {
       try {
-        new RegExp(a.regex, a.flags);
+        const re = new RegExp(a.regex, a.flags);
+        // An alternation with the empty pattern always matches '', and the
+        // match array's length is 1 plus the regex's capture group count.
+        if (a.ref_exists === true && new RegExp(`${re.source}|`, a.flags).exec('').length < 2) {
+          problems.push('ref_exists needs a regex with a capture group');
+        }
       } catch (e) {
         problems.push(`regex does not compile: ${e.message}`);
       }
+    }
+    if (a.ref_exists !== undefined && a.ref_exists !== true) {
+      problems.push('ref_exists must be true when present');
     }
   } else if (kind === 'response_regex') {
     if (!a || typeof a.regex !== 'string' || a.regex === '') {
@@ -818,8 +832,20 @@ function scoreCase(c, resultsDir, dups, runState) {
     }
     const content = fs.readFileSync(filePath, 'utf8');
     const re = new RegExp(a.regex, a.flags);
-    if (!re.test(content)) {
+    const m = re.exec(content);
+    if (!m) {
       return { id, status: 'fail', reason: `assertion failed: ${a.path} !~ /${a.regex}/${a.flags}`, activated };
+    }
+    if (a.ref_exists === true) {
+      const ref = m[1];
+      if (!relPathIsContained(ref) || !isFile(path.join(caseDir, ref))) {
+        return {
+          id,
+          status: 'fail',
+          reason: `assertion failed: ${a.path} names '${ref}', which is not a file inside the case dir`,
+          activated,
+        };
+      }
     }
   }
 
