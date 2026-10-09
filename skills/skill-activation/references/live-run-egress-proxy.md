@@ -277,8 +277,9 @@ This copies the working tree as git sees it, uncommitted edits and new
 untracked files included. It carries the fixtures' tracked `.tasks/`
 directories, which any copy that filters out `.tasks` would drop, and leaves
 behind the host's own ignored scratch and the `.git` entry: in a linked
-worktree that entry is a file pointing at a host path, and `install.sh` fails
-"not a git repository" when it finds one. `tar` stops on a tracked file
+worktree that entry is a file pointing at a host path, and under a dangling
+pointer git refuses even `git config --global`, so `install.sh`'s global
+excludes step fails "not a git repository". `tar` stops on a tracked file
 deleted from the working tree, so commit or restore deletions first.
 
 To compare against a base revision, install it into a second `HOME`; the arm
@@ -349,5 +350,8 @@ grep '^acl provider_' "$PT/proxy/squid.conf"    # both lines now end in registry
 That is the macOS `sed -i ''` form; GNU sed takes `-i` alone. Both lines need
 the name, for the same reason both ACLs exist. Every allowed host is one more
 place an injected case can send data, and a package registry also hands it
-code to run, so splice it in only for the runs that need it and rebuild the
-proxy image without it afterward.
+code to run, so splice it in only for the runs that need it. Rebuilding the
+image afterward is not enough on its own, since the running proxy keeps the
+config it started with: rerun step 1's `awk` and proxy `docker build`, then
+`docker rm -f pt-smoke-proxy` and repeat step 2's `docker create`, `docker
+network connect`, and `docker start` (the network itself can stay).
