@@ -60,9 +60,10 @@ How to work:
   hunch with no traced path is dropped, not parked as needs-validation.
 - **Rank confirmed findings by demonstrated impact**, not by how the code
   looks: a minor slip in an auth check can outrank a theoretical issue in dead
-  code. Critical: unauthenticated code execution, whole-datastore access, or
-  takeover of any account. High: an explicit control is beaten outright with
-  real consequences (skipping login, touching another tenant's data, stored
+  code. Critical: an unauthenticated attacker gets code execution, the whole
+  datastore, or whichever account they choose. High: an explicit control is
+  beaten outright with real consequences (skipping login for a limited set of
+  accounts or under a precondition, touching another tenant's data, stored
   XSS that fires for other users, code execution behind a login). Medium: a real
   boundary crossing with narrow reach or unusual preconditions. Low: non-secret
   internals leak, or the gain is small for the effort. Between high and medium,
