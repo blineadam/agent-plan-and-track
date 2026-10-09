@@ -26,7 +26,8 @@ The `hooks/<harness>/*.json` files carry no logic, only a plain
 `node "<scripts>/<name>.js"` command with the `__SCRIPTS__` path baked in at
 install time. Each uses its harness's hook contract:
 
-- Claude and Codex use a PascalCase `matcher` plus `hooks[].command`.
+- Claude and Codex use a PascalCase event key (`PreToolUse`) holding a
+  `matcher` plus `hooks[].command`.
 - Copilot uses `version:1`, `bash`, and `timeoutSec`.
 
 Those keys come from the wire contracts. Do not normalize one shape to match
