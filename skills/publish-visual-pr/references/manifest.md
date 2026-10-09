@@ -11,7 +11,8 @@
 
 Run the bundled capture command against two prepared Git checkouts. Node needs the `playwright`
 package resolvable and its Chromium build. Node does not search npm's global `lib/node_modules`, so
-install into a prefix and point `NODE_PATH` at it:
+install into a prefix and point `NODE_PATH` at it. The script path below is Claude Code's install
+root; use `~/.agents/skills/` on Codex and `~/.copilot/skills/` on Copilot:
 
 ```bash
 npm install --prefix <dir> playwright

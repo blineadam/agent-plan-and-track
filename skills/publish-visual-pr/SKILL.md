@@ -151,10 +151,9 @@ After Copilot review and its fix rounds settle:
    head SHAs, required checks pass, review findings are answered, and no automated-review result is
    unread.
 5. Mark the PR ready through [[yeet]] (`gh pr ready <number>`) only if section 4's visual check passed
-   on the item 1 recapture at this head. Then recheck the actual review request, reviews, and
-   unresolved threads: do not assume the ready flip triggered a Copilot review. If no post-ready pass
-   was requested, use [[yeet]]'s manual Copilot request (its step 7 check and fallback) and triage
-   that pass per [[yeet]] steps 8 to 12 and 14.
+   on the item 1 recapture at this head. Then close the review loop per [[yeet]] step 15, which
+   rechecks whether the flip requested a Copilot pass and requests one manually when this head has
+   none.
 
 If the head or the recorded base revision changes after the final capture, rerun affected checks,
 recapture changed surfaces, and update the body before merge.
