@@ -44,15 +44,14 @@ come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
 - A skill body takes one of three shapes. A checklist (like `plan-and-track`)
   uses H2 phase sections in execution order holding one imperative
   numbered step list with continuous numbering, a cross-cutting rules
-  section first and a mode section last; `yeet` adds an unnumbered preamble and a closing `## Sources`.
+  section first and a mode section last.
   A reference skill (like `read-the-damn-docs`, `migration-discipline`) uses
   named reference H2s around one distinctly named procedure H2. A numbered
   reference (like `logging-practices`) numbers every H2, with one procedure
   (`## 9. Verify`) and a closing red-flags catalog. Flag a skill whose
-  procedure is scattered with no named or numbered section to anchor it, a
-  `## Prerequisites` section that isn't a real hard-stop dependency check,
-  and a `## Sources` section in a body that asserts no live-observed
-  third-party behavior.
+  procedure is scattered with no named or numbered section to anchor it, and
+  a closing `## Sources` section (as in `yeet`) in a body that asserts no
+  live-observed third-party behavior.
 - Detail a `SKILL.md` offloads lives in a flat `references/<kebab-name>.md`
   beside it. The SKILL.md keeps the condensed rule inline and closes that
   section with a markdown-link pointer (`Read [references/x.md](references/x.md)
@@ -73,7 +72,8 @@ come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
   required trailer, a section format) with no paired mechanical check, such
   as a hook lint or a CI assertion, since session attention alone doesn't
   hold a convention over a long run.
-- A skill vendored from an external repo (`frontend-design`, `webapp-testing`)
+- A skill vendored from an external repo (`frontend-design`, `webapp-testing`,
+  `yeet`)
   carries an HTML comment right after its frontmatter naming the source URL
   and the exact edits made (never "lightly edited"), with the upstream
   license verbatim in a sibling `LICENSE.txt`, and an Apache-2.0 source also
@@ -102,11 +102,6 @@ come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
   `model`, `effort`, `tools`. Its body is a short role statement, then a plain
   `How to work:` label (not a heading) over bold-lead principles. Flag a
   reordered or missing field and a `How to work` heading.
-- `model` and `effort` pin in lockstep per role, not per model name:
-  `fable`/`high` for `architect-reviewer`, `security-auditor`, and
-  `fable-advisor`; `opus`/`xhigh` for `planner` (the only `xhigh`);
-  `sonnet`/`high` for `researcher`, `debugger`, and `executor`;
-  `haiku`/`medium` for `mechanic`. Flag a pair that departs from this.
 - `tools` is a bare comma-separated subset that encodes authority:
   `Read, Grep, Glob` for read-only reviewers, advisors, and the planner;
   `researcher` adds `WebFetch, WebSearch`; `debugger` adds `Bash`

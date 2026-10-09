@@ -1,5 +1,5 @@
 ---
-applyTo: "hooks/**/*.js,hooks/**/*.json,skills/**/scripts/*.js,.github/scripts/*.js,**/*.sh,install.sh,install.ps1,install-office-skills.ps1,install-mcp-servers.ps1,.gitattributes,.github/workflows/*.yml"
+applyTo: "hooks/**/*.js,hooks/**/*.json,skills/**/scripts/*.js,.github/scripts/*.js,**/*.sh,install.sh,install.ps1,install-office-skills.ps1,install-mcp-servers.ps1,.github/workflows/*.yml"
 excludeAgent: "cloud-agent"
 ---
 
@@ -82,12 +82,10 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   or only warns, so each path gates once per session (`gateguard.js`). A hook
   gated on an external unlock (`plan-gate.js`, unlocked by a `plan-and-track`
   Skill invocation) may deny repeatedly, and must say so in its header. A
-  deny-once guard marks at deny time and treats a marker under 2 seconds old
-  as a racing duplicate (`git-guard.js`, plan-gate's migration-state and
-  attribution guards). `git-guard.js` keys four of its kinds per session by
-  kind and `stage-env-file` by path, so a confirmed retry for one directory's
-  `.env` can't disarm the guard for another. Flag a hook that denies
-  repeatedly with no stated rationale.
+  deny-once guard marks at deny time and treats a seconds-old marker as a
+  racing duplicate (`git-guard.js`, plan-gate's migration-state and
+  attribution guards). Flag a hook that denies repeatedly with no stated
+  rationale.
 
 ## CI guard scripts
 
@@ -113,12 +111,10 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
 
 - Skill scripts live at `skills/<name>/scripts/`, use Node core modules only,
   and are self-contained, since sibling skills share no module root. The one
-  npm dependency is `playwright`, required lazily by
-  `skills/publish-visual-pr/scripts/render.js` (`smoke.js` and
-  `run-smoke-fixtures.js` reach it through `./render`) so the file loads
-  without it and a missing package is a one-line error. Pixel diffing runs in
-  a Chromium canvas, so don't flag that require; any other npm dependency
-  under `skills/**/scripts/` is a violation.
+  npm dependency is `playwright`, required at call time by
+  `skills/publish-visual-pr/scripts/render.js`, whose header explains it, so
+  don't flag that require; any other npm dependency under
+  `skills/**/scripts/` is a violation.
 - Don't propose factoring the live-run process-control helpers
   (`liveCaseTimeout`, `terminateChildTree`, `handleParentSignal`,
   `runChildCase`, `LIVE_CASE_TIMEOUT_MS`) into a shared module. They are
@@ -159,10 +155,9 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   against that closed set.
 - A script that shells out to a third-party CLI pins its version
   (`SKILLS_CLI="skills@1.5.19"`, with `SKILLS_CLI_MIN_NODE` for its Node
-  floor), never `npx <tool>@latest`. The one exception, stated in its header,
-  is `install-mcp-servers.sh` handing each harness's CLI an unpinned
-  `chrome-devtools-mcp@latest` as config data that CLI runs later; don't flag
-  it.
+  floor), never `npx <tool>@latest`. The one exception is
+  `install-mcp-servers.sh`'s `chrome-devtools-mcp@latest`, which its header
+  explains; don't flag it.
 - When `jq` is missing, `install.sh` may offer to install it through a
   package manager, but only after an interactive confirmation or the
   `PT_INSTALL_JQ=1` opt-in; a non-interactive run without it exits with an
@@ -197,9 +192,6 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   `hooks/<harness>/fixtures/<name>/cases.json` for a harness-specific hook,
   or `hooks/scripts/` and `hooks/fixtures/<name>/` for a shared hook. Flag a
   hook test harness placed anywhere else.
-- `.gitattributes` forces LF on `.sh`, `.js`, `.json`, and `.md` files and
-  CRLF on `.ps1` only. Flag a change that normalizes `.ps1` to LF or forces
-  CRLF onto the LF-required extensions.
 
 ## Installers and cross-platform portability
 
@@ -229,15 +221,13 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   unhandled escape.
 - A repo-owned managed default is overwritten on every install, not guarded
   by set-if-absent, unless `PT_KEEP_MODEL=1` gates it. Each `install.sh` and
-  `install.ps1` block that sets one is preceded by a comment reading
+  `install.ps1` block that sets one, for any harness, is preceded by a comment reading
   "Repo-owned `<name>`, re-asserted on every install", plus
   "(`PT_KEEP_MODEL=1` keeps an existing per-machine choice)" when that opt-out
   gates it, then the rationale, citing an external doc URL when the key name
   doesn't make the semantics self-evident. Ungated settings written through
   `set_json_path`/`Set-JsonPath` omit the parenthetical. Flag a new managed
-  default with no such comment; don't flag `install.ps1`'s
-  `model`/`switchModelsOnFlag` defaults lacking the comment `install.sh`
-  gives them, a known defect.
+  default with no such comment.
 - Claude's permission posture is opt-in and never changes on a bare install:
   `permissions.defaultMode` and `skipDangerousModePermissionPrompt` change
   only under `PT_BYPASS_PERMISSIONS=1`, and `PT_KEEP_MODEL` doesn't cover
