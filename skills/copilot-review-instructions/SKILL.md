@@ -8,11 +8,7 @@ description: Use to generate or refresh GitHub Copilot review instructions, both
 Collects the review-worthy conventions a project already documents (or that
 [[inherit-legacy-style]] inferred from its code) and translates the union into
 Copilot's native review-instruction format, so its PR review flags real
-convention violations instead of applying generic defaults. Adapted from the
-manual process used to write this repo's own
-`.github/instructions/*.instructions.md`: three rounds of Copilot review against
-them caught real drift between the documented rules and the generated
-instructions, and the anti-patterns below come straight from that history.
+convention violations instead of applying generic defaults.
 
 Boundary with [[inherit-legacy-style]]: that skill infers *unwritten*
 conventions from code and records them in the project's own convention docs,
@@ -128,10 +124,7 @@ Immediately below the frontmatter, add one HTML comment marker:
 
 Check every asserted rule against the real source it cites: the actual Golden
 File, the exact line in the instructions file, the README section. Don't
-transcribe from memory or from what a source merely implies. Most of the issues
-in this skill's own origin story (see Anti-patterns) were instructions that
-sounded right but were contradicted by the actual source they claimed to
-describe.
+transcribe from memory or from what a source merely implies.
 
 ## Step 5: Regenerate, don't accumulate
 
@@ -145,106 +138,34 @@ it as hand-authored: don't overwrite it silently, flag it to the user instead.
 
 ## Step 6: Own the `# Code reviews` section of `.github/copilot-instructions.md`
 
-Copilot reads `.github/copilot-instructions.md` as repository-wide custom
-instructions, applied to requests made in the context of the repository and
-[enabled for Copilot code review by default](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions).
-Those docs describe the file's contents as natural-language Markdown and
-document no inclusion directive. Instructions are combined by Copilot reading
-each recognized file on its own, the path-scoped files from Step 3 among them,
-rather than by one file importing another. A line like `@../AGENTS.md` is
-therefore inert text, so this file should not try to pull the conventions in.
-It tells the reviewer where they live and how to review, in a `# Code reviews`
-section this skill owns.
+Copilot documents no inclusion directive for this file, so an `@path` line
+importing conventions into it is inert text: never use one. Instead this skill
+owns a `# Code reviews` section that points the reviewer at the sources and says
+how to review. Read [references/code-reviews-section.md](references/code-reviews-section.md)
+before generating or refreshing it. Obligations that hold regardless:
 
-Create the file if it is missing, and append the section when the file exists
-without a `# Code reviews` H1. Where that section already exists, apply the same
-marker test Step 5 applies to the path-scoped files, since a repo adopting this
-skill may well have written its own:
-
-- **Carrying the marker**: skill-owned, so regenerate it in place.
-- **Missing the marker**: possibly hand-authored. Confirm its provenance with
-  the user before replacing anything, exactly as Step 5 does, and never adopt an
-  unmarked section silently.
-
-Write the marker as the section's first line under the heading, so a later run
-can tell. Leave everything outside the section alone: the heading and the next
-H1 (or the end of the file) bound what this skill owns, and what sits outside is
-usually hand-authored guidance for Copilot's cloud agent.
-
-The section is four prose paragraphs, in this order, following this repo's own
-`.github/copilot-instructions.md` as the reference rendering:
-
-1. **Where the conventions live.** Relative links to the sources Step 1
-   actually found, and only those: the project's instructions file
-   (`[AGENTS.md](../AGENTS.md)`, or `CLAUDE.md`), `.ai-style-rules.md` at the
-   repo root, a `CONTRIBUTING.md`. Never link a file this project does not
-   have, since Step 1 accepts a project whose conventions live only in its
-   README. Then the path-scoped files under `.github/instructions/`, naming
-   each bucket from Step 2 by its file stem in parentheses and saying which of
-   the gathered sources back them, the same pointer Step 3 puts inside each
-   bucket. Close with: this file covers how to review, not what the
-   conventions are.
-2. **What CI already blocks**, so the reviewer does not duplicate it. Name each
-   check that actually runs on a pull request: the workflows with a
-   `pull_request` trigger, plus any check GitHub runs from its default setup
-   with no workflow file (CodeQL here), which a grep of the repo misses, so
-   confirm the list against a recent PR's checks. Then say that everything
-   else in the instruction files is enforced only by review, so the reviewer
-   should comment on it.
-3. **Review order and finding shape.** Correctness first, then readability,
-   then maintainability; say plainly which findings block a merge and which
-   are suggestions; give the reason a finding matters rather than asserting
-   it.
-4. **The bar.** "Better", not "perfect": a PR that improves the codebase is not
-   held up over style preferences no written convention supports.
-
-Verify the CI list the same way Step 4 verifies every other asserted rule:
-name only checks that really run in this project, not a generic set. Apply
-the project's writing-voice rules to the prose, as in Step 3.
+- Create the file if missing; append the section when the file has no
+  `# Code reviews` H1.
+- Write the Step 3 marker as the section's first line under the
+  `# Code reviews` heading.
+- Regenerate an existing section in place only when its first line under the
+  heading is the Step 3 marker. An unmarked section is possibly hand-authored:
+  confirm its provenance with the user before replacing anything, never adopt it
+  silently.
+- Leave everything outside the section alone: the heading and the next H1 (or
+  end of file) bound what this skill owns.
 
 ## Anti-patterns
 
-All of these are real issues a three-round Copilot review caught in this
-skill's own origin PR:
-
-- **Treating `.ai-style-rules.md` as the only input.** The project's own
-  instructions file, README, or docs usually carry review-worthy rules (writing
-  voice, git hygiene, verification) that `.ai-style-rules.md` never covers.
-  Gather from every source in Step 1, not just the style file.
-- **Restating a lint/CI-enforced rule.** If a linter or CI check already blocks
-  something mechanically, a review directive repeating it adds nothing Copilot
-  can act on differently. Keep review instructions to what needs human-style
-  judgment.
-- **Asserting a rule without checking the source it cites.** Contradicted
-  claims (a "rule" the actual source doesn't follow) were the majority of
-  findings across all three review rounds.
-- **Skipping `excludeAgent: "cloud-agent"`.** These files are review
-  directives, not general coding instructions.
 - **Self-contradicting the project's own writing-voice rules inside the
   generated prose** (e.g. using an em dash while writing a no-em-dash rule).
-- **Duplicating a source instead of pointing to it.** Match its density; don't
-  inflate the instructions file into a second copy.
 - **A directive about a path its bucket's `applyTo` doesn't match.** Copilot
   loads a bucket only for files its globs cover, so the directive never fires.
   Widen the glob to that path or move the directive to a bucket that covers it.
-- **Hardcoding a language/stack assumption into the bucket logic.** Derive
-  buckets from the files actually present in this project, not from what a
-  previous project happened to have.
-- **Silently overwriting a hand-edited instructions file.** Check for the
-  marker comment first.
-- **Importing conventions into `.github/copilot-instructions.md` with an
-  `@path` line.** No inclusion directive is documented for this file, so the
-  line stays inert text and becomes the whole repository-wide instruction set.
-  Point at the sources from the `# Code reviews` section (Step 6) instead.
 
 ## Portability
 
-Installs and runs on all three harnesses: any agent can generate these files for
-a repo that uses Copilot's PR review, and [[inherit-legacy-style]] (portable)
-offers to invoke it. The generated output remains Copilot-specific: `applyTo`
-path scoping and `excludeAgent` are GitHub Copilot code-review features. For
-Codex, put project review constraints under `## Code Review Rules` in the
-closest applicable `AGENTS.md`; that is an instruction-file convention, not an
-artifact this skill generates. There's no harness-specific mechanism to gate, so
-the skill body is identical everywhere, unlike the guidance-plus-one-mechanism
-split in [[strategic-compact]] or [[skill-activation]].
+Installs on all three harnesses with an identical body; the generated output is
+Copilot-specific (`applyTo` and `excludeAgent` are GitHub Copilot code-review
+features). For Codex, put project review constraints under `## Code Review
+Rules` in the closest applicable `AGENTS.md`; this skill does not generate that.

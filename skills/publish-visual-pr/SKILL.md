@@ -12,8 +12,8 @@ verified.
 Preparing the body and screenshots does not authorize a push, review request, or PR mutation. Only
 perform those actions when the user has asked to publish or update the PR.
 
-Assume `git`, GitHub CLI, [[yeet]], Node with the `playwright` package and its Chromium build, and
-the browser or computer-use MCP are already installed. Use their existing commands and flows. Do not
+Assume `git`, GitHub CLI, [[yeet]], Node, and the browser or computer-use MCP are already installed.
+The capture runner also needs the `playwright` package and its Chromium build resolvable (section 3). Use their existing commands and flows. Do not
 install substitutes or replace the upload workflow with a different GitHub API or CLI path.
 
 ## 1. Authenticate and define the evidence
@@ -81,15 +81,18 @@ dependencies in each checkout rather than sharing a dependency directory whose p
 asset loading. Do not rely on mutable branch names after recording the SHAs.
 
 Create a repository-specific manifest from [references/manifest.md](references/manifest.md), then
-run the bundled runner from this skill's installed copy (Claude Code shown; Codex installs it under
-`~/.agents/skills/`, Copilot under `~/.copilot/skills/`):
+execute the bundled runner (do not read it; the installed copy lives under `~/.claude/skills/`,
+`~/.agents/skills/` on Codex, `~/.copilot/skills/` on Copilot). `playwright` must be resolvable, so
+point `NODE_PATH` at a `node_modules` that contains it (install steps in the manifest reference).
+Claude Code path shown; substitute the Codex or Copilot root above:
 
 ```bash
-node ~/.claude/skills/publish-visual-pr/scripts/smoke.js --manifest /absolute/path/to/visual-proof.json
+NODE_PATH=<dir>/node_modules node ~/.claude/skills/publish-visual-pr/scripts/smoke.js --manifest /absolute/path/to/visual-proof.json
 ```
 
 It uses headless Playwright only for capture and reports. It does not log into GitHub, edit a pull
-request, or replace the authenticated browser-MCP upload sequence below.
+request, or replace the authenticated browser-MCP upload sequence below. `checks.js` and `render.js`
+in `scripts/` are internal to `smoke.js`; don't invoke them directly.
 
 Use the same conditions on both sides:
 
@@ -137,26 +140,21 @@ that final check.
 After Copilot review and its fix rounds settle:
 
 1. Confirm the current head SHA and rerun the visual capture at that head.
-2. Use the installed browser MCP to open the draft PR page. Upload the final before/after crops
-   through the comment form's "Paste, drop, or click to add files" button: the real file input is
-   hidden, so the upload tool needs the visible button. The MCP only accepts files inside its
-   workspace roots, so stage the crops under the project first (a gitignored scratch directory).
-   Wait until the comment editor holds one `<img>` per file with a `user-attachments` URL and no
-   "Uploading" placeholder.
-3. Copy the generated image markup, then clear the comment editor without posting it. Retrieve the
-   PR's current body, insert a `### Screenshots` section at the end of `## Verification` using
-   two-column Before/After tables, and preserve all existing body content and attachment markup.
-   Give paired images descriptive alt text and the same displayed dimensions: GitHub fills
-   `width`/`height` with device pixels, so a scale-2 crop needs them halved to the CSS size. Update
+2. Use the installed browser MCP to upload the final before/after crops from the draft PR page's
+   comment form, copy the generated image markup, then clear the editor without posting. Read
+   [references/upload.md](references/upload.md) before doing this: it has the button, workspace-root
+   staging, and image-sizing details.
+3. Retrieve the PR's current body, insert a `### Screenshots` section at the end of `## Verification`
+   with Before/After tables, and preserve all existing body content and attachment markup. Update
    the body through `gh pr edit <number> --body-file <file>`.
 4. Reload the PR page and confirm every image renders, the labels name the recorded base and settled
    head SHAs, required checks pass, review findings are answered, and no automated-review result is
    unread.
-5. Continue [[yeet]] with `gh pr ready <number>`. Recheck the actual review request, reviews, and
-   unresolved threads. If no post-ready Copilot pass was requested, use [[yeet]]'s existing manual
-   Copilot request and triage that pass before calling the PR finished.
+5. Mark the PR ready through [[yeet]] (`gh pr ready <number>`) only if section 4's visual check passed
+   on the item 1 recapture at this head. Then recheck the actual review request, reviews, and
+   unresolved threads: do not assume the ready flip triggered a Copilot review. If no post-ready pass
+   was requested, use [[yeet]]'s manual Copilot request (its step 7 check and fallback) and triage
+   that pass per [[yeet]] steps 8 to 12 and 14.
 
-Do not assume that moving a draft to ready triggers an automated review. Check the repository's
-actual review request and review state after the transition, and request the review manually when it
-did not fire. If the head or the recorded base revision changes after the final capture, rerun
-affected checks, recapture changed surfaces, and update the body before merge.
+If the head or the recorded base revision changes after the final capture, rerun affected checks,
+recapture changed surfaces, and update the body before merge.

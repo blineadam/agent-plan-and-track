@@ -1,5 +1,14 @@
 # Screenshot manifest
 
+## Contents
+
+- Running the capture command (`NODE_PATH` and install)
+- Manifest example
+- `base` and `head`, `startup`
+- `state`
+- Surfaces: `ready`, actions, crops, `permitted_changes`, controls, fonts, console exceptions
+- Trust and privacy
+
 Run the bundled capture command against two prepared Git checkouts. Node needs the `playwright`
 package resolvable and its Chromium build. Node does not search npm's global `lib/node_modules`, so
 install into a prefix and point `NODE_PATH` at it:

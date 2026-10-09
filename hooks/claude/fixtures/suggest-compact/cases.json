@@ -1,0 +1,75 @@
+{
+  "cases": [
+    {
+      "id": "tool-count-crossing-50-small-transcript-silent",
+      "calls": [{ "tokens": 5000, "repeat": 80 }],
+      "noToolCountState": true,
+      "nudgeCalls": []
+    },
+    {
+      "id": "tool-count-crossing-50-no-transcript-silent",
+      "calls": [{ "tokens": null, "repeat": 80 }],
+      "noToolCountState": true,
+      "nudgeCalls": []
+    },
+    {
+      "id": "removed-tool-count-env-var-ignored",
+      "env": { "COMPACT_THRESHOLD": "5" },
+      "calls": [{ "tokens": 5000, "repeat": 12 }],
+      "nudgeCalls": []
+    },
+    {
+      "id": "context-above-threshold-nudges",
+      "calls": [{ "tokens": 130000, "repeat": 1 }],
+      "nudgeCalls": [1],
+      "match": "Context ~130k tokens; consider /compact"
+    },
+    {
+      "id": "context-below-threshold-silent",
+      "calls": [{ "tokens": 119999, "repeat": 1 }],
+      "nudgeCalls": []
+    },
+    {
+      "id": "context-same-bucket-nudges-once",
+      "calls": [{ "tokens": 130000, "repeat": 3 }],
+      "nudgeCalls": [1]
+    },
+    {
+      "id": "context-next-interval-renudges",
+      "calls": [
+        { "tokens": 130000, "repeat": 1 },
+        { "tokens": 190000, "repeat": 1 }
+      ],
+      "nudgeCalls": [1, 2],
+      "match": "Context ~190k tokens"
+    },
+    {
+      "id": "context-proven-1m-window-uses-higher-threshold",
+      "calls": [
+        { "tokens": 240000, "repeat": 1 },
+        { "tokens": 260000, "repeat": 1 }
+      ],
+      "nudgeCalls": [2],
+      "match": "Context ~260k tokens \\(26% of 1M window\\)"
+    },
+    {
+      "id": "context-threshold-env-override",
+      "env": { "COMPACT_CONTEXT_THRESHOLD": "50000" },
+      "calls": [{ "tokens": 60000, "repeat": 1 }],
+      "nudgeCalls": [1],
+      "match": "Context ~60k tokens"
+    },
+    {
+      "id": "context-threshold-zero-disables",
+      "env": { "COMPACT_CONTEXT_THRESHOLD": "0" },
+      "calls": [{ "tokens": 400000, "repeat": 1 }],
+      "nudgeCalls": []
+    },
+    {
+      "id": "subagent-call-skipped",
+      "subagent": true,
+      "calls": [{ "tokens": 130000, "repeat": 1 }],
+      "nudgeCalls": []
+    }
+  ]
+}

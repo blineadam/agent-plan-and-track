@@ -1,0 +1,8 @@
+{
+  "name": "tick-utils",
+  "version": "0.3.0",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test"
+  }
+}

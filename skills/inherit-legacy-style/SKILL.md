@@ -11,7 +11,7 @@ record the consensus where the project already keeps its rules. A project
 with no convention docs gets an enforceable `.ai-style-rules.md` at the
 project root; a project that already documents its conventions gets the
 uncovered ones proposed into those docs instead, so every rule has exactly
-one owner. Adapted from the ECC `inherit-legacy-style` skill.
+one owner.
 
 ## Step 0: Detect mode
 
@@ -79,7 +79,8 @@ never stack questions.
 the header, plus three mandatory sections:
 
 - **Golden Files**: real exemplar paths, annotated with what each
-  demonstrates.
+  demonstrates. Reuse an exemplar's structure and flag its defects rather than
+  copying them.
 - **Naming & State-Control Rules**: concrete, checkable conventions.
 - **DONTs**: anti-patterns that must not propagate.
 
@@ -164,33 +165,12 @@ any rule a doc now states and pointing to that doc instead.
    under the same gate as first-time Step 6, so the generated review files
    refresh against the new rules instead of going stale. Skip the offer when
    nothing review-worthy changed or the project doesn't use Copilot review.
-5. **Fold a leftover log.** A git-tracked file that still carries a Style
-   Evolution Log from an earlier version of this skill gets it folded once,
-   announced to the user first, never silent. Promote each convention that
-   lives only in a log entry and is still live (not superseded or reverted by
-   a later entry) into its section, drop every entry, delete the log heading,
-   and rewrite any history narration in the header and sections as current
-   state. Git history is the archive. A still-open deferred conflict from the
-   log goes back through the one-question protocol rather than surviving in
-   the file.
+5. **Fold a leftover log.** If a git-tracked file still carries a Style
+   Evolution Log, read `references/fold-leftover-log.md` and fold it once,
+   announced to the user first, never silent.
 
 ## Per-turn enforcement
 
 When `.ai-style-rules.md` is loaded, open every code-writing task with a
 one-line compliance declaration: which Golden File you're following and which
 DONTs apply.
-
-## Anti-patterns
-
-- Skipping the scale measurement: sampling a 30-file project starves it;
-  close-reading a 5,000-file repo blows the budget.
-- Stacking conflict questions: strictly one at a time.
-- Creating `.ai-style-rules.md` beside convention docs, or restating in it
-  what a doc already says: a rule with two owners drifts.
-- Keeping a changelog in a git-tracked project: dated entries, round-by-round
-  diffs, or before-and-after narration inside a rule. The file states the
-  current conventions; git records how they changed.
-- Editing a hand-written doc without the user's approval of the exact text.
-- Defaulting to hard enforcement: persistence strength is the user's call.
-- Judging syntax or stack quality: this aligns meta-architecture only.
-- Copying bugs from exemplar files: reuse structure, flag defects.

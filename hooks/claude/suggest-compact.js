@@ -10,26 +10,24 @@
  * It never blocks a tool call and always exits 0. Subagent tool calls (detected
  * via the same id fields gateguard.js checks) are skipped entirely: sidechain
  * transcripts misjudge the main
- * context, and the session-keyed state files are main-thread-only. Firing on every
- * main-thread tool call keeps the tool-count signal honest during read/search/
- * Bash-heavy phases (e.g. research) that do no edits: the bounded-tail transcript
- * read keeps this cheap.
+ * context, and the session-keyed state file is main-thread-only. It fires on every
+ * main-thread tool call, so read/search/Bash-heavy phases (e.g. research) that do
+ * no edits still get checked: the bounded-tail transcript read keeps this cheap.
  *
- * Two signals:
- *  - Context size (primary): reads the latest assistant `usage` record from the
- *    session transcript and compares real context tokens against a window-scaled
- *    threshold, re-reminding after each interval of growth. A 1M context window is
- *    only ever proven by tokens exceeding 200000 (a 200k session can never report
- *    more), so the message names a window only above that line.
- *  - Tool-call count (secondary): first at COMPACT_THRESHOLD, then every 25.
+ * One signal, context size: reads the latest assistant `usage` record from the
+ * session transcript and compares real context tokens against a window-scaled
+ * threshold, re-reminding after each interval of growth. A 1M context window is
+ * only ever proven by tokens exceeding 200000 (a 200k session can never report
+ * more), so the message names a window only above that line. There is no
+ * tool-call-count signal: call count says nothing about how full the context is.
  *
  * Self-contained: no external modules, Node core only (Claude Code ships Node).
  * Claude-native: reads Claude's transcript JSONL format and suggests /compact,
  * so it stays a Claude-only piece; Copilot/Codex get the guidance skill instead.
  *
- * Config (env): COMPACT_THRESHOLD (default 50), COMPACT_CONTEXT_THRESHOLD
- * (default 120000, or 250000 once tokens prove a 1M window; 0 disables the context
- * signal), COMPACT_CONTEXT_INTERVAL (default 60000; 40000 on a proven 1M window).
+ * Config (env): COMPACT_CONTEXT_THRESHOLD (default 120000, or 250000 once tokens
+ * prove a 1M window; 0 disables the nudge), COMPACT_CONTEXT_INTERVAL (default
+ * 60000; 40000 on a proven 1M window).
  */
 'use strict';
 
@@ -131,11 +129,10 @@ function main() {
     input && typeof input.transcript_path === 'string' ? input.transcript_path : '';
 
   const tmp = os.tmpdir();
-  const counterFile = path.join(tmp, `claude-tool-count-${sessionId}`);
   const bucketFile = path.join(tmp, `claude-context-bucket-${sessionId}`);
   const messages = [];
 
-  // --- Context-size signal (primary) ---
+  // --- Context-size signal ---
   const usage = readLatestUsage(transcriptPath);
   if (usage) {
     // >200k context is itself proof of a 1M window (a 200k session can never
@@ -177,30 +174,6 @@ function main() {
         /* best effort */
       }
     }
-  }
-
-  // --- Tool-count signal (secondary) ---
-  const toolThreshold = intEnv('COMPACT_THRESHOLD', 50) || 50;
-  let count = 1;
-  try {
-    const prev = Number.parseInt(fs.readFileSync(counterFile, 'utf8').trim(), 10);
-    if (Number.isInteger(prev) && prev > 0 && prev <= 1000000) count = prev + 1;
-  } catch {
-    count = 1;
-  }
-  try {
-    fs.writeFileSync(counterFile, String(count));
-  } catch {
-    /* best effort */
-  }
-  if (count === toolThreshold) {
-    messages.push(
-      `[StrategicCompact] ${toolThreshold} tool calls reached; consider /compact if you're transitioning phases.`
-    );
-  } else if (count > toolThreshold && (count - toolThreshold) % 25 === 0) {
-    messages.push(
-      `[StrategicCompact] ${count} tool calls: good checkpoint for /compact if the context is stale.`
-    );
   }
 
   if (messages.length > 0) {

@@ -4,6 +4,16 @@ Working recipe for the allowlisting forward proxy [[skill-activation]]'s
 Phase 2 points sandboxed `--run` cases at. See that SKILL.md for when to use
 it; this file is the mechanics.
 
+## Contents
+
+Topics, in order:
+
+- Squid build requirement and the throwaway `tls-cert=` file
+- Why `generate-host-certificates=off` is required
+- The `squid.conf` allowlist (CONNECT and SNI ACLs, peek-and-splice)
+- Denying all other egress at the network layer, and what the allowlist cannot see
+- Docker Desktop on macOS
+
 Enforcing the allowlist by TLS SNI, not by the CONNECT line's hostname, needs
 Squid built against OpenSSL: Debian and Ubuntu's default `squid` package is
 built against GnuTLS and refuses this config, so install

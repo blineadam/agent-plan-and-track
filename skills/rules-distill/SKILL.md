@@ -8,21 +8,15 @@ description: Scan installed skills and this repo's rule files, extract cross-cut
 Scan the skills installed across every harness plus this repo's rule files,
 find principles that recur in **2+ skills** (or repeatedly in `.tasks/lessons.md`)
 but aren't yet a rule, and distill them into `rules/`, with the user approving
-every change. This mechanizes the manual "promote a `lessons.md` entry into
-`core-rules.md`" move (e.g. PRs #6/#7).
+every change.
 
-Principle: **deterministic collection + LLM judgment**: scripts enumerate the
+Method: **deterministic collection + LLM judgment**. Scripts enumerate the
 facts exhaustively, then a subagent cross-reads the full context and proposes
-verdicts. Adapted from the ECC `rules-distill` skill for this repo's model:
-the rules are two files (`rules/agent-guidelines.md`, `rules/core-rules.md`),
-this repo is their source of truth, and skills live across three harness dirs.
-
-## When to use
-
-- Periodic rules maintenance (after installing or writing new skills)
-- When `.tasks/lessons.md` has a pattern that keeps recurring and belongs in the
-  standing rules instead
-- When the rules feel incomplete relative to the skills in use
+verdicts. The rules are two files (`rules/agent-guidelines.md`,
+`rules/core-rules.md`); this repo is their source of truth, and skills live
+across three harness dirs. Use it for periodic rules maintenance, when
+`.tasks/lessons.md` has a recurring pattern that belongs in the standing rules,
+or when the rules feel incomplete relative to the skills in use.
 
 ## Phase 1: Inventory (deterministic)
 
@@ -43,9 +37,10 @@ indexes the H2 headings of `rules/*.md`. Report a one-line summary
 The rule files are small: pass their **full text** to the analysis; no grep
 pre-filtering. Group the skills into thematic clusters and analyze each cluster
 in its own subagent (keep the main context clean; this is researcher-tier work,
-so pick the tier per [[efficient-frontier]] where the roster is available). After all clusters return,
-merge candidates: dedupe overlapping principles, and re-check the "2+ skills"
-bar using evidence pooled across **all** clusters.
+so pick the tier per [[efficient-frontier]] where the roster is available).
+After all clusters return, merge candidates: dedupe overlapping principles,
+and re-check the "2+ skills" bar using evidence pooled across **all**
+clusters.
 
 Launch a general-purpose subagent per cluster with this prompt:
 
@@ -65,12 +60,11 @@ Launch a general-purpose subagent per cluster with this prompt:
 >
 > **Exclude**: principles already in rules; language/framework-specific knowledge; code examples and commands (those stay in skills).
 
-Remember this repo's own top lesson: **keep rule content tool-agnostic**: no
-harness names in a shared rule. And respect the taxonomy: a constant
-behavioral constraint belongs in the instructions file rather than a skill.
-Whether it also belongs in the digest is a separate question, answered by the
-selection criteria in AGENTS.md's rule-delivery section, since the digest is a
-deliberate subset of the instruction file.
+Keep rule content tool-agnostic: no harness names in a shared rule. Respect
+the taxonomy: a constant behavioral constraint belongs in the instructions
+file rather than a skill. Whether it also belongs in the digest is a separate
+question, answered by the selection criteria in AGENTS.md's rule-delivery
+section, since the digest is a deliberate subset of the instruction file.
 
 ## Phase 3: User review & execution
 
@@ -79,6 +73,7 @@ followed by per-candidate details (evidence, violation risk, draft, or
 before/after for revisions). Then:
 
 - The user approves / modifies / skips each candidate by number.
+- Draft rule text can reference the source skill so readers find the detailed how.
 - **Never edit the rules automatically: always require approval.**
 - When editing `rules/core-rules.md`, keep any bullet the digest carries in sync
   with the fuller bullet in `rules/agent-guidelines.md`. The digest is a
@@ -89,9 +84,8 @@ before/after for revisions). Then:
   instruction managed blocks propagate to every harness (and to restart
   Copilot/Codex sessions for instruction-file changes).
 
-## Design principles
-
-- **What, not how**: extract principles (rules territory); code and commands stay in skills.
-- **Link back**: draft rule text can reference the source skill so readers find the detailed how.
-- **Anti-abstraction filter**: the 3 gates (2+ evidence, actionable test, violation risk) keep vague abstractions out of the rules.
-- **State the target, not the trap**: a prohibition names the behavior it forbids, which puts that behavior in context and can make it more available, not less. Where either phrasing would work, prefer the positive target ("do X") so the unwanted action stays unspoken. This is drafting guidance for newly proposed rule text, not license to rewrite this repo's existing "never X" rules: a prohibition backed by a hook or CI gate, or written to name a specific recorded failure, is doing a different job and stays as it is, since naming a concrete failure mode is often clearer than any positive restatement.
+When drafting new rule text, state the target rather than the trap: prefer
+"do X" over "never Y" where either works, since naming the forbidden behavior
+keeps it in context. This does not license rewriting existing "never X" rules:
+a prohibition backed by a hook or CI gate, or written to name a specific
+recorded failure, stays as it is.

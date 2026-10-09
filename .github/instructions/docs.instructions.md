@@ -68,11 +68,10 @@ themselves. See `.ai-style-rules.md` for the full convention set.
 - A skill's body follows one of three shapes: a pure checklist (numbered or
   bulleted H2 sections in strict execution order, like `plan-and-track`), a
   judgment/reference skill (reference or definitional H2 sections up front,
-  ending in a late, distinctly named procedure subsection, like `humanizer`'s
-  `## Process` or `read-the-damn-docs`'s
-  `## Required Workflow`; a short top-level framing section stating output
-  requirements, like humanizer's `## Task`, doesn't count as a second
-  competing procedure), or a numbered-reference skill (every H2 numbered
+  ending in a late, distinctly named procedure subsection, like
+  `read-the-damn-docs`'s `## Required Workflow`; a short top-level framing
+  section stating output requirements doesn't count as a second competing
+  procedure), or a numbered-reference skill (every H2 numbered
   straight through, like `logging-practices`, where most numbered sections
   are reference material rather than sequential steps and the one true
   procedure sits in a single numbered slot near the end, e.g. `## 9. Verify`,

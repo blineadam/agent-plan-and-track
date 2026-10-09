@@ -43,7 +43,8 @@
  * per-case cwd, unlike the behavioral runner) and its cases only ever need to
  * read it. --run is Claude-only and
  * intended for a unix sandbox; --dry-run / --precheck / --check are the
- * cross-platform modes. See SKILL.md for the allowlist recipe and the rationale.
+ * cross-platform modes. See references/live-run-isolation.md for the rationale and
+ * references/live-run-egress-proxy.md for the allowlist recipe.
  *
  * Tuning (env):
  *   DESC_TOKEN_FLOOR         words below which a description is a weak router signal (default 12)

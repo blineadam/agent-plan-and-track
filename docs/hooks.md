@@ -73,13 +73,38 @@ harness.
   warn channel, this becomes allow plus a stderr note.
 - `GATEGUARD_DENY=1` restores blocking behavior on Claude and Codex.
 - If both variables are set, `GATEGUARD_DENY` wins on every harness.
+- `GATEGUARD_DISABLED=1` turns the gate off entirely.
+- `GATEGUARD_EXEMPT_GLOBS` is a comma-separated list of globs to exempt (for
+  example `**/generated/**,*.snap`). `*` matches within a path segment, `**`
+  across.
+- `GATEGUARD_FULL_DENIALS` sets how many firings per session get the full fact
+  block before condensing to one line (default 3).
 
 ### Why warn by default on Claude and Codex
 
-The file was marked "checked" at deny time, so a denied-then-retried edit
-always passed. The gate could not verify that the demanded facts were ever
-presented. A measured A/B found that the deny-and-retry loop cost about 20%
-more turns for an identical edit.
+The hook used to deny the first edit and mark the file "checked" at the
+moment of denial, so the retry that followed always passed; the gate had no
+way to confirm the demanded facts were actually presented, only to observe a
+second tool call. Two data points, neither of which is a direct
+warn-versus-deny comparison:
+
+- Of 1,282 real firings recorded across 167 local sessions, 12 were actually
+  classified, spread across 8 projects; none of those 12 showed the demanded
+  investigation changing the resulting edit. The remaining firings were never
+  classified, so this is a small spot-check, not a full-corpus finding.
+- A controlled A/B (4 runs per arm, one fixture, Sonnet) compared blocking
+  gateguard against gateguard turned off entirely, not warn against deny.
+  The blocking loop cost about 20% more turns and 18% more dollars than the
+  off arm, and still produced an identical edit in 4 of 4 runs per arm.
+
+Ceiling caveat: the control arm (hook off) never failed either, so the A/B
+measures the blocking loop's cost on a task it could pass without the hook,
+and shows no benefit there; it cannot rule out a benefit on a task hard
+enough for the control arm to fail. It never measured warn mode at all, so it
+doesn't show warn matches deny's accuracy, only that deny's extra cost wasn't
+earned back on this one task. One task, one model, not a general verdict on
+fact-forcing. Copilot keeps deny by default for the reason given under
+gateguard.js above.
 
 ## git-guard.js
 
@@ -260,7 +285,25 @@ port there yet.
 
 ## hooks/claude/suggest-compact.js
 
-Claude-only nudge toward `/compact` at logical boundaries.
+Claude-only nudge toward `/compact` when the context is getting large.
+
+- Hook event: `PreToolUse`, on all tools. Subagent tool calls are skipped
+  (same id fields as `gateguard.js`), since sidechain transcripts misjudge the
+  main context.
+- One signal, context size: it reads the latest assistant `usage` record from
+  the tail of the session transcript and nudges once real context tokens reach
+  the threshold, then again after each interval of further growth. There is no
+  tool-call-count signal; call count says nothing about how full the context is.
+- Defaults are 120000 tokens with a 60000 interval. Context above 200000 tokens
+  proves a 1M window (a 200k session can never report more), and from there the
+  defaults become 250000 and 40000 and the message names the window percentage.
+- The nudge is delivered both as a user-visible `systemMessage` (only the user
+  can run `/compact`) and as `additionalContext` so the model can checkpoint
+  first. It never blocks a tool call and fails open.
+- Env: `COMPACT_CONTEXT_THRESHOLD` (`0` disables the nudge) and
+  `COMPACT_CONTEXT_INTERVAL`. The former `COMPACT_THRESHOLD` tool-count
+  variable is gone and now has no effect.
+- Fixtures: `node hooks/claude/scripts/run-suggest-compact-fixtures.js`.
 
 ## hooks/claude/plan-gate.js
 
