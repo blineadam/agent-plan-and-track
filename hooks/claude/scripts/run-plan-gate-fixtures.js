@@ -497,7 +497,7 @@ function assertInFlightWarning(stdout, batchPattern) {
   assert.strictEqual(out.permissionDecision, undefined);
   assert.match(out.additionalContext, /^\[PlanGate\]/);
   assert.match(out.additionalContext, batchPattern);
-  assert.match(out.additionalContext, /not closed out \(unchecked steps or no Review section\)/);
+  assert.match(out.additionalContext, /not closed out \(no fully checked plan, or no Review section\)/);
   assert.match(out.additionalContext, /another session's in-flight work/);
   assert.match(out.additionalContext, /The write is proceeding/);
   assert.match(out.additionalContext, /put that batch back exactly as it was before your write/);
@@ -522,6 +522,17 @@ async function writeDropsAllCheckedNoReviewBatchWarns() {
   const todo = writeTodo(f.root, '# Todo\n\n## Batch 43: checked but unreviewed\n### Plan\n- [x] done step (executor)\n');
   assert.strictEqual(run(skillEvent(session), f.env), '');
   assertInFlightWarning(run(writeEvent(session, todo, '# Todo\n'), f.env), /Batch 43: checked but unreviewed/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function writeDropsReviewedBatchWithoutChecklistWarns() {
+  const f = fixture();
+  const session = 'sess-batch-nochecklist';
+  // A Review heading alone is not closed out: plan-and-track also requires a
+  // fully checked Plan checklist, so a batch with no checked step warns.
+  const todo = writeTodo(f.root, '# Todo\n\n## Batch 44: reviewed without a checklist\n### Review\nLooked fine.\n');
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assertInFlightWarning(run(writeEvent(session, todo, '# Todo\n'), f.env), /Batch 44: reviewed without a checklist/);
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
@@ -610,6 +621,7 @@ const HANDLERS = {
   'agent-type-only-is-main-thread': agentTypeOnlyIsMainThread,
   'write-drops-in-flight-batch-warns': writeDropsInFlightBatchWarns,
   'write-drops-all-checked-no-review-batch-warns': writeDropsAllCheckedNoReviewBatchWarns,
+  'write-drops-reviewed-batch-without-checklist-warns': writeDropsReviewedBatchWithoutChecklistWarns,
   'edit-compresses-closed-batch-silent': editCompressesClosedBatchSilent,
   'edit-inserts-new-batch-silent': editInsertsNewBatchSilent,
   'lint-deny-wins-over-in-flight-warning': lintDenyWinsOverInFlightWarning,

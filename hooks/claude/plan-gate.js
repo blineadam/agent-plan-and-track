@@ -85,8 +85,8 @@
  * does, and PLANGATE_WARN demotes it like every other deny here.
  *
  * IN-FLIGHT BATCH WARNING: also once stamped, a .tasks/todo.md write that
- * removes a `Batch N` heading whose baseline block is not closed out (an
- * unchecked step, or no Review section) gets a non-blocking warning, since
+ * removes a `Batch N` heading whose baseline block is not closed out (no
+ * fully checked plan, or no Review section) gets a non-blocking warning, since
  * several sessions can share the file and that batch may be another session's
  * unfinished work. WARN-ONLY by design and with no ownership tracking: the
  * hook cannot tell whose batch it is, so it also warns on a session dropping
@@ -982,11 +982,12 @@ const BATCH_HEADING_RE = /^\s{0,3}#{1,3}\s+Batch\s+(\d+)\b/i;
 const H1_RE = /^\s{0,3}#\s/;
 const REVIEW_HEADING_RE = /^\s{0,3}#{2,3}\s+Review\b/im;
 const UNCHECKED_STEP_RE = /^\s*[-*]\s+\[ \]/m;
+const CHECKED_STEP_RE = /^\s*[-*]\s+\[x\]/im;
 
 // Batch number -> { title, closed } for every batch heading in `text`. A
 // block runs from its heading to the line before the next batch heading or
-// the next H1, or EOF. "Closed out" means a Review heading and no unchecked
-// step, the same signal plan-and-track's reconcile uses before compressing a
+// the next H1, or EOF. "Closed out" means a Review heading plus at least one
+// checked step and no unchecked one, the same signal plan-and-track's reconcile uses before compressing a
 // batch. A repeated number keeps its first block.
 function collectBatches(text) {
   const batches = new Map();
@@ -996,7 +997,7 @@ function collectBatches(text) {
       const block = current.lines.join('\n');
       batches.set(current.num, {
         title: current.lines[0].trim().replace(/^#+\s+/, ''),
-        closed: REVIEW_HEADING_RE.test(block) && !UNCHECKED_STEP_RE.test(block),
+        closed: REVIEW_HEADING_RE.test(block) && CHECKED_STEP_RE.test(block) && !UNCHECKED_STEP_RE.test(block),
       });
     }
   };
@@ -1017,7 +1018,7 @@ function inFlightBatchMsg(dropped) {
   const shown = dropped.slice(0, 3).map((b) => `  ${b.title.length > 100 ? b.title.slice(0, 100) + '...' : b.title}`);
   if (dropped.length > 3) shown.push(`  ...and ${dropped.length - 3} more`);
   return [
-    '[PlanGate] This write removes a batch heading from .tasks/todo.md for a batch that is not closed out (unchecked steps or no Review section), so it may be another session\'s in-flight work:',
+    '[PlanGate] This write removes a batch heading from .tasks/todo.md for a batch that is not closed out (no fully checked plan, or no Review section), so it may be another session\'s in-flight work:',
     ...shown,
     'The write is proceeding. If the batch is not yours, or dropping it was not intended, re-read .tasks/todo.md and put that batch back exactly as it was before your write, leaving everything else as the file now stands.',
     '(PLANGATE_DISABLED=1 turns this warning off.)',

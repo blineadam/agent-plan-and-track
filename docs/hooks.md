@@ -372,13 +372,13 @@ Several sessions can share one `.tasks/todo.md`. A stamped write that removes a
 `Batch N` heading (H1 to H3, e.g. `## Batch 41: title`) whose batch was not
 closed out in the on-disk baseline gets a non-blocking warning. A batch block
 runs from its heading to the next batch heading, the next H1, or end of file.
-It counts as closed out only if it has a `Review` heading and no unchecked
-step. Line-only summaries like `Batch 40: ...` are not headings and are ignored
+It counts as closed out only if it has a `Review` heading, at least one checked
+step, and no unchecked step. Line-only summaries like `Batch 40: ...` are not headings and are ignored
 on both sides.
 
 The warning is an `additionalContext` with no `permissionDecision`, so the
-write always proceeds. It names the batch, says why it was flagged (unchecked
-steps or no Review, so it may be another session's in-flight work), and tells
+write always proceeds. It names the batch, says why it was flagged (no fully
+checked plan, or no Review, so it may be another session's in-flight work), and tells
 the writer to re-read the file and put that batch back exactly as it was before
 the write, leaving everything else as the file now stands. It fires every time,
 with no once-marker.

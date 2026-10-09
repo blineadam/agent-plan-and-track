@@ -13,7 +13,7 @@ Several sessions can share one `.tasks/todo.md`, and a session that writes back 
 
 - Re-read the file immediately before each edit; never edit from a copy read earlier in the session.
 - Change only your own content: the batch this session created or was asked to resume, plus any line it adds under another heading such as `# Open and parked`. Use anchored edits (an exact-match replacement, or an insert at a heading); never write the whole file back.
-- Never compress, reorder, or close out a batch another session created. Step 1's reconcile is the one exception, and only for batches their owner already closed out.
+- Never compress, reorder, or close out a batch another session created. Step 1's reconcile is the one exception: it compresses batches their owner already closed out and trims old one-line summaries, both as anchored edits.
 - If the file changed since your last read, merge your change into the current version; never restore your copy over it.
 
 ## Before implementing
