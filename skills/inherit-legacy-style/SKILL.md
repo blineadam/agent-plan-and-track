@@ -118,7 +118,8 @@ GitHub Copilot's PR code review, offer to also invoke
 [[copilot-review-instructions]] to generate path-scoped
 `.github/instructions/*.instructions.md` review directives. That skill draws
 on the rules just written plus the rest of the project's documented
-conventions (its instructions file, README, and docs), not on
+conventions (its instructions file, README, and docs) and on this skill's own
+prohibitions about what `.ai-style-rules.md` must not contain, not on
 `.ai-style-rules.md` alone. Skip this offer entirely for projects that don't
 use Copilot review.
 

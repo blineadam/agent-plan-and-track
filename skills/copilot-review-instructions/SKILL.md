@@ -15,7 +15,7 @@ conventions from code and records them in the project's on-demand convention
 docs (`CONTRIBUTING.md`, style guides, `docs/`), or in `.ai-style-rules.md`
 when it has none, never in an instructions file. This skill
 collects *all* review-worthy material, both written (instructions files, README,
-docs) and inferred (`.ai-style-rules.md`), and converts the combined set into
+docs, a writing skill's prohibitions on its output file) and inferred (`.ai-style-rules.md`), and converts the combined set into
 Copilot's format. Run [[inherit-legacy-style]] first when you also want the
 implicit-convention layer; it isn't required if the project already documents
 its rules elsewhere.
@@ -58,11 +58,11 @@ which rules each one carries:
    tier's budget, so this step can't blow the context budget on a large repo.
 4. **A skill that writes a file the buckets cover**: when a skill checked into
    the repo (for example [[inherit-legacy-style]], which maintains
-   `.ai-style-rules.md`) writes or maintains a file Step 2's buckets will cover,
-   read its body for requirements on that output file, wherever they appear:
-   what the file must contain or must omit. A line about how the skill itself
-   works (its steps, modes, prompts) isn't one. The skill body is then a source
-   like any other, and the bucket's pointer names it.
+   `.ai-style-rules.md`) writes or maintains a tracked file Step 2's buckets will cover,
+   read its body for prohibitions on that output file's content, wherever they
+   appear: what the file must not contain. Its layout rules and a line about how
+   the skill itself works (its steps, modes, prompts) aren't one. The skill body
+   is then a source like any other, and the bucket's pointer names it.
 5. **A bounded scan of source itself**, scaled to repo size the way
    [[inherit-legacy-style]] tiers its sampling, to ground the documented rules
    in real examples and to derive the actual directory/extension globs Step 2

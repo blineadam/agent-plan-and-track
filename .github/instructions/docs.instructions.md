@@ -168,14 +168,10 @@ come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
   `skills/inherit-legacy-style/SKILL.md` (Incremental update, step 3) the file
   keeps no changelog: the commit that changes it is the change record.
 - Flag a header or rule in `.ai-style-rules.md` written as the story of how it
-  got there instead of the convention that holds now, and a header missing the
-  commit fingerprint or scale tier or a file missing any of the Golden Files,
-  Naming & State-Control Rules, or DONTs sections (`skills/inherit-legacy-style/SKILL.md`,
-  First-time full scan, step 5).
-- Flag a rule in `.ai-style-rules.md` that an instructions file (`AGENTS.md`,
-  `rules/`) or a `docs/*.md` page already states. That owner keeps the rule,
-  and the file points to it instead of restating it (same skill: step 5, and
-  the Fold into docs fallback).
+  got there instead of the convention that holds now
+  (`skills/inherit-legacy-style/SKILL.md`, First-time full scan, step 5).
+- Flag a rule in `.ai-style-rules.md` that an instructions file such as
+  `AGENTS.md` already states; the file leaves it out (same skill, same step).
 
 ## Out-of-scope decisions
 

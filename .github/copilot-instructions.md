@@ -4,7 +4,8 @@
 
 Repository conventions live in [AGENTS.md](../AGENTS.md), in `.ai-style-rules.md`
 at the repo root, and in the path-scoped files under `.github/instructions/`
-(`general`, `docs`, `scripts`), which are generated from `.ai-style-rules.md`.
+(`general`, `docs`, `scripts`), which are generated from `.ai-style-rules.md`,
+the instruction files, the docs, and `skills/inherit-legacy-style/SKILL.md`.
 This file covers how to review, not what the conventions are.
 
 Do not comment on what CI already blocks: the installer smoke test (install
