@@ -1,5 +1,5 @@
 ---
-applyTo: "hooks/**/*.js,hooks/**/*.json,skills/**/scripts/*.js,.github/scripts/*.js,**/*.sh,install.sh,install.ps1,install-office-skills.ps1,install-mcp-servers.ps1,.github/workflows/*.yml"
+applyTo: "hooks/**/*.js,hooks/**/*.json,skills/**/scripts/*.js,.github/scripts/*.js,scripts/**,**/*.sh,install.sh,install.ps1,install-office-skills.ps1,install-mcp-servers.ps1,.github/workflows/*.yml"
 excludeAgent: "cloud-agent"
 ---
 
@@ -11,7 +11,7 @@ Applies to the Node hook, guard, and skill scripts, the bash and PowerShell
 installers, hook wiring JSON, and CI workflows. Conventions come from
 `.ai-style-rules.md` (Golden Files: `gateguard.js`, `install.sh`,
 `lint-pr-body.js`; Naming & State-Control; DONTs), `docs/hooks.md`,
-`docs/installers.md`, `docs/models.md`, and `AGENTS.md`.
+`docs/installers.md`, `docs/models.md`, `README.md`, and `AGENTS.md`.
 
 ## JS hooks
 
@@ -42,10 +42,10 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   shared module root. The intentional copies are `readStdin` (all seven
   hooks), `intEnv` (`delivery-gate.js`, `gateguard.js`, `suggest-compact.js`;
   `scan-context.js` and `run-activation-cases.js` carry their own variants),
-  `splitShellSegments` (byte-identical in `hooks/claude/plan-gate.js`,
-  `hooks/codex/plan-gate-pilot.js`, and `hooks/git-guard.js`; never edit one
-  copy alone), and `detectOutwardMutations` (the two plan-gate files, while
-  `git-guard.js` has its own `detectDestructiveGit`).
+  `splitShellSegments` (`hooks/claude/plan-gate.js`,
+  `hooks/codex/plan-gate-pilot.js`, and `hooks/git-guard.js`), and
+  `detectOutwardMutations` (the two plan-gate files, while `git-guard.js` has
+  its own `detectDestructiveGit`).
 - `camelCase` for variables and functions, except wire-format fields mirrored
   verbatim from a payload the script didn't design (`tool_name`,
   `tool_input`, `session_id`), which keep their snake_case. A script's own
@@ -158,10 +158,6 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   floor), never `npx <tool>@latest`. The one exception is
   `install-mcp-servers.sh`'s `chrome-devtools-mcp@latest`, which its header
   explains; don't flag it.
-- When `jq` is missing, `install.sh` may offer to install it through a
-  package manager, but only after an interactive confirmation or the
-  `PT_INSTALL_JQ=1` opt-in; a non-interactive run without it exits with an
-  error. Flag an auto-remediation that installs without one of those.
 - Bash locals and functions are `snake_case` (`need_jq`, `frontmatter_field`,
   `write_back`); top-level constants are `SCREAMING_SNAKE_CASE`, env-derived
   or not (`REPO_DIR`, `NON_COPILOT_SKILLS`, `SKILLS_CLI`).
@@ -191,7 +187,7 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   `hooks/<harness>/scripts/run-<name>-*.js` with
   `hooks/<harness>/fixtures/<name>/cases.json` for a harness-specific hook,
   or `hooks/scripts/` and `hooks/fixtures/<name>/` for a shared hook. Flag a
-  hook test harness placed anywhere else.
+  hook fixture runner or cases file placed anywhere else under `hooks/`.
 
 ## Installers and cross-platform portability
 
@@ -219,22 +215,17 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   sequential global replaces), and abort the install on an escape they can't
   render. Flag a decoder that switches to sequential replaces or swallows an
   unhandled escape.
-- A repo-owned managed default is overwritten on every install, not guarded
-  by set-if-absent, unless `PT_KEEP_MODEL=1` gates it. Each `install.sh` and
-  `install.ps1` block that sets one, for any harness, is preceded by a comment reading
-  "Repo-owned `<name>`, re-asserted on every install", plus
-  "(`PT_KEEP_MODEL=1` keeps an existing per-machine choice)" when that opt-out
-  gates it, then the rationale, citing an external doc URL when the key name
-  doesn't make the semantics self-evident. Ungated settings written through
-  `set_json_path`/`Set-JsonPath` omit the parenthetical. Flag a new managed
-  default with no such comment.
-- Claude's permission posture is opt-in and never changes on a bare install:
-  `permissions.defaultMode` and `skipDangerousModePermissionPrompt` change
-  only under `PT_BYPASS_PERMISSIONS=1`, and `PT_KEEP_MODEL` doesn't cover
-  them. Flag a change that alters either without that opt-in.
+- Each `install.sh` and `install.ps1` block that sets a repo-owned harness
+  default is preceded by a comment reading "Repo-owned `<name>`, re-asserted
+  on every install", plus "(`PT_KEEP_MODEL=1` keeps an existing per-machine
+  choice)" when that opt-out gates it, then the rationale, citing an external
+  doc URL when the key name doesn't make the semantics self-evident. Ungated
+  settings written through `set_json_path`/`Set-JsonPath` omit the
+  parenthetical. Flag a new managed default with no such comment.
 - Instruction files get repo content inside a marker-delimited managed block;
   content outside the markers survives re-installs, and a file without
-  markers is left alone. Flag a change that rewrites outside the markers.
+  markers is left alone. The installer never touches `core-rules.local.md`.
+  Flag a change that rewrites outside the markers or touches that file.
 - A hook wired as more than one entry (`plan-gate.js`'s two `PreToolUse`
   entries, the Codex pilot's `SessionStart` plus `apply_patch` and Bash
   entries) is checked and repaired one entry at a time (matcher + command),
@@ -242,10 +233,8 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   that treats the hook as installed once any one entry exists, since that
   skips re-adding a newly introduced entry for someone with an older install.
 - The Codex and Copilot agent renderers must match the mapping tables in
-  `docs/installers.md` and `docs/models.md`: `model` through the
-  compatibility mapping, `effort` carried 1:1 as `model_reasoning_effort`,
-  `sandbox_mode` set to `workspace-write` when `tools` includes Edit or Write
-  and `read-only` otherwise. For Copilot, `model` stays unset, `effort` is
-  dropped, and `tools` map through the closed alias table, with an unknown
-  tool warned to stderr and dropped. Flag a renderer change that disagrees
-  with those tables, or a table change with no matching renderer change.
+  `docs/installers.md` and `docs/models.md`. Codex `sandbox_mode` is
+  `workspace-write` when `tools` includes Edit or Write and `read-only`
+  otherwise. For Copilot, `tools` map through the closed alias table, with an
+  unknown tool warned to stderr and dropped. Flag a renderer change that
+  disagrees with those tables.
