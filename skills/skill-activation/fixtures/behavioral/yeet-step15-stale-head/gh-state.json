@@ -1,0 +1,49 @@
+{
+  "isDraft": true,
+  "copilot_requested": false,
+  "reviewRequests": [],
+  "reviews": [
+    {
+      "id": 1001,
+      "commit_id": "OLD_SHA",
+      "state": "COMMENTED",
+      "body": "Copilot reviewed 2 of 2 changed files and generated 1 comment.",
+      "submitted_at": "2026-10-08T10:00:00Z"
+    },
+    {
+      "id": 2001,
+      "login": "octo",
+      "commit_id": "HEAD_SHA",
+      "state": "COMMENTED",
+      "body": "",
+      "submitted_at": "2026-10-08T11:00:00Z"
+    }
+  ],
+  "comments": [
+    {
+      "id": 5001,
+      "pull_request_review_id": 1001,
+      "path": "src/greet.js",
+      "line": 5,
+      "body": "greet() throws a TypeError when name is undefined. Consider defaulting it to 'world'.",
+      "commit_id": "OLD_SHA"
+    },
+    {
+      "id": 6001,
+      "pull_request_review_id": 2001,
+      "login": "octo",
+      "path": "src/greet.js",
+      "line": 5,
+      "body": "Fixed: greet() now defaults name to 'world'.",
+      "commit_id": "HEAD_SHA",
+      "in_reply_to_id": 5001
+    }
+  ],
+  "threads": [
+    {
+      "id": "PRRT_kwDODemo01",
+      "isResolved": true,
+      "commentId": 5001
+    }
+  ]
+}
