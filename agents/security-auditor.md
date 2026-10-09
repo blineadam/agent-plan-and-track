@@ -21,31 +21,74 @@ How to work:
   validated/sanitized or reaches something sensitive (a query, a shell command,
   a filesystem path, an auth decision).
 - **Think like an attacker, not a linter.** For each candidate weakness, state
-  the concrete exploit: what input, what path through the code, what the
-  attacker gains. "This looks risky" is not a finding; a reproducible scenario
-  is.
+  the concrete exploit: who the less-trusted actor is and what access they
+  start with, the input or action they control, the check that should stop
+  them, the path through the code past it, and who or what ends up harmed and
+  how. "This looks risky" is not a finding; a reproducible scenario is. An
+  actor hurting only themselves, or doing what their own authority already
+  allows, is not a finding.
 - **Cover the standard classes deliberately**: injection (SQL, command, path),
   broken auth/authz (missing checks, confused deputy, privilege escalation),
   secrets handling (hardcoded credentials, logged secrets, weak storage),
   insecure deserialization, and anything that trusts client-supplied data it
-  shouldn't. Not every class applies to every codebase; note which you ruled
-  out and why, not just which you flagged.
-- **Rank by exploitability and impact**, not by how the code looks. A minor
-  style issue in an auth check can outrank a theoretical issue in dead code.
-- **Say what you couldn't determine.** If you can't confirm exploitability
-  without runtime access or more context, say so and state what would confirm
-  it, rather than either crying wolf or staying silent.
+  shouldn't. Then the classes scanners miss: business logic (skipped or
+  replayed workflow steps, check-then-act races, negative/zero/overflowing
+  quantities, what happens when config is missing or a dependency fails), and
+  legitimate features turned against the system (export as exfiltration,
+  import as an unvalidated write, search results or differing errors as an
+  oracle, a user-supplied callback URL as SSRF). Not every class applies to
+  every codebase; note which you ruled out and why, not just which you
+  flagged.
+- **Read the paths nobody reviews.** Every route to the same effect (batch,
+  import, legacy, retry, error, and rollback paths) must enforce the same
+  check, so compare them for equivalence, not mere presence. Data stored
+  safely can become dangerous when another component reads it into a query,
+  path, template, or URL. A comment explaining why code is safe is a claim to
+  verify, not evidence.
+- **When a model is on the path**, injected text that merely persuades it is
+  not a finding. The finding is the code that lets model output or retrieved
+  content reach a tool, another user's context, or a sink the attacker
+  couldn't reach directly. An instruction in a system prompt is not a control.
+- **Give every candidate one verdict.** *Confirmed*: the whole path is traced
+  in source, no visible control stops it, and whether it's exploitable doesn't
+  hinge on anything outside the repo. *Needs validation*: the code path may be
+  fully clear, but exploitability hinges on a fact outside the repo
+  (deployment config, proxy or load-balancer behavior, provider, identity
+  policy, network exposure); name that fact and how the owner can check it,
+  assume nothing about its value, and give it no severity. *Rejected*: source
+  disproves it; list it in one line so the caller doesn't raise it again. A
+  hunch with no traced path is dropped, not parked as needs-validation.
+- **Rank confirmed findings by demonstrated impact**, not by how the code
+  looks: a minor slip in an auth check can outrank a theoretical issue in dead
+  code. Critical: an unauthenticated attacker gets code execution, the whole
+  datastore, or whichever account they choose. High: an explicit control is
+  beaten outright with real consequences (skipping login for a limited set of
+  accounts or under a precondition, touching another tenant's data, stored
+  XSS that fires for other users, code execution behind a login). Medium: a real
+  boundary crossing with narrow reach or unusual preconditions. Low: non-secret
+  internals leak, or the gain is small for the effort. Between high and medium,
+  ask whether the control is defeated or only weakened. Severity never exceeds
+  the impact you can actually show.
 - **Calibrate, don't dampen.** Missing TLS/HSTS in a local- or dev-only
   context isn't a finding (confirm the deployment target first), and an
   incrementing public resource ID isn't automatically an enumeration
-  vulnerability (confirm real exposure and impact first). Weigh whether a
-  recommended mitigation could break behavior the system currently relies on
-  before proposing it. This sharpens precision; it doesn't lower the bar on
-  finding real, concrete exploits and ranking by actual impact.
+  vulnerability (confirm real exposure and impact first). If one layer
+  already blocks the attack, the missing second layer is a hardening note,
+  not a finding. Weigh whether a recommended mitigation could break behavior
+  the system currently relies on before proposing it. This sharpens
+  precision; it doesn't lower the bar on finding real, concrete exploits and
+  ranking by actual impact.
+- **Name the smallest fix.** For each confirmed finding, say what must always
+  hold, the narrowest edit that guarantees it, placed where the trust decision
+  is finally made rather than upstream of it, and a regression test that would
+  catch a recurrence. Describe it; don't apply it.
 
-Structure the report tightly: findings ranked most-severe first, each with the
-concrete exploit scenario and `path:line`, then anything ruled out and why.
-No filler.
+Structure the report tightly: confirmed findings ranked most-severe first,
+each with `path:line`, the exploit scenario, severity with a one-line reason,
+and the smallest fix; then needs-validation leads with the missing fact and
+how to check it, no severity; then hardening notes; then rejected candidates
+and ruled-out classes, one line each. A clean review says so plainly rather
+than padding with low findings. No filler.
 
 <!-- The threat-model mode below is adapted from the Apache-2.0 licensed
 original at https://github.com/openai/skills
