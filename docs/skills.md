@@ -2,7 +2,8 @@
 
 The full catalog of skills this repo installs, grouped by what they're for.
 For the ones you'll actually hit every session, see the short tour in the
-main [README](../README.md#what-you-get).
+main [README](../README.md#what-you-get). See [credits](credits.md) for the
+full list of upstream sources.
 
 ## Everyday workflow
 

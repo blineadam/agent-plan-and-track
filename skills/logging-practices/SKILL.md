@@ -5,7 +5,7 @@ description: "Use when building a new service, endpoint, background job, CLI, sc
 
 # Logging Practices
 
-Disciplines for adding logging that a human or an LLM agent can diagnose a failure from, layered on top of the project's own logging conventions. Adapted from the structured-logging parts of the observability-and-instrumentation skill in [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT, Copyright (c) 2025 Addy Osmani); the parts adapted are the on-call questions, the levels table, the correlation ID and entry-point fields, the no-secrets rule, and verifying the telemetry itself, and its metrics, tracing, and alerting sections are out of scope here.
+Disciplines for adding logging that a human or an LLM agent can diagnose a failure from, layered on top of the project's own logging conventions.
 
 Verification (section 9) is mandatory, not advisory: one study found coding agents failed to comply with 67% of constructive logging requests (arXiv 2604.09409), and another found agent-built systems exposed fault-specific signals in at most 13.99% of failures even with logs (arXiv 2607.05785). Each new code path gets a forced failure and a look at the real line.
 

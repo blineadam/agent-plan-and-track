@@ -42,7 +42,7 @@ Things worth reporting:
 
 Not in scope: vulnerabilities in Claude Code, GitHub Copilot, or Codex
 themselves (report those to Anthropic, GitHub, or OpenAI respectively), or
-in third-party projects this repo credits/adapts from (see `README.md`).
+in third-party projects this repo credits/adapts from (see `docs/credits.md`).
 
 ## Dependencies
 

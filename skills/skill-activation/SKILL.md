@@ -18,9 +18,6 @@ This is the routing sibling of [[skill-comply]], which is supported on Claude Co
   skill-comply needs LLM judgment; this stays deterministic: the skill's name
   is in the trace or it isn't.
 
-Technique borrowed from `muratcankoylan/agent-skills-for-context-engineering`
-(its `activation-cases` corpus), rebuilt for this repo's skill set.
-
 ## Portability
 
 The two phases port differently (same shape as [[strategic-compact]]:

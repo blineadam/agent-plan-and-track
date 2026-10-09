@@ -76,21 +76,25 @@ and `out-of-scope.md`.
 - A skill vendored from an external repo (`frontend-design`, `webapp-testing`)
   carries an HTML comment right after its frontmatter naming the source URL
   and the exact edits made (never "lightly edited"), with the upstream
-  license verbatim in a sibling `LICENSE.txt`. A vendored section of an
+  license verbatim in a sibling `LICENSE.txt`, and an Apache-2.0 source also
+  gets an entry in the root `NOTICE`. A vendored section of an
   `agents/*.md` file carries the same comment above that section, with an
   `agents/<name>.LICENSE.txt`. Folding one vendored skill into another extends
   the surviving comment with a sentence naming the folded source. Flag a
-  vendored file missing the comment or license text, a fold-in that drops the
+  vendored file missing the comment, license text, or `NOTICE` entry, a fold-in that drops the
   retired skill's provenance, and a vendored skill whose upstream license
   forbids redistribution (check the license text) instead of being fetched at
   install time the way `install-office-skills.sh` handles the
   `docx`/`pdf`/`pptx`/`xlsx` skills.
-- A skill or rule rewritten from scratch but inspired by a public repo gets
-  a one-line "adapted from" credit in `AGENTS.md`, in its Skills section for
-  a skill or its rule-delivery section for a rule. Flag one merged without
-  that credit. A source that is a private or employer-internal repository
-  gets no credit anywhere, so don't flag its absence; flag a credit that
-  names one.
+- A skill, agent, hook, or rule adapted from a public repo gets its credit
+  as an entry in `docs/credits.md` (source, what was taken, upstream
+  license) in the same change, per `AGENTS.md`'s Credits and provenance
+  section, and an MIT source whose text was adapted also gets its copyright
+  line in the root `LICENSE`, which otherwise stays plain MIT text. Flag one
+  merged without that entry, and flag new credit prose in `AGENTS.md` or a
+  `SKILL.md` or `agents/*.md` body, since those load into agent context. A
+  source that is a private or employer-internal repository gets no credit
+  anywhere, so don't flag its absence; flag a credit that names one.
 
 ## Subagent definition files
 

@@ -3,20 +3,15 @@ name: yeet
 description: Commit, push, and open a draft GitHub PR, drive Copilot review to resolution, then mark the PR ready for review. Use when finished work is ready to publish, not for planning that merely ends in a PR.
 ---
 
+<!-- Adapted from the Apache-2.0 licensed yeet skill at https://github.com/openai/skills/tree/main/skills/.curated/yeet, by way of the port in https://github.com/ben-ranford/skills. Modified: rewritten throughout; adds the Copilot review loop (request, wait, triage, reply, resolve), the draft-until-ready flow and the ready-for-review flip, the merge gate on head SHA and CI rollup, the required PR body heading set with a humanizer pass and image preservation, AI self-attribution checks on commits and the body, and the references/ notes; drops the conventional-commit title rules, the template-discovery list, and blanket `git add -A` staging. Full license text: LICENSE.txt in this directory. -->
+
 # Yeet
 
 Publish local work with `git` + `gh` as a draft PR, see it through Copilot review while it is still a draft, and mark it ready for review only once the threads and the body are final.
 
-## Context to gather first
+## Before starting
 
-- Current branch: `git branch --show-current`
-- Working tree: `git status -sb`
-- Recent history: `git log --oneline -5`
-
-## Prerequisites
-
-1. `gh --version`; if missing, tell the user to install GitHub CLI and stop.
-2. `gh auth status`; if unauthenticated, tell the user to run `gh auth login` and stop.
+Confirm GitHub CLI is installed and signed in with `gh --version` and `gh auth status`; if either fails, stop and ask the user to install `gh` or run `gh auth login`. Then note where the work stands: the branch (`git branch --show-current`), uncommitted changes (`git status -sb`), and the last few commits (`git log --oneline -5`).
 
 ## Naming
 
