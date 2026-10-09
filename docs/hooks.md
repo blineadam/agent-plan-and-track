@@ -366,6 +366,38 @@ todo file. The marker is written at deny time, so an intentional retry passes.
 
 `PLANGATE_LINT_DISABLED` does not cover this guard.
 
+### In-flight batch removal warning
+
+Several sessions can share one `.tasks/todo.md`. A stamped write that removes a
+`Batch N` heading (H1 to H3, e.g. `## Batch 41: title`) whose batch was not
+closed out in the on-disk baseline gets a non-blocking warning. A batch block
+runs from its heading to the next batch heading, the next H1, or end of file.
+It counts as closed out only if it has a `Review` heading, at least one checked
+step, and no unchecked step. Line-only summaries like `Batch 40: ...` are not headings and are ignored
+on both sides.
+
+The warning is an `additionalContext` with no `permissionDecision`, so the
+write always proceeds. It names the batch, says why it was flagged (no fully
+checked plan, or no Review, so it may be another session's in-flight work), and tells
+the writer to re-read the file and put that batch back exactly as it was before
+the write, leaving everything else as the file now stands. It fires every time,
+with no once-marker.
+
+It runs last: a migration-state, attribution, or tag-lint deny in the same run
+wins, and a hook run emits at most one JSON. `PLANGATE_LINT_DISABLED` does not
+cover it, since it is a data-loss signal like the migration-state guard;
+`PLANGATE_DISABLED=1` does. Any error inside the check emits nothing.
+
+What it does not do:
+
+- It cannot see ownership, so it also warns when a session drops its own
+  unfinished batch.
+- It does not see an edit that changes a foreign batch's content without
+  removing its heading.
+- It covers Claude only. Codex's `plan-gate-pilot.js` and Copilot do not have
+  it.
+- It does not see shell rewrites of the file through `Bash`.
+
 ### Attribution guard
 
 A separate guard fires once per session when an unchecked `## Plan` step's

@@ -467,6 +467,129 @@ async function agentTypeOnlyIsMainThread() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+// --- In-flight batch warning cases ---
+//
+// Same shape as the attribution cases: real baseline on disk, stamp the
+// session, then a Write/Edit event. BATCH_BASELINE holds one closed-out batch
+// (all [x] plus a Review) and one in-flight batch (an unchecked step).
+
+const BATCH_CLOSED = '## Batch 40: closed batch\n### Plan\n- [x] done step (executor)\n### Review\nShipped.\n\n';
+const BATCH_INFLIGHT = '## Batch 41: in-flight work\n### Plan\n- [ ] pending step (executor)\n';
+const BATCH_BASELINE = '# Todo\n\n' + BATCH_CLOSED + BATCH_INFLIGHT;
+
+function editEvent(session, filePath, oldString, newString) {
+  return { session_id: session, tool_name: 'Edit', tool_input: { file_path: filePath, old_string: oldString, new_string: newString } };
+}
+
+// A hook run may emit at most one JSON object: stdout is empty or parses as
+// exactly one (two concatenated objects would throw here).
+function atMostOneJson(stdout) {
+  return stdout === '' ? null : JSON.parse(stdout);
+}
+
+function assertInFlightWarning(stdout, batchPattern) {
+  const parsed = atMostOneJson(stdout);
+  assert.notStrictEqual(parsed, null);
+  assert.deepStrictEqual(Object.keys(parsed), ['hookSpecificOutput']);
+  const out = parsed.hookSpecificOutput;
+  assert.deepStrictEqual(Object.keys(out).sort(), ['additionalContext', 'hookEventName']);
+  assert.strictEqual(out.hookEventName, 'PreToolUse');
+  assert.strictEqual(out.permissionDecision, undefined);
+  assert.match(out.additionalContext, /^\[PlanGate\]/);
+  assert.match(out.additionalContext, batchPattern);
+  assert.match(out.additionalContext, /not closed out \(no fully checked plan, or no Review section\)/);
+  assert.match(out.additionalContext, /another session's in-flight work/);
+  assert.match(out.additionalContext, /The write is proceeding/);
+  assert.match(out.additionalContext, /put that batch back exactly as it was before your write/);
+  assert.match(out.additionalContext, /PLANGATE_DISABLED=1/);
+}
+
+async function writeDropsInFlightBatchWarns() {
+  const f = fixture();
+  const session = 'sess-batch-inflight';
+  const todo = writeTodo(f.root, BATCH_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  const content = '# Todo\n\n' + BATCH_CLOSED;
+  assertInFlightWarning(run(writeEvent(session, todo, content), f.env), /Batch 41: in-flight work/);
+  // No once-marker: the same write warns again.
+  assertInFlightWarning(run(writeEvent(session, todo, content), f.env), /Batch 41: in-flight work/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function writeDropsAllCheckedNoReviewBatchWarns() {
+  const f = fixture();
+  const session = 'sess-batch-noreview';
+  const todo = writeTodo(f.root, '# Todo\n\n## Batch 43: checked but unreviewed\n### Plan\n- [x] done step (executor)\n');
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assertInFlightWarning(run(writeEvent(session, todo, '# Todo\n'), f.env), /Batch 43: checked but unreviewed/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function writeDropsReviewedBatchWithoutChecklistWarns() {
+  const f = fixture();
+  const session = 'sess-batch-nochecklist';
+  // A Review heading alone is not closed out: plan-and-track also requires a
+  // fully checked Plan checklist, so a batch with no checked step warns.
+  const todo = writeTodo(f.root, '# Todo\n\n## Batch 44: reviewed without a checklist\n### Review\nLooked fine.\n');
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assertInFlightWarning(run(writeEvent(session, todo, '# Todo\n'), f.env), /Batch 44: reviewed without a checklist/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function editCompressesClosedBatchSilent() {
+  const f = fixture();
+  const session = 'sess-batch-compress';
+  const todo = writeTodo(f.root, BATCH_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  // The one-line summary is not a heading, so Batch 40 vanishes as a heading
+  // but its baseline block was closed out: no warning.
+  assert.strictEqual(
+    run(editEvent(session, todo, BATCH_CLOSED, 'Batch 40: closed batch: done 2026-10-09\n\n'), f.env),
+    ''
+  );
+  // Liveness: the same compression of the in-flight batch does warn.
+  assertInFlightWarning(
+    run(editEvent(session, todo, BATCH_INFLIGHT, 'Batch 41: in-flight work: done\n'), f.env),
+    /Batch 41: in-flight work/
+  );
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function editInsertsNewBatchSilent() {
+  const f = fixture();
+  const session = 'sess-batch-insert';
+  const todo = writeTodo(f.root, BATCH_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  const inserted = '## Batch 42: new work\n### Plan\n- [ ] new step (executor)\n\n' + BATCH_INFLIGHT;
+  assert.strictEqual(run(editEvent(session, todo, BATCH_INFLIGHT, inserted), f.env), '');
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function lintDenyWinsOverInFlightWarning() {
+  const f = fixture();
+  const session = 'sess-batch-lintwins';
+  const todo = writeTodo(f.root, BATCH_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  // Drops in-flight Batch 41 AND adds an untagged plan step: one JSON, the
+  // tag-lint deny; no second warning JSON.
+  const content = '# Todo\n\n' + BATCH_CLOSED + '## Batch 42: new work\n### Plan\n- [ ] untagged new step\n';
+  const stdout = run(writeEvent(session, todo, content), f.env);
+  assert.notStrictEqual(atMostOneJson(stdout), null);
+  assert.match(denyReason(stdout), /need an owner tag/);
+  assert.doesNotMatch(stdout, /in-flight work/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function lintDisabledStillWarnsInFlight() {
+  const f = fixture();
+  const session = 'sess-batch-lintoff';
+  const todo = writeTodo(f.root, BATCH_BASELINE);
+  const env = { ...f.env, PLANGATE_LINT_DISABLED: '1' };
+  assert.strictEqual(run(skillEvent(session), env), '');
+  assertInFlightWarning(run(writeEvent(session, todo, '# Todo\n\n' + BATCH_CLOSED), env), /Batch 41: in-flight work/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 const HANDLERS = {
   'npm-test-silent': npmTestSilent,
   'git-push-help-silent': gitPushHelpSilent,
@@ -496,6 +619,13 @@ const HANDLERS = {
   'main-thread-deny-has-no-subagent-line': mainThreadDenyHasNoSubagentLine,
   'subagent-todo-deny-alt-id-field-names-caller': subagentTodoDenyAltIdFieldNamesCaller,
   'agent-type-only-is-main-thread': agentTypeOnlyIsMainThread,
+  'write-drops-in-flight-batch-warns': writeDropsInFlightBatchWarns,
+  'write-drops-all-checked-no-review-batch-warns': writeDropsAllCheckedNoReviewBatchWarns,
+  'write-drops-reviewed-batch-without-checklist-warns': writeDropsReviewedBatchWithoutChecklistWarns,
+  'edit-compresses-closed-batch-silent': editCompressesClosedBatchSilent,
+  'edit-inserts-new-batch-silent': editInsertsNewBatchSilent,
+  'lint-deny-wins-over-in-flight-warning': lintDenyWinsOverInFlightWarning,
+  'lint-disabled-still-warns-in-flight': lintDisabledStillWarnsInFlight,
 };
 
 async function main() {
