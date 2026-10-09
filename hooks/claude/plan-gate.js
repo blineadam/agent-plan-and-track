@@ -74,6 +74,18 @@
  * on-disk baseline counts as new. Runs only after the stamp check passes, via
  * maybeLintTodoContent().
  *
+ * REVIEW GOAL-LINE LINT: also once stamped, a .tasks/todo.md write that adds
+ * a Review heading (H2/H3) to a `Batch N` block, where the on-disk baseline
+ * block had none or the batch is new to the file, must carry `Goal met: yes`
+ * or `Goal met: partial: <non-empty gap>` between that heading and the end
+ * of the batch block, backing plan-and-track's closeout goal check. Denied
+ * until the line is present, like the tag lint: no once-marker, the retry
+ * self-corrects. Reviews already on disk, including legacy ones without the
+ * line, are never linted, and a Review under no `Batch N` heading is never
+ * seen (same block parsing as the in-flight batch warning below). Runs after
+ * the tag lint, via maybeLintReviewGoalLine(); PLANGATE_LINT_DISABLED turns
+ * it off. No Codex counterpart: plan-gate-pilot.js has no todo content lint.
+ *
  * MIGRATION-STATE GUARD: also once stamped, a .tasks/todo.md write that would
  * delete an existing `## Migration State` heading (the durable cross-session
  * block the migration-discipline skill keeps there) is denied once
@@ -118,11 +130,12 @@
  *                             kinds exist (git-push, gh-pr-create,
  *                             gh-pr-merge), so a value above 3 effectively
  *                             disables this gate.
- *   PLANGATE_LINT_DISABLED   "1" turns off the .tasks/todo.md content lint
- *                             and the main-attribution guard only (stamp
- *                             gate, scope gate, mutation gate, and the
- *                             migration-state guard and the in-flight batch
- *                             warning still apply).
+ *   PLANGATE_LINT_DISABLED   "1" turns off the .tasks/todo.md content lints
+ *                             (owner tags, Review goal line) and the
+ *                             main-attribution guard only (stamp gate, scope
+ *                             gate, mutation gate, and the migration-state
+ *                             guard and the in-flight batch warning still
+ *                             apply).
  */
 'use strict';
 
@@ -984,7 +997,7 @@ const REVIEW_HEADING_RE = /^\s{0,3}#{2,3}\s+Review\b/im;
 const UNCHECKED_STEP_RE = /^\s*[-*]\s+\[ \]/m;
 const CHECKED_STEP_RE = /^\s*[-*]\s+\[x\]/im;
 
-// Batch number -> { title, closed } for every batch heading in `text`. A
+// Batch number -> { title, closed, block } for every batch heading in `text`. A
 // block runs from its heading to the line before the next batch heading or
 // the next H1, or EOF. "Closed out" means a Review heading plus at least one
 // checked step and no unchecked one, the same signal plan-and-track's reconcile uses before compressing a
@@ -998,6 +1011,7 @@ function collectBatches(text) {
       batches.set(current.num, {
         title: current.lines[0].trim().replace(/^#+\s+/, ''),
         closed: REVIEW_HEADING_RE.test(block) && CHECKED_STEP_RE.test(block) && !UNCHECKED_STEP_RE.test(block),
+        block,
       });
     }
   };
@@ -1049,6 +1063,60 @@ function maybeWarnInFlightBatchRemoval(toolName, toolInput) {
     return true;
   } catch {
     return false; // fail open: any simulation/check error emits nothing
+  }
+}
+
+// --- Review goal-line lint ---
+
+// `Goal met: yes` or `Goal met: partial: <gap>` at line start, optionally as
+// a list item. [ \t] rather than \s throughout, so an empty gap can never
+// borrow the next line's text.
+const GOAL_MET_RE = /^[ \t]*(?:[-*][ \t]+)?Goal met:[ \t]*(?:yes\b|partial:[ \t]*\S)/im;
+
+// Batches whose Review heading is new in `result`: the same-numbered baseline
+// block had no Review, or the batch is new to the file. Reviews already on
+// disk never count. The section runs from the Review heading to the end of
+// its collectBatches block.
+function collectReviewsMissingGoalLine(baseline, result) {
+  const before = collectBatches(baseline);
+  const offenders = [];
+  for (const [num, b] of collectBatches(result)) {
+    const at = b.block.search(REVIEW_HEADING_RE);
+    if (at === -1) continue;
+    const prior = before.get(num);
+    if (prior && REVIEW_HEADING_RE.test(prior.block)) continue;
+    if (!GOAL_MET_RE.test(b.block.slice(at))) offenders.push(b);
+  }
+  return offenders;
+}
+
+function goalLineMsg(offenders) {
+  const shown = offenders.slice(0, 3).map((b) => `  ${b.title.length > 100 ? b.title.slice(0, 100) + '...' : b.title}`);
+  if (offenders.length > 3) shown.push(`  ...and ${offenders.length - 3} more`);
+  return [
+    '[PlanGate] A new Review section in .tasks/todo.md needs a goal line:',
+    ...shown,
+    "Measure the end state against the batch's stated goal before closing it out: anything short of the goal that this batch can still finish gets finished now, not parked. Then add one line to that Review: `Goal met: yes`, or `Goal met: partial: <gap>` naming what is still short. Retry the same write with the line added.",
+    '(PLANGATE_LINT_DISABLED=1 turns off this lint; PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
+  ].join('\n');
+}
+
+// Deny-until-fixed like maybeLintTodoContent (no once-marker): the retry
+// self-corrects, and `Goal met: partial: <gap>` is always available, so the
+// deny can't wedge a session. Runs only once stamped, after the tag lint;
+// respects PLANGATE_LINT_DISABLED and fails open on any error. Returns true
+// when a decision was emitted, so the caller skips the in-flight warning.
+function maybeLintReviewGoalLine(toolName, toolInput) {
+  if (process.env.PLANGATE_LINT_DISABLED === '1') return false;
+  try {
+    const sim = simulateResult(toolName, toolInput);
+    if (!sim) return false;
+    const offenders = collectReviewsMissingGoalLine(sim.baseline, sim.result);
+    if (!offenders.length) return false;
+    emitGateDecision(goalLineMsg(offenders));
+    return true;
+  } catch {
+    return false; // fail open: any simulation/lint error allows the edit
   }
 }
 
@@ -1127,13 +1195,14 @@ function main() {
   // .tasks/todo.md gate: unchanged behavior, own message.
   if (/(^|\/)\.tasks\/todo\.md$/i.test(norm)) {
     if (fs.existsSync(stamp)) {
-      // Guards before lint, exclusively: at most one decision JSON per run,
+      // Guards before lints, exclusively: at most one decision JSON per run,
       // and keeping the Migration State block and catching a misattributed
-      // (main: ...) reason both outrank tag formatting. The warn-only
-      // in-flight batch check goes last so any deny above wins.
+      // (main: ...) reason both outrank tag and goal-line formatting. The
+      // warn-only in-flight batch check goes last so any deny above wins.
       if (maybeGuardMigrationState(toolName, toolInput, stamp)) process.exit(0);
       if (maybeGuardMainAttribution(toolName, toolInput, stamp)) process.exit(0);
       if (maybeLintTodoContent(toolName, toolInput)) process.exit(0); // emitted emitGateDecision(lintMsg(...))
+      if (maybeLintReviewGoalLine(toolName, toolInput)) process.exit(0); // emitted emitGateDecision(goalLineMsg(...))
       maybeWarnInFlightBatchRemoval(toolName, toolInput);
       process.exit(0);
     }

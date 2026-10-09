@@ -14,11 +14,12 @@ work, then publish or capture what the session taught you.
 
 - **`plan-and-track`** (skill) kicks in on multi-step work: a feature, a
   refactor, a 3+ step fix, or picking a repo back up that already has a
-  `.tasks/todo.md`. Writes a checklist, tracks it, and verifies before
-  closing out. A Claude-only hook backs it up: it blocks writes to
-  `.tasks/todo.md` until the skill has actually run that session, and checks
-  that new plan steps carry an owner tag (implementation defaults to
-  executor; `main` needs a stated reason), and speed-bumps any write that
+  `.tasks/todo.md`. Writes a checklist, tracks it, and verifies the end state
+  against the user's goal before closing out. A Claude-only hook backs it up:
+  it blocks writes to `.tasks/todo.md` until the skill has actually run that
+  session, checks that new plan steps carry an owner tag (implementation
+  defaults to executor; `main` needs a stated reason) and that a new Review
+  records whether the batch's goal was met, and speed-bumps any write that
   would delete an existing `## Migration State` block (deny once, retry
   passes).
 
