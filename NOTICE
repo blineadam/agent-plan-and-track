@@ -1,0 +1,21 @@
+agent-plan-and-track
+
+This repository is licensed under the MIT License (see LICENSE), except for
+the third-party components below, which are licensed under the Apache
+License, Version 2.0.
+
+The following files contain material adapted from Apache-2.0 licensed
+originals. Each one carries an in-file notice naming its source and
+the changes made, and the full license text sits in the LICENSE.txt named
+next to it.
+
+- skills/frontend-design/ (including its themes/ data), adapted from the
+  frontend-design and theme-factory skills in
+  https://github.com/anthropics/skills, Copyright Anthropic, PBC.
+  License text: skills/frontend-design/LICENSE.txt
+- skills/webapp-testing/, adapted from the webapp-testing skill in
+  https://github.com/anthropics/skills, Copyright Anthropic, PBC.
+  License text: skills/webapp-testing/LICENSE.txt
+- The threat-model mode section of agents/security-auditor.md, adapted from
+  the security-threat-model skill in https://github.com/openai/skills,
+  Copyright OpenAI. License text: agents/security-auditor.LICENSE.txt

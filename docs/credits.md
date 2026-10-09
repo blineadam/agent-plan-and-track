@@ -1,6 +1,6 @@
 # Credits
 
-Every upstream source this repo adapts from, what was taken, and on what terms. The repo-wide MIT `LICENSE` carries the copyright lines for the MIT sources below. Vendored Apache-2.0 content keeps its own attribution notice inside the file plus a sibling `LICENSE.txt`.
+Every upstream source this repo adapts from, what was taken, and on what terms. The repo-wide MIT `LICENSE` carries the copyright lines for the MIT sources below. Vendored Apache-2.0 content keeps its own attribution notice inside the file plus a sibling `LICENSE.txt`, and the root `NOTICE` lists every such file.
 
 ## Rules
 
