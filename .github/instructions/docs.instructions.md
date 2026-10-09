@@ -10,8 +10,8 @@ excludeAgent: "cloud-agent"
 Applies to shared rule files, skill docs, agent docs, `docs/` reference pages,
 the README, `AGENTS.md`, and the Copilot review-instruction files. Conventions
 come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
-`README.md`, and the `docs/` pages `skills.md`, `installers.md`, `models.md`,
-and `out-of-scope.md`.
+`skills/inherit-legacy-style/SKILL.md`, `README.md`, and the `docs/` pages
+`skills.md`, `installers.md`, `models.md`, and `out-of-scope.md`.
 
 ## Shared rule files
 
@@ -154,9 +154,6 @@ and `out-of-scope.md`.
   from the README or `AGENTS.md`. Flag a README or `AGENTS.md` section that
   has grown into a reference table or per-item enumeration, as a candidate
   for extraction to `docs/`.
-- A convention that `AGENTS.md` or a `docs/*.md` page already states has that
-  doc as its owner. Flag a diff that restates it in `.ai-style-rules.md`
-  instead of pointing to the doc.
 - Use `-` as the bullet marker in doc prose (`docs/*.md`, `README.md`,
   `AGENTS.md`), never `*`, except inside a fenced block quoting external
   template text. Flag any other `*`-marked bullet outside a fence; don't
@@ -167,8 +164,18 @@ and `out-of-scope.md`.
 
 - Flag a dated entry, a `### [YYYY-MM-DD] Style Evolution Log` section, or
   "since the last round" / "was generalized to" narration inside a rule in
-  `.ai-style-rules.md`. The commit that changes the file is the change
-  record.
+  `.ai-style-rules.md`. This repo is git-tracked, so per
+  `skills/inherit-legacy-style/SKILL.md` (Incremental update, step 3) the file
+  keeps no changelog: the commit that changes it is the change record.
+- Flag a header or rule in `.ai-style-rules.md` written as the story of how it
+  got there instead of the convention that holds now, and a header missing the
+  commit fingerprint or scale tier or a file missing any of the Golden Files,
+  Naming & State-Control Rules, or DONTs sections (`skills/inherit-legacy-style/SKILL.md`,
+  First-time full scan, step 5).
+- Flag a rule in `.ai-style-rules.md` that an instructions file (`AGENTS.md`,
+  `rules/`) or a `docs/*.md` page already states. That owner keeps the rule,
+  and the file points to it instead of restating it (same skill: step 5, and
+  the Fold into docs fallback).
 
 ## Out-of-scope decisions
 
