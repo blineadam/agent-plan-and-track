@@ -1372,6 +1372,17 @@ function tokenizeSegment(segment) {
     const ch = text[i];
     if (/\s/.test(ch)) {
       i += 1;
+    } else if ((ch === '<' || ch === '>') && text[i + 1] === '(') {
+      // Process substitution `<(...)`/`>(...)` is a command, not a file:
+      // skip its balanced body, as substitutions are not descended into.
+      let depth = 0;
+      i += 1; // onto the opening paren
+      while (i < n) {
+        if (text[i] === '(') depth += 1;
+        if (text[i] === ')') depth -= 1;
+        i += 1;
+        if (depth === 0) break;
+      }
     } else if (ch === '<') {
       i += 1;
       while (i < n && /\s/.test(text[i])) i += 1;

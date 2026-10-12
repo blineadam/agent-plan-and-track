@@ -1058,6 +1058,10 @@ async function bashScopeExactTargetCounts() {
     ['echo x >| out.txt', 1],
     ['make 2>&1 | tee build.log', 1],
     ['echo x >&-', 0],
+    // Process substitution is a command, not a redirect target.
+    ['echo x | tee >(cat) out.txt', 1],
+    ['tee >(cat) >(wc -l) < f.txt', 0],
+    ['diff <(sort a.txt) <(sort b.txt) > /dev/null', 0],
     // Only an interpreter's own body is scanned for write APIs: a plain
     // heredoc that quotes write examples writes just its redirect target.
     [`cat > README.md <<'EOF'\nRun python3 -c "open('generated.py','w')" or\nPath('other.md').write_text('x') to regenerate.\nEOF`, 1],
