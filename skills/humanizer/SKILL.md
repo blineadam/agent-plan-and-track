@@ -77,10 +77,10 @@ How to add it back, using only what the author actually thinks and said:
 
 Before: "The experiment produced interesting results, though I'm not sure
 what to make of them. The agents generated 3 million lines of code. Some
-developers were impressed while others were skeptical." After: "I don't know
-what to make of this one. The agents wrote 3 million lines of code. Some
-developers are impressed. Others are already explaining why it doesn't
-count."
+developers were impressed while others were skeptical, and I can see both
+sides." After: "I don't know what to make of this one. The agents wrote 3
+million lines of code. Some developers were impressed, others were skeptical,
+and I can see both sides."
 
 ## Patterns to catch
 
