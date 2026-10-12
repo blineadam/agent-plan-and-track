@@ -43,6 +43,20 @@
     { "id": "review-goal-line-warn-mode", "expect": "warn-context" },
     { "id": "review-goal-line-lint-disabled-allowed", "expect": "silent" },
     { "id": "review-in-new-batch-denied", "expect": "deny" },
-    { "id": "goal-line-deny-wins-over-in-flight-warning", "expect": "deny" }
+    { "id": "goal-line-deny-wins-over-in-flight-warning", "expect": "deny" },
+    { "id": "bash-todo-python-heredoc-denied-unstamped", "expect": "deny" },
+    { "id": "bash-todo-python-heredoc-denied-stamped", "expect": "deny" },
+    { "id": "bash-todo-sed-in-place-denied", "expect": "deny" },
+    { "id": "bash-todo-append-redirect-denied", "expect": "deny" },
+    { "id": "bash-todo-tee-denied", "expect": "deny" },
+    { "id": "bash-todo-node-eval-denied", "expect": "deny" },
+    { "id": "bash-todo-absolute-path-denied", "expect": "deny" },
+    { "id": "bash-todo-move-copy-truncate-denied", "expect": "deny" },
+    { "id": "bash-todo-migration-move-allowed", "expect": "silent" },
+    { "id": "bash-todo-read-only-silent", "expect": "silent" },
+    { "id": "bash-todo-warn-mode-warns", "expect": "warn-context" },
+    { "id": "bash-todo-lint-disabled-still-denies", "expect": "deny" },
+    { "id": "bash-todo-plangate-disabled-silent", "expect": "silent" },
+    { "id": "bash-todo-subagent-deny-names-caller", "expect": "deny" }
   ]
 }

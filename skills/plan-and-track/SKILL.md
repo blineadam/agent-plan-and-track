@@ -15,6 +15,7 @@ Several sessions can share one `.tasks/todo.md`, and a session that writes back 
 - Change only your own content: the batch this session created or was asked to resume, plus any line it adds under another heading such as `# Open and parked`. Use anchored edits (an exact-match replacement, or an insert at a heading); never write the whole file back.
 - Never compress, reorder, or close out a batch another session created. Step 1's reconcile is the one exception: it compresses batches their owner already closed out and trims old one-line summaries, both as anchored edits.
 - If the file changed since your last read, merge your change into the current version; never restore your copy over it.
+- Make every change to an existing `.tasks/todo.md` with the harness's file-edit tool (Edit or Write, `apply_patch` on Codex), never a shell redirect, `sed -i`, or an inline script, because plan-gate's close-out lints only see edit-tool writes. Step 1's migration `mv` is the one shell write, since it creates the file rather than changing one.
 
 ## Before implementing
 

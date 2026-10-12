@@ -312,7 +312,8 @@ Claude-only nudge toward `/compact` when the context is getting large.
   stamp and Bash gate (`plan-gate-pilot.js`, below). Copilot has no Skill tool
   and a fail-closed `PreToolUse`, so this hook is not installed there.
 - Wired through two `PreToolUse` entries that share a command. One matches
-  `Skill|Edit|Write|MultiEdit`; the other matches `Bash` for the mutation gate.
+  `Skill|Edit|Write|MultiEdit`; the other matches `Bash` for the mutation gate
+  and the todo.md shell-write guard.
 
 It implements several independent gates in one file:
 
@@ -333,9 +334,10 @@ from the file count.
 
 ### Mutation gate
 
-On the `Bash` entry, counts distinct outward git/gh mutation kinds toward
-`PLANGATE_MUTATION_THRESHOLD` (default `2`): `git push`, `gh pr create`, and
-`gh pr merge`, classified conservatively with quote awareness.
+On the `Bash` entry (which also carries the shell-write guard below), counts
+distinct outward git/gh mutation kinds toward `PLANGATE_MUTATION_THRESHOLD`
+(default `2`): `git push`, `gh pr create`, and `gh pr merge`, classified
+conservatively with quote awareness.
 
 Once a session would cross that count without a stamp, the Bash call is
 denied. This catches a PR-shaped task that never touches enough files to trip
@@ -415,7 +417,49 @@ What it does not do:
   removing its heading.
 - It covers Claude only. Codex's `plan-gate-pilot.js` and Copilot do not have
   it.
-- It does not see shell rewrites of the file through `Bash`.
+- It does not see shell rewrites of the file through `Bash` on its own: the
+  shell-write guard below denies those commands before they run.
+
+### Todo shell-write guard
+
+The lints above only see `Edit`/`Write`/`MultiEdit`, so a `Bash` call that
+rewrites `.tasks/todo.md` would skip all of them. This was a real incident: an
+inline `python3` heredoc compressed a batch that still had unchecked steps and
+no Review section, which the edit-tool path would have caught. On the `Bash`
+entry, a command that references `.tasks/todo.md` and writes it is denied with
+a message to make the same change with the Edit or Write tool.
+
+Write signals: a `>`/`>>` redirect or `tee` (including `tee -a`) targeting the
+file; `sed -i`, `perl -i`, or `perl -pi` in a command naming it; `truncate`
+on it; `mv`, `cp`, or `install` onto it when it already exists (a move onto a
+missing file is a create, which is how plan-and-track's legacy `tasks/`
+migration lands, and a `cd` earlier in the command or a missing hook `cwd`
+counts as existing); or an inline interpreter
+(python, node, ruby, perl, via heredoc, `-c`, or `-e`) whose body names the
+file and calls a write API (`open(` with a `w`/`a`/`x`/`+` mode, `.write(`,
+`write_text`, `writeFileSync`/`writeFile`/`appendFile`, `File.write`).
+Read-only uses pass: `cat`, `grep`, `sed -n`, `head`, `tail`, `wc`, `awk`
+without a redirect onto it, `git diff`, an interpreter that only reads, and a
+redirect to a different file.
+
+It scans the raw command text rather than `splitShellSegments`, which strips
+heredoc bodies, where an inline script keeps its write. Like the stamp gate it
+denies on every attempt, stamped or not, with no once-marker: the way out is
+switching tools, not a session event. It runs before the mutation gate's early
+exit and appends the subagent line like the other denies.
+
+`PLANGATE_DISABLED=1` turns it off and `PLANGATE_WARN=1` demotes it to a
+warning. `PLANGATE_LINT_DISABLED` does not cover it, since it would also
+unprotect the Migration State guard.
+
+What it does not do:
+
+- It cannot see a path built dynamically (variables, concatenation, or a `cd`
+  into `.tasks` followed by a bare `todo.md`), or a script file whose body is
+  not in the command. These are accepted gaps.
+- It covers Claude only. Codex's `plan-gate-pilot.js` has no `.tasks/todo.md`
+  content lints to bypass, and Copilot has no plan gate, so there is nothing
+  to mirror there.
 
 ### Attribution guard
 
