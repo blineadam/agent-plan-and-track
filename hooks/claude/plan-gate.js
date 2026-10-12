@@ -1151,7 +1151,9 @@ function maybeLintReviewGoalLine(toolName, toolInput) {
 // The todo.md path as it appears in a raw command: optionally prefixed by any
 // directory (relative or absolute), either slash, and not a longer name such
 // as todo.md.bak. Case-insensitive like the edit-tool gate (NTFS).
-const TODO_PATH = String.raw`(?<![\w.\-])(?:[^\s'"<>|;&()=]*[\/\\])?\.tasks[\/\\]todo\.md(?![\w.\-])`;
+// A quoted operand may carry spaces in its parent directories, so it gets its
+// own alternative, quotes included, ahead of the unquoted form.
+const TODO_PATH = String.raw`(?:"[^"\n]*[\/\\]\.tasks[\/\\]todo\.md"|'[^'\n]*[\/\\]\.tasks[\/\\]todo\.md'|(?<![\w.\-])(?:[^\s'"<>|;&()=]*[\/\\])?\.tasks[\/\\]todo\.md(?![\w.\-]))`;
 const TODO_REF_RE = new RegExp(TODO_PATH, 'i');
 // `>`, `>>`, `>|`, `2>`, `&>` whose target is the todo path.
 const TODO_REDIRECT_RE = new RegExp(String.raw`>>?\|?[ \t]*['"]?` + TODO_PATH, 'i');
@@ -1172,7 +1174,7 @@ const TODO_DELETE_RE = new RegExp(String.raw`\b(?:rm|unlink)\b[^|;&\n]*` + TODO_
 const TODO_MOVE_AWAY_RE = new RegExp(String.raw`\bmv\b[^|;&\n]*[ \t]['"]?` + TODO_PATH + String.raw`['"]?[ \t]+[^|;&\n]*\S`, 'i');
 // The .tasks directory itself as an rm or mv operand (not .tasks-old,
 // .tasks/lessons-draft.md): removing or moving it takes todo.md with it.
-const TASKS_DIR = String.raw`(?<![\w.\-])(?:[^\s'"<>|;&()=]*[\/\\])?\.tasks[\/\\]?(?=['"]?(?:[ \t]|[|;&)\n]|$))`;
+const TASKS_DIR = String.raw`(?:"[^"\n]*[\/\\]\.tasks[\/\\]?"|'[^'\n]*[\/\\]\.tasks[\/\\]?'|(?<![\w.\-])(?:[^\s'"<>|;&()=]*[\/\\])?\.tasks[\/\\]?(?=['"]?(?:[ \t]|[|;&)\n]|$)))`;
 const TASKS_DIR_REMOVE_RE = new RegExp(String.raw`\b(?:rm|mv)\b[^|;&\n]*[ \t]['"]?` + TASKS_DIR, 'i');
 // truncate takes only file operands, so the path anywhere in its segment is a target.
 const TODO_TRUNCATE_RE = new RegExp(String.raw`\btruncate\b[^|;&\n]*` + TODO_PATH, 'i');
@@ -1220,7 +1222,7 @@ function isLegacyTodoMigration(dest, command, cwd) {
   const [, verb, sources, rawPath] = dest;
   if (verb.toLowerCase() !== 'mv' || !LEGACY_TODO_SOURCE_RE.test(sources + ' ')) return false;
   if (/(?:^|[^\w.\-])cd\b/.test(command)) return false;
-  const p = rawPath.replace(/\\/g, '/');
+  const p = rawPath.replace(/^(['"])(.*)\1$/, '$2').replace(/\\/g, '/');
   if (!path.isAbsolute(p) && !cwd) return false;
   return !fs.existsSync(path.isAbsolute(p) ? p : path.resolve(cwd, p));
 }

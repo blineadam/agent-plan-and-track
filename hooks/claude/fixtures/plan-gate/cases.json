@@ -54,6 +54,7 @@
     { "id": "bash-todo-move-copy-truncate-denied", "expect": "deny" },
     { "id": "bash-todo-migration-move-allowed", "expect": "silent" },
     { "id": "bash-todo-delete-denied", "expect": "deny" },
+    { "id": "bash-todo-quoted-spaced-path-denied", "expect": "deny" },
     { "id": "bash-todo-read-only-silent", "expect": "silent" },
     { "id": "bash-todo-warn-mode-warns", "expect": "warn-context" },
     { "id": "bash-todo-lint-disabled-still-denies", "expect": "deny" },

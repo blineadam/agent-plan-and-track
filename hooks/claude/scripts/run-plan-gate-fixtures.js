@@ -842,6 +842,33 @@ async function bashTodoMigrationMoveAllowed() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+// A literal path is still literal when a parent directory has a space in it:
+// quoted, it reaches every write and removal form, and the legacy migration
+// exemption still resolves it.
+async function bashTodoQuotedSpacedPathDenied() {
+  const f = fixture();
+  const spaced = path.join(f.root, 'my project');
+  writeTodo(spaced, '# Batch 1: x\n');
+  const p = path.join(spaced, '.tasks', 'todo.md');
+  const session = 'sess-todo-spaced';
+  for (const command of [
+    `echo x > "${p}"`,
+    `echo x >> '${p}'`,
+    `printf 'x' | tee -a "${p}"`,
+    `rm "${p}"`,
+    `mv "${p}" /tmp/todo.md`,
+    `cp /tmp/new.md "${p}"`,
+    `truncate -s 0 "${p}"`,
+    `rm -rf "${path.join(spaced, '.tasks')}"`,
+  ]) {
+    assertTodoShellDeny(run({ ...bashEvent(command, session), cwd: f.root }, f.env));
+  }
+  const fresh = path.join(f.root, 'other dir', '.tasks', 'todo.md');
+  assert.strictEqual(run({ ...bashEvent(`mv tasks/todo.md "${fresh}"`, session), cwd: f.root }, f.env), '', 'legacy migration onto a missing quoted path');
+  assert.strictEqual(run({ ...bashEvent(`cat "${p}"`, session), cwd: f.root }, f.env), '', 'read-only quoted path');
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 // Deleting the file or moving it away removes the Migration State block and
 // every in-flight batch with no check running, and so does removing or moving
 // the .tasks directory that holds it.
@@ -985,6 +1012,7 @@ const HANDLERS = {
   'bash-todo-move-copy-truncate-denied': bashTodoMoveCopyTruncateDenied,
   'bash-todo-migration-move-allowed': bashTodoMigrationMoveAllowed,
   'bash-todo-delete-denied': bashTodoDeleteDenied,
+  'bash-todo-quoted-spaced-path-denied': bashTodoQuotedSpacedPathDenied,
   'bash-todo-read-only-silent': bashTodoReadOnlySilent,
   'bash-todo-warn-mode-warns': bashTodoWarnModeWarns,
   'bash-todo-lint-disabled-still-denies': bashTodoLintDisabledStillDenies,
