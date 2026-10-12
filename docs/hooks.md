@@ -312,8 +312,9 @@ Claude-only nudge toward `/compact` when the context is getting large.
   stamp and Bash gate (`plan-gate-pilot.js`, below). Copilot has no Skill tool
   and a fail-closed `PreToolUse`, so this hook is not installed there.
 - Wired through two `PreToolUse` entries that share a command. One matches
-  `Skill|Edit|Write|MultiEdit`; the other matches `Bash` for the mutation gate
-  and the todo.md shell-write guard.
+  `Skill|Edit|Write|MultiEdit`; the other matches `Bash` for the mutation gate,
+  the scope gate's count of files written through Bash, and the todo.md
+  shell-write guard.
 
 It implements several independent gates in one file:
 
@@ -331,6 +332,41 @@ and edits source directly without touching `.tasks/todo.md`.
 
 `.tasks/todo.md`, `.tasks/lessons.md`, and `.claude/settings*.json` are exempt
 from the file count.
+
+Files written or removed through `Bash` join the same count, so a heredoc
+`cat > f` is not a way around it (a 2026-09-04 executor, denied by this gate,
+used exactly that). Only literal operands count: redirect targets (`>`, `>>`,
+`N>`, attached `>f`, `>&f`, `>|f`), `tee` operands, the files of an in-place
+`sed` or `perl` (including macOS `sed -i ''`), the `cp`/`install` destination,
+every `mv` operand, `rm`/`unlink`/`truncate` operands, and a string-literal
+path passed to a write API (`open(p, 'w')`, `Path(p).write_text`,
+`writeFile`, `appendFile`, `File.write`) in an interpreter's own program
+text. That text is the `-c`/`-e` argument of a python, node, ruby, or perl
+command, or a heredoc body opened on that command's line. A plain
+`cat > f <<EOF` body is data, so write examples quoted in it don't count.
+Targets resolve against the session cwd and dedupe with the edit tools by
+absolute path, so writing one file through both counts it once. A Bash call
+that reaches the threshold is denied and records nothing; if it would also
+trip the mutation gate, only the scope deny is emitted.
+
+Never counted: read-only commands (`cat`, `grep`, `sed -n`, `git diff`),
+`touch`, `mkdir`, fd dups like `2>&1`, anything under `/dev/`, a target
+containing `$` or a backtick, and temp scratch (`os.tmpdir()`, `/tmp`,
+`/private/tmp`, `/var/tmp`) outside the cwd. A project that itself lives under
+a temp directory is still gated, and the edit tools have no temp exemption.
+
+The Bash side is a regex classifier, so it has accepted false negatives: a
+script file whose body is not in the command (`python gen.py`, npm scripts,
+codegen, formatters), `git apply`/`checkout`/`restore`/`stash`, `patch`,
+dynamic paths, command substitution and `eval`, a `cd` before a relative
+write (resolved against the session cwd instead), aliases, full-path binaries
+other than an interpreter (`/bin/rm`), and a heredoc nested inside another
+heredoc's data. It is a backstop for a session that skipped planning, not a
+sandbox.
+
+There is no Codex mirror. `plan-gate-pilot.js`'s scope tracker is a
+once-per-session nonblocking warning driven by `apply_patch` disk deltas, with
+no per-call count for a Bash write to join.
 
 ### Mutation gate
 

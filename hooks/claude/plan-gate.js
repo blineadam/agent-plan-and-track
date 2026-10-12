@@ -48,6 +48,37 @@
  * next to the session's stamp file) so a denied edit is never counted and
  * repeated denials can't inflate the total.
  *
+ * The same count covers files written or removed through Bash, on the Bash
+ * entry, so a heredoc `cat > f` is not a side door (the 2026-09-04 executor
+ * used one). Counted, from literal operands only: redirect targets (`>`, `>>`,
+ * `N>`, attached `>f`, `>&f`, `>|f`), `tee` operands, the files of an in-place
+ * `sed`/`perl`, the `cp`/`install` destination (or `-t DIR`), every `mv`
+ * operand, `rm`/`unlink`/`truncate` operands, and a string-literal path handed
+ * to a write API (`open(p, 'w')`, `Path(p).write_text`, `writeFile`/
+ * `appendFile`, `File.write`) in an interpreter's own program text: the -c/-e
+ * argument of a python/node/ruby/perl command, or a heredoc body opened on
+ * that command's line (a plain `cat > f <<EOF` body is data and is not
+ * scanned). Targets resolve
+ * against the hook's cwd (`~/` expands, backslashes flip) and dedupe with the
+ * edit tools by absolute path, so Bash plus Write of one file counts once.
+ * Never counted: read-only commands, `touch`, `mkdir`, fd dups (`2>&1`,
+ * `>&2`), /dev/*, any target containing `$` or a backtick (unresolvable), and
+ * temp paths (os.tmpdir(), /tmp, /private/tmp, /var/tmp) outside the cwd; a
+ * project that itself lives under a temp dir is still gated. The Edit branch
+ * has no temp exemption. A call that crosses the scope threshold is denied
+ * with the "command" wording and records nothing; when it also crosses the
+ * mutation threshold, the scope deny is the one JSON emitted.
+ * ACCEPTED FALSE NEGATIVES (a regex classifier, same class as the todo.md
+ * shell-write guard): a script file whose body is not in the command
+ * (`python gen.py`, npm scripts, codegen, formatters), `git apply`/`checkout`/
+ * `restore`/`stash`, `patch`, dynamic paths, command substitution and `eval`,
+ * a `cd` before a relative write (resolved against the session cwd instead),
+ * aliases, full-path binaries other than an interpreter (`/bin/rm`), and a
+ * heredoc nested inside another heredoc's data.
+ * No Codex mirror: plan-gate-pilot.js's scope tracker is a once-per-session
+ * nonblocking warning fed by apply_patch disk deltas, with no per-call count
+ * for a Bash write to join.
+ *
  * MUTATION GATE: the scope gate's blind spot is a PR-shaped task that never
  * touches 3 distinct files (e.g. "push this branch, open a PR, merge it")
  * but still runs an outward, hard-to-reverse git/gh mutation without ever
@@ -59,10 +90,10 @@
  * call is denied the same hard way as .tasks/todo.md and the scope gate above
  * (deny-until-stamped, not gateguard's deny-once: a bare retry of the same
  * command is denied again); only the plan-and-track stamp unlocks.
- * CLAUDE-ONLY, same portable-skill + Claude-only-hook split as the rest of
- * this file: Codex fires no hookable shell event (only apply_patch) to
- * classify this way, and Copilot has no Skill tool or comparable PreToolUse
- * hook wired here either.
+ * CLAUDE-ONLY for this file, same portable-skill + Claude-only-hook split as
+ * the rest of it: plan-gate-pilot.js carries its own Bash PreToolUse mutation
+ * gate on Codex, and Copilot has no Skill tool or comparable PreToolUse hook
+ * wired here.
  *
  * CONTENT LINT: once a session is stamped, .tasks/todo.md writes still get a
  * lighter check: every NEW unchecked step inside a `## Plan` section (not
@@ -787,9 +818,9 @@ function gateMsg(input) {
     .join('\n');
 }
 
-function scopeMsg(threshold, input) {
+function scopeMsg(threshold, input, noun) {
   return [
-    `[PlanGate] This session has touched ${threshold} distinct files without a plan: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this edit.`,
+    `[PlanGate] This session has touched ${threshold} distinct files without a plan: invoke the plan-and-track Skill via the Skill tool first (it loads the reconcile/lessons/checklist steps), then retry this ${noun}.`,
     subagentLine(input),
     '(PLANGATE_SCOPE_THRESHOLD sets the file-count trigger, default 3; PLANGATE_DISABLED=1 turns this gate off; PLANGATE_WARN=1 demotes it to a warning.)',
   ]
@@ -1251,6 +1282,308 @@ function maybeDenyTodoShellWrite(command, input) {
   }
 }
 
+// --- Scope gate: files written through Bash ---
+
+// Options that take their value as the NEXT word, per command family, so the
+// value is not mistaken for a file operand.
+const TARGET_ARG_OPTS = new Set(['-m', '-o', '-g', '-S']); // cp, install
+const MOVE_ARG_OPTS = new Set(['-S']); // mv
+const TRUNCATE_ARG_OPTS = new Set(['-s', '-r', '--size', '--reference']);
+// `sed`/`perl` in-place flag: `-i`, `-i.bak`, a cluster of no-argument flags
+// ending in i (`-pi`, `-ni`, `-0pi`, `-Ei`), or `--in-place`. The cluster
+// prefix is restricted so `perl -Mstrict` (an `i` inside a module name) is
+// not read as in-place.
+const IN_PLACE_FLAG_RE = /^(?:-[nsErzpalwWStTuUc0-9]*i|--in-place)/;
+// String-literal paths handed to a write API inside an inline interpreter
+// body (group 2 is the path). A variable or computed path has no literal and
+// is not matched.
+const INLINE_WRITE_PATH_RES = [
+  /\bopen\(\s*(['"])([^'"\n]+)\1\s*,\s*(?:mode\s*=\s*)?['"][rbt]*[wax+][^'"]*['"]/g,
+  /\bPath\(\s*(['"])([^'"\n]+)\1\s*\)\s*\.\s*(?:write_text|write_bytes)\b/g,
+  /\b(?:writeFile|appendFile)(?:Sync)?\(\s*(['"])([^'"\n]+)\1/g,
+  /\bFile\.write\(\s*(['"])([^'"\n]+)\1/g,
+];
+
+// Quote-aware word tokenizer for ONE splitShellSegments segment (comments and
+// heredoc bodies are already gone). Returns the command words, with quotes
+// removed and `\ ` unescaped, plus the operand word of every unquoted `>`/`>>`
+// redirect (an attached fd prefix like the `2` in `2>err.log` is dropped, and
+// a `<` input redirect with its operand is skipped). A `$(...)` or backtick
+// substitution stays inside its word, so it is never split into fake operands.
+// `dangling` marks a segment ending in a `>` with no operand, which is what
+// splitShellSegments leaves of `>&word` and `>|word`.
+function tokenizeSegment(segment) {
+  const text = String(segment || '');
+  const n = text.length;
+  const words = [];
+  const redirects = [];
+  let i = 0;
+
+  // One word starting at i; stops at unquoted whitespace, `<`, or `>`.
+  function readWord() {
+    let word = '';
+    while (i < n && !/[\s<>]/.test(text[i])) {
+      const ch = text[i];
+      if (ch === "'") {
+        const end = text.indexOf("'", i + 1);
+        const stop = end === -1 ? n : end;
+        word += text.slice(i + 1, stop);
+        i = Math.min(stop + 1, n);
+      } else if (ch === '"') {
+        i += 1;
+        while (i < n && text[i] !== '"') {
+          if (text[i] === '\\' && i + 1 < n && '"\\$`'.includes(text[i + 1])) i += 1;
+          word += text[i];
+          i += 1;
+        }
+        i += 1;
+      } else if (ch === '`') {
+        const end = text.indexOf('`', i + 1);
+        const stop = end === -1 ? n : end + 1;
+        word += text.slice(i, stop);
+        i = stop;
+      } else if (ch === '$' && text[i + 1] === '(') {
+        let depth = 0;
+        const from = i;
+        i += 1; // past the `$`, onto the opening paren
+        while (i < n) {
+          if (text[i] === '(') depth += 1;
+          if (text[i] === ')') depth -= 1;
+          i += 1;
+          if (depth === 0) break;
+        }
+        word += text.slice(from, i);
+      } else if (ch === '\\' && i + 1 < n) {
+        // An escaped space is part of the word; any other backslash is kept
+        // (a Windows path separator, flipped later).
+        word += /\s/.test(text[i + 1]) ? text[i + 1] : ch + text[i + 1];
+        i += 2;
+      } else {
+        word += ch;
+        i += 1;
+      }
+    }
+    return word;
+  }
+
+  let lastWordEnd = -1;
+  let dangling = false;
+  while (i < n) {
+    const ch = text[i];
+    if (/\s/.test(ch)) {
+      i += 1;
+    } else if ((ch === '<' || ch === '>') && text[i + 1] === '(') {
+      // Process substitution `<(...)`/`>(...)` is a command, not a file:
+      // skip its balanced body, as substitutions are not descended into.
+      let depth = 0;
+      i += 1; // onto the opening paren
+      while (i < n) {
+        if (text[i] === '(') depth += 1;
+        if (text[i] === ')') depth -= 1;
+        i += 1;
+        if (depth === 0) break;
+      }
+    } else if (ch === '<') {
+      i += 1;
+      while (i < n && /\s/.test(text[i])) i += 1;
+      readWord();
+    } else if (ch === '>') {
+      if (lastWordEnd === i && /^\d+$/.test(words[words.length - 1])) words.pop();
+      i += text[i + 1] === '>' ? 2 : 1;
+      while (i < n && /\s/.test(text[i])) i += 1;
+      const target = readWord();
+      if (target) redirects.push(target);
+      else if (i >= n) dangling = true;
+    } else {
+      words.push(readWord());
+      lastWordEnd = i;
+    }
+  }
+  return { words, redirects, dangling };
+}
+
+// File operands of a command's words (words[0] is the command). `--` ends
+// option parsing; an option listed in argOpts consumes the next word;
+// `-t DIR` / `--target-directory DIR` is returned separately.
+function shellOperands(words, argOpts) {
+  const operands = [];
+  let targetDir = null;
+  for (let i = 1; i < words.length; i += 1) {
+    const w = words[i];
+    if (w === '--') {
+      operands.push(...words.slice(i + 1));
+      break;
+    }
+    if (w === '-t' || w === '--target-directory') {
+      if (i + 1 < words.length) targetDir = words[i + 1];
+      i += 1;
+    } else if (w.startsWith('--target-directory=')) {
+      targetDir = w.slice('--target-directory='.length);
+    } else if (w.length > 1 && w[0] === '-') {
+      if (argOpts.has(w)) i += 1;
+    } else {
+      operands.push(w);
+    }
+  }
+  return { operands, targetDir };
+}
+
+// File operands of an in-place `sed`/`perl`, else []. The first non-option
+// word is the script unless -e/-f/--expression/--file supplied it (those
+// consume the next word, which is a script, not a file).
+function inPlaceTargets(words) {
+  const operands = [];
+  let inPlace = false;
+  let scriptSupplied = false;
+  for (let i = 1; i < words.length; i += 1) {
+    const w = words[i];
+    if (w === '--') {
+      operands.push(...words.slice(i + 1));
+      break;
+    }
+    if (w.length < 2 || w[0] !== '-') {
+      operands.push(w);
+      continue;
+    }
+    if (IN_PLACE_FLAG_RE.test(w)) inPlace = true;
+    // BSD/macOS `sed -i ''`: the empty word is the backup suffix, not the script.
+    if (w === '-i' && words[i + 1] === '') {
+      i += 1;
+      continue;
+    }
+    if (w === '--expression' || w === '--file' || /^-[A-Za-z0-9]*[ef]$/.test(w)) {
+      scriptSupplied = true;
+      i += 1;
+    } else if (/^--(?:expression|file)=/.test(w) || /^-[A-Za-z0-9]*[ef]./.test(w)) {
+      scriptSupplied = true;
+    }
+  }
+  if (!inPlace) return [];
+  return scriptSupplied ? operands : operands.slice(1);
+}
+
+// Literal file operands a command writes or removes: tee, in-place sed/perl,
+// the cp/install destination, every mv operand, and rm/unlink/truncate
+// operands. touch and mkdir create nothing worth counting and are skipped.
+function commandWriteTargets(words) {
+  const cmd = words[0];
+  if (cmd === 'tee') return shellOperands(words, new Set()).operands;
+  if (cmd === 'sed' || cmd === 'perl') return inPlaceTargets(words);
+  if (cmd === 'rm' || cmd === 'unlink') return shellOperands(words, new Set()).operands;
+  if (cmd === 'truncate') return shellOperands(words, TRUNCATE_ARG_OPTS).operands;
+  if (cmd === 'cp' || cmd === 'install') {
+    if (cmd === 'install' && words.some((w) => w === '-d' || w === '--directory')) return [];
+    const { operands, targetDir } = shellOperands(words, TARGET_ARG_OPTS);
+    if (targetDir !== null) return [targetDir];
+    return operands.length >= 2 ? [operands[operands.length - 1]] : [];
+  }
+  if (cmd === 'mv') {
+    const { operands, targetDir } = shellOperands(words, MOVE_ARG_OPTS);
+    const all = targetDir === null ? operands : [...operands, targetDir];
+    return all.length >= 2 ? all : [];
+  }
+  return [];
+}
+
+// An interpreter as the invoked command (`python3`, `/usr/bin/node`), matched
+// on the word's basename.
+const INTERPRETER_CMD_RE = /^(?:python3?(?:\.\d+)?|node|ruby|perl)$/i;
+function isInterpreterWord(word) {
+  return INTERPRETER_CMD_RE.test(path.basename(String(word || '')));
+}
+
+// Bodies of heredocs whose opening line invokes an interpreter
+// (`python3 - <<'EOF'`, `cat <<'EOF' | node`). splitShellSegments strips
+// heredoc bodies, so these are cut from the raw text; a plain `cat > f <<EOF`
+// body is data, not a script, and is never returned.
+const HEREDOC_OPEN_RE = /^([^\n]*?)<<-?[ \t]*(['"]?)([A-Za-z_][\w-]*)\2([^\n]*)$/gm;
+function interpreterHeredocBodies(command) {
+  const bodies = [];
+  for (const m of command.matchAll(HEREDOC_OPEN_RE)) {
+    const opening = (m[1] + ' ' + m[4]).split(/[\s|;&()]+/);
+    if (!opening.some(isInterpreterWord)) continue;
+    const lines = command.slice(m.index + m[0].length + 1).split('\n');
+    const end = lines.findIndex((line) => line.replace(/^\t+/, '') === m[3]);
+    bodies.push((end === -1 ? lines : lines.slice(0, end)).join('\n'));
+  }
+  return bodies;
+}
+
+// String-literal paths an interpreter body hands to a write API.
+function writeApiTargets(body) {
+  const targets = [];
+  for (const re of INLINE_WRITE_PATH_RES) {
+    for (const m of body.matchAll(re)) targets.push(m[2]);
+  }
+  return targets;
+}
+
+// Raw target strings a Bash command writes or removes (see the SCOPE GATE
+// header paragraph for the counted shapes and accepted gaps). Skips leading
+// VAR=value and `command` like detectOutwardMutations, plus the shell
+// keywords that can precede a command in a segment (`then cp a b`). Only an
+// interpreter's own program text is scanned for write APIs: its -c/-e
+// arguments, or a heredoc body opened on its line.
+const LEADING_SHELL_KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', 'time']);
+function extractBashWriteTargets(command) {
+  const targets = [];
+  let pendingRedirect = false;
+  for (const segment of splitShellSegments(command)) {
+    const { words, redirects, dangling } = tokenizeSegment(segment);
+    targets.push(...redirects);
+    if (pendingRedirect) {
+      // The split at `&` or `|` cut a `>&word` or `>|word` redirect: this
+      // segment's first word is its operand unless it is an fd dup or close
+      // (`2>&1`, `>&-`), and the rest still belongs to the cut command.
+      pendingRedirect = dangling;
+      if (words.length && !/^(?:\d+|-)$/.test(words[0])) targets.push(words[0]);
+      continue;
+    }
+    pendingRedirect = dangling;
+    while (words.length && (LEADING_SHELL_KEYWORDS.has(words[0]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]))) words.shift();
+    if (words[0] === 'command') words.shift();
+    if (!words.length) continue;
+    targets.push(...commandWriteTargets(words));
+    if (isInterpreterWord(words[0])) targets.push(...writeApiTargets(words.slice(1).join('\n')));
+  }
+  for (const body of interpreterHeredocBodies(command)) targets.push(...writeApiTargets(body));
+  return targets;
+}
+
+// Case-insensitive "dir contains file" on slash-normalized absolute paths.
+function isUnderDir(dir, file) {
+  const d = dir.toLowerCase().replace(/\/+$/, '');
+  const f = file.toLowerCase();
+  return f === d || f.startsWith(d + '/');
+}
+
+// Raw targets to the normalized absolute paths the scope gate counts. Drops
+// what cannot be resolved (`$` or a backtick), /dev/*, scope-exempt files,
+// and temp scratch (os.tmpdir(), /tmp, /private/tmp, /var/tmp) that lies
+// outside the cwd, so a project living under /tmp is still gated. The POSIX
+// temp roots are matched on the target as written, before resolution: on
+// Windows, path.resolve would put `/tmp` on a drive, and not necessarily the
+// one the target lands on. No fs work.
+const POSIX_TEMP_ROOTS = ['/tmp', '/private/tmp', '/var/tmp'];
+function resolveBashTargets(rawTargets, cwd) {
+  const base = typeof cwd === 'string' && cwd ? cwd : process.cwd();
+  const baseNorm = path.resolve(base).replace(/\\/g, '/');
+  const osTemp = path.resolve(os.tmpdir()).replace(/\\/g, '/');
+  const resolved = new Set();
+  for (const raw of rawTargets) {
+    if (!raw || /[$`]/.test(raw)) continue;
+    let p = raw.replace(/\\/g, '/');
+    if (p.startsWith('~/')) p = os.homedir().replace(/\\/g, '/') + p.slice(1);
+    if (p.startsWith('/dev/')) continue;
+    const abs = path.resolve(base, p).replace(/\\/g, '/');
+    if (isScopeExempt(abs)) continue;
+    const isTemp = isUnderDir(osTemp, abs) || POSIX_TEMP_ROOTS.some((root) => isUnderDir(root, p) || isUnderDir(root, abs));
+    if (isTemp && !isUnderDir(baseNorm, abs)) continue;
+    resolved.add(abs);
+  }
+  return [...resolved];
+}
+
 function main() {
   let input = {};
   try {
@@ -1278,39 +1611,52 @@ function main() {
     process.exit(0);
   }
 
-  // Mutation-gate branch: a Bash call that makes an outward git/gh mutation
-  // is counted toward PLANGATE_MUTATION_THRESHOLD the same way the scope
-  // gate counts edited files. Fast path first: most Bash calls classify to
-  // an empty Set, so this exits before any filesystem work on the hot path
-  // every Bash call hits.
+  // Bash branch: a Bash call is counted toward the scope gate (files it
+  // writes or removes) and the mutation gate (outward git/gh mutation kinds),
+  // the same way the Edit branch counts edited files. Fast path first: most
+  // Bash calls classify to no targets and no kinds, so this exits before any
+  // filesystem work on the hot path every Bash call hits.
   if (toolName === 'Bash') {
+    const command = String(toolInput.command || '');
     // Todo shell-write guard first: it applies stamped or unstamped, and a
     // hook run emits at most one decision JSON.
-    if (maybeDenyTodoShellWrite(String(toolInput.command || ''), input)) process.exit(0);
-    const kinds = detectOutwardMutations(String(toolInput.command || ''));
-    if (kinds.size === 0) process.exit(0);
+    if (maybeDenyTodoShellWrite(command, input)) process.exit(0);
+    const kinds = detectOutwardMutations(command);
+    const targets = resolveBashTargets(extractBashWriteTargets(command), input.cwd);
+    if (kinds.size === 0 && targets.length === 0) process.exit(0);
     const mstamp = stampPath(input.session_id, input);
     if (fs.existsSync(mstamp)) process.exit(0);
 
     withSessionLock(input.session_id, input, () => {
-      const threshold = mutationThreshold();
+      const scopeLimit = scopeThreshold();
+      const mutationLimit = mutationThreshold();
+      // Markers dedupe by absolute path, so a file written by Bash and by an
+      // edit tool (or twice in one command) counts once.
+      const newMarkers = [...new Set(targets.map((t) => fileMarkerPath(input.session_id, input, t)))].filter((m) => !fs.existsSync(m));
       const newKinds = [...kinds].filter((k) => !fs.existsSync(mutationMarkerPath(input.session_id, input, k)));
-      const wouldBeCount = distinctMutationCount(input.session_id, input) + newKinds.length;
+      const scopeCrossed = targets.length > 0 && distinctFileCount(input.session_id, input) + newMarkers.length >= scopeLimit;
+      const mutationCrossed = kinds.size > 0 && distinctMutationCount(input.session_id, input) + newKinds.length >= mutationLimit;
 
-      if (wouldBeCount >= threshold) {
-        emitGateDecision(mutationMsg(threshold, input));
-        // A real deny must not record any new kind (it would inflate the
-        // count on retry, defeating deny-until-stamped). PLANGATE_WARN=1
-        // lets the call proceed, so it falls through and records like any
-        // other allowed call.
-        if (process.env.PLANGATE_WARN !== '1') return;
-      }
+      // Scope wins over mutation: one decision JSON per run.
+      if (scopeCrossed) emitGateDecision(scopeMsg(scopeLimit, input, 'command'));
+      else if (mutationCrossed) emitGateDecision(mutationMsg(mutationLimit, input));
+      // A real deny must not record any new file or kind (it would inflate
+      // the count on retry, defeating deny-until-stamped). PLANGATE_WARN=1
+      // lets the call proceed, so it falls through and records like any
+      // other allowed call.
+      if ((scopeCrossed || mutationCrossed) && process.env.PLANGATE_WARN !== '1') return;
 
-      // Allowed (or warned-but-proceeding): record each newly seen kind so a
-      // future call doesn't re-count it, and repeated denials of an
-      // unrecorded kind never inflate the total.
+      // Allowed (or warned-but-proceeding): record each newly seen file and
+      // kind so a future call doesn't re-count it, and repeated denials of an
+      // unrecorded one never inflate the total.
       try {
-        fs.mkdirSync(mutationsDir(input.session_id, input), { recursive: true });
+        if (newMarkers.length) fs.mkdirSync(filesDir(input.session_id, input), { recursive: true });
+        for (const m of newMarkers) fs.writeFileSync(m, '');
+      } catch {
+        /* best effort: worst case a later call re-counts the same file */
+      }
+      try {
+        if (newKinds.length) fs.mkdirSync(mutationsDir(input.session_id, input), { recursive: true });
         for (const k of newKinds) fs.writeFileSync(mutationMarkerPath(input.session_id, input, k), '');
       } catch {
         /* best effort: worst case a later call re-detects the same kind */
@@ -1363,7 +1709,7 @@ function main() {
     const wouldBeCount = alreadyCounted ? distinctFileCount(input.session_id, input) : distinctFileCount(input.session_id, input) + 1;
 
     if (wouldBeCount >= threshold) {
-      emitGateDecision(scopeMsg(threshold, input));
+      emitGateDecision(scopeMsg(threshold, input, 'edit'));
       // A real deny must not record the marker (it would inflate the count
       // on retry). PLANGATE_WARN=1 lets the edit proceed, so it falls
       // through and gets the same marker as any other allowed edit.
