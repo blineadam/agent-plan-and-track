@@ -18,9 +18,9 @@ install substitutes or replace the upload workflow with a different GitHub API o
 
 ## 1. Authenticate and define the evidence
 
-Invoke [[yeet]] and use its context and preflight checks. Run `gh auth status`. If
-the CLI is not authenticated, run `gh auth login`, let the user complete GitHub's browser, SSO,
-passkey, or two-factor prompts, then rerun `gh auth status`. Never ask the user to paste a password,
+Invoke [[yeet]] and use its context and preflight checks. If `gh auth status` fails, stop and ask
+the user to run `gh auth login` and complete GitHub's browser, SSO, passkey, or two-factor prompts,
+then rerun `gh auth status`. Never ask the user to paste a password,
 token, or one-time code into chat.
 
 The screenshot upload uses a logged-in GitHub browser session through the installed browser MCP.

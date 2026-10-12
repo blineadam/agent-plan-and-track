@@ -51,8 +51,8 @@ same length and structure, no opinions, no acknowledgment of uncertainty, no
 humor or edge, reads like a press release.
 
 How to add it back:
-- **Have opinions.** React to facts instead of just reporting them. "I
-  genuinely don't know how to feel about this" beats a neutral pros/cons list.
+- **Have opinions.** React to facts instead of just reporting them; a stated
+  reaction beats a neutral pros/cons list.
 - **Vary rhythm.** Short sentences. Then longer ones that take their time
   getting where they're going.
 - **Let some mess in.** Tangents, asides, and half-formed thoughts read
