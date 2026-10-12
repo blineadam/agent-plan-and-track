@@ -11,20 +11,34 @@ writing, and a rewrite of someone else's draft.
 
 ## Task
 
-1. Identify every instance of the patterns below in the input.
+1. Name the reader and what they came to learn or do, then identify every
+   instance of the patterns below in the input.
 2. Write a draft rewrite, don't delete: replace AI-isms with natural
    alternatives and cover everything the original covers; if the original has
    five paragraphs, the rewrite has five. Preserve meaning and match the
    intended register (formal, casual, technical). It should read naturally
-   aloud, vary sentence length, and prefer specific detail and simple
-   is/are/has constructions.
+   aloud, vary sentence length, and prefer specific detail the source
+   supplies and simple is/are/has constructions.
 3. Add personality only when the content and voice call for it (see below);
    encyclopedic, technical, legal, or reference text stays neutral.
 4. Ask "what still makes this obviously AI-generated?" and revise to address
    the remaining tells.
-5. Last pass, after everything else: scan the prose you wrote (not preserved
+5. Compare the rewrite against the original: every fact, number, command,
+   link, and placeholder survives, each condition or qualification stays
+   attached to its claim, and nothing is stated more strongly than the
+   source supports.
+6. Last pass, after everything else: scan the prose you wrote (not preserved
    quotations) specifically for `—` and `–`; either one means the pass isn't
    done.
+
+## Facts and evidence
+
+Never add a number, customer count, quote, testimonial, rating, or result
+the author didn't supply and you haven't verified, not even to make a vague
+sentence concrete. When the text needs one, leave a visible placeholder such
+as `[needs number]` and name the gap in your notes; a placeholder never ships
+dressed as a claim. A precise claim can still be false, so a date or spec you
+touch gets the same check as a customer count.
 
 Keep the draft and the still-AI notes as your own working process; hand back
 the final version, noting only what changed, unless the user asks to see the
@@ -50,22 +64,36 @@ Signs of soulless writing even when technically clean: every sentence the
 same length and structure, no opinions, no acknowledgment of uncertainty, no
 humor or edge, reads like a press release.
 
-How to add it back:
-- **Have opinions.** React to facts instead of just reporting them; a stated
-  reaction beats a neutral pros/cons list.
+How to add it back, using only what the author actually thinks and said:
+- **Have opinions.** Where the author has a stance, state it as a reaction
+  to the facts instead of a neutral pros/cons list. Never invent one they
+  didn't express.
 - **Vary rhythm.** Short sentences. Then longer ones that take their time
-  getting where they're going.
-- **Let some mess in.** Tangents, asides, and half-formed thoughts read
-  human; perfect structure reads algorithmic.
+  getting where they're going. Let the thought set the length, not a quota
+  of fragments.
+- **Let some mess in.** The author's own tangents, asides, and half-formed
+  thoughts read human; don't smooth them into perfect structure, and don't
+  manufacture new ones.
 
-Before: "The experiment produced interesting results. The agents generated 3
-million lines of code. Some developers were impressed while others were
-skeptical." After: "I genuinely don't know how to feel about this one. 3
-million lines of code, generated while the humans presumably slept. Half the
-dev community is losing their minds, half are explaining why it doesn't
+Before: "The experiment produced interesting results, though I'm not sure
+what to make of them. The agents generated 3 million lines of code. Some
+developers were impressed while others were skeptical." After: "I don't know
+what to make of this one. The agents wrote 3 million lines of code. Some
+developers are impressed. Others are already explaining why it doesn't
 count."
 
 ## Patterns to catch
+
+**Reader and flow**: an opening that doesn't answer the reader's first
+question (a README that gets to what the project does only after its optional
+integrations, an email whose request comes last); a second hook or curiosity
+gap stacked on the first ("Most tools miss two things. Here's what they are.")
+where the explanation should be; an opening that could introduce almost any
+product; adjacent sentences where the second adds nothing: it restates the
+first, extends its metaphor, or relabels the same thing for another audience
+("Developers call it a linter. Everyone else calls it the thing that won't let
+you ship."). Read sentences in pairs and ask what the second one adds. A sales
+page may still need to set up the reader's problem before the offer.
 
 **Content inflation**: significance/legacy puffery ("stands as a testament,"
 "marks a pivotal moment," "underscores its importance"); notability padding
@@ -80,7 +108,17 @@ Outlook" sections.
 align with, crucial, delve, emphasizing, enduring, enhance, fostering,
 garner, highlight as a verb, interplay, intricate, key as an adjective,
 landscape and tapestry as abstract nouns, pivotal, showcase, testament,
-underscore as a verb, valuable, vibrant); copula avoidance ("serves
+underscore as a verb, valuable, vibrant) and its marketing-copy cousins
+(seamless, robust, leverage, elevate, supercharge, unleash, empower,
+streamline, effortless, holistic, transformative, game-changing,
+cutting-edge, best-in-class, myriad, plethora, realm, embark, journey as a
+metaphor, "it's worth noting," "that being said," "at the end of the day,"
+"in today's fast-paced world"); stock marketing constructions ("say goodbye
+to X" instead of naming what replaces it, "imagine a world where," "whether
+you're X or Y" instead of naming the one reader, "that's where X comes in"
+instead of saying what X does, "more than just," "no X, no Y, just Z");
+benefits hedged by habit ("helps you," "can help you") instead of stated at
+the certainty the evidence supports; copula avoidance ("serves
 as/stands as/marks/represents" and "boasts/features/offers" standing in
 for plain "is/has"); negative
 parallelisms ("it's not just X, it's Y") and tailing negations ("no
@@ -101,8 +139,9 @@ sentence: could this say the same thing with a common verb and no metaphor?
 **Style and formatting**: em dashes and en dashes are a hard rule, not a
 "use sparingly" preference (also catch spaced ` — ` and double-hyphen ` -- `
 substitutes); replace with a period, comma, colon, or parentheses, in that
-rough order of preference, or restructure the sentence. Boldface used
-mechanically on ordinary phrases.
+rough order of preference, or restructure the sentence. Semicolons stacked
+through a passage where most could be periods. Boldface used mechanically on
+ordinary phrases.
 Inline-header vertical lists (`**Label:** sentence` bullets) where plain
 prose would read better. Title case in headings. Emojis decorating headings
 or bullets. Curly quotation marks in place of straight ones.
@@ -125,8 +164,8 @@ followed by a throwaway line that just restates it); diff-anchored writing
 (narrating what changed instead of describing what's true now, outside
 changelogs); manufactured punchlines and staccato drama (a run of short
 fragments stacked for effect); aphorism formulas ("X is the Y of Z," "X
-becomes a trap"); conversational rhetorical openers used as a fake-candid
-hook ("Honestly? ... It depends").
+becomes a trap"); self-answering questions, including the fake-candid
+hook ("The result? Faster shipping." "Honestly? ... It depends").
 
 ## Detection guidance
 
