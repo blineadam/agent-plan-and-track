@@ -82,10 +82,13 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   or only warns, so each path gates once per session (`gateguard.js`). A hook
   gated on an external unlock (`plan-gate.js`, unlocked by a `plan-and-track`
   Skill invocation) may deny repeatedly, and must say so in its header. A
-  deny-once guard marks at deny time and treats a seconds-old marker as a
-  racing duplicate (`git-guard.js`, plan-gate's migration-state and
-  attribution guards). Flag a hook that denies repeatedly with no stated
-  rationale.
+  guard with no unlock event at all may also deny on every attempt, with no
+  once-marker and no stamp to clear, when the fix is to stop using the gated
+  action rather than to wait out a session event (plan-gate's todo.md
+  shell-write guard). A deny-once guard marks at deny time and treats a
+  seconds-old marker as a racing duplicate (`git-guard.js`, plan-gate's
+  migration-state and attribution guards). Flag a hook that denies repeatedly
+  with no stated rationale.
 
 ## CI guard scripts
 
