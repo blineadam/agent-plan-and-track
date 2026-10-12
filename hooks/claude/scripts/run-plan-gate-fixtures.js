@@ -731,6 +731,232 @@ async function goalLineDenyWinsOverInFlightWarning() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+// --- Bash writes to .tasks/todo.md ---
+
+const TODO_SHELL_PY_HEREDOC = [
+  'cd /repo && python3 - <<\'EOF\'',
+  "p='.tasks/todo.md'",
+  's=open(p).read()',
+  "s=s.replace('a','b')",
+  "open(p,'w').write(s)",
+  'EOF',
+].join('\n');
+
+function assertTodoShellDeny(stdout) {
+  const reason = denyReason(stdout);
+  assert.match(reason, /Bash command writes or removes \.tasks\/todo\.md/);
+  assert.match(reason, /Edit or Write tool/);
+  assert.match(reason, /PLANGATE_DISABLED=1/);
+  return reason;
+}
+
+async function bashTodoPythonHeredocDeniedUnstamped() {
+  const f = fixture();
+  assertTodoShellDeny(run(bashEvent(TODO_SHELL_PY_HEREDOC, 'sess-todo-py'), f.env));
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoPythonHeredocDeniedStamped() {
+  const f = fixture();
+  const session = 'sess-todo-py-stamped';
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assert.strictEqual(fs.existsSync(stampFile(f.root, session)), true);
+  assertTodoShellDeny(run(bashEvent(TODO_SHELL_PY_HEREDOC, session), f.env));
+  // Deny-every-attempt: a bare retry is denied again.
+  assertTodoShellDeny(run(bashEvent(TODO_SHELL_PY_HEREDOC, session), f.env));
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoSedInPlaceDenied() {
+  const f = fixture();
+  assertTodoShellDeny(run(bashEvent("sed -i 's/a/b/' .tasks/todo.md", 'sess-todo-sed'), f.env));
+  assertTodoShellDeny(run(bashEvent("sed -i '' 's/a/b/' .tasks/todo.md", 'sess-todo-sed'), f.env));
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoAppendRedirectDenied() {
+  const f = fixture();
+  assertTodoShellDeny(run(bashEvent('echo x >> .tasks/todo.md', 'sess-todo-redir'), f.env));
+  assertTodoShellDeny(run(bashEvent('cat /tmp/new.md > .tasks/todo.md', 'sess-todo-redir'), f.env));
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoTeeDenied() {
+  const f = fixture();
+  assertTodoShellDeny(run(bashEvent("printf 'x\\n' | tee .tasks/todo.md", 'sess-todo-tee'), f.env));
+  assertTodoShellDeny(run(bashEvent("printf 'x\\n' | tee -a .tasks/todo.md", 'sess-todo-tee'), f.env));
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoNodeEvalDenied() {
+  const f = fixture();
+  const command = `node -e "require('fs').writeFileSync('.tasks/todo.md', 'x')"`;
+  assertTodoShellDeny(run(bashEvent(command, 'sess-todo-node'), f.env));
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoAbsolutePathDenied() {
+  const f = fixture();
+  assertTodoShellDeny(run(bashEvent('echo x >> /abs/proj/.tasks/todo.md', 'sess-todo-abs'), f.env));
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// mv/cp/install deny only when they would overwrite an existing todo.md, so
+// these run with cwd at a scratch root that holds one.
+async function bashTodoMoveCopyTruncateDenied() {
+  const f = fixture();
+  const existing = writeTodo(f.root, '# Batch 1: x\n');
+  for (const command of [
+    'mv /tmp/new.md .tasks/todo.md',
+    `cp /tmp/new.md ${existing}`,
+    'install -m 644 /tmp/new.md .tasks/todo.md',
+    'truncate -s 0 .tasks/todo.md',
+    "perl -pi -e 's/a/b/' .tasks/todo.md",
+  ]) {
+    assertTodoShellDeny(run({ ...bashEvent(command, 'sess-todo-mv'), cwd: f.root }, f.env));
+  }
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// plan-and-track's legacy migration moves tasks/todo.md onto a .tasks/todo.md
+// that does not exist yet: a create, not an overwrite, so it passes. With a
+// `cd` earlier in the command the destination can't be resolved reliably, and
+// with no cwd neither can a relative path, so both still deny.
+async function bashTodoMigrationMoveAllowed() {
+  const f = fixture();
+  const session = 'sess-todo-migrate';
+  for (const command of ['mv tasks/todo.md .tasks/todo.md', 'mkdir -p .tasks && mv tasks/todo.md .tasks/todo.md']) {
+    assert.strictEqual(run({ ...bashEvent(command, session), cwd: f.root }, f.env), '', command);
+  }
+  assertTodoShellDeny(run({ ...bashEvent('cd sub && mv tasks/todo.md .tasks/todo.md', session), cwd: f.root }, f.env));
+  assertTodoShellDeny(run(bashEvent('mv tasks/todo.md .tasks/todo.md', session), f.env));
+  // Only the legacy migration's source creates freely: any other file moved,
+  // copied, or installed onto a missing todo.md lands content no lint read.
+  for (const command of [
+    'mv /tmp/forged.md .tasks/todo.md',
+    'cp tasks/todo.md .tasks/todo.md',
+    'install -m 644 tasks/todo.md .tasks/todo.md',
+  ]) {
+    assertTodoShellDeny(run({ ...bashEvent(command, session), cwd: f.root }, f.env));
+  }
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// A literal path is still literal when a parent directory has a space in it:
+// quoted, it reaches every write and removal form, and the legacy migration
+// exemption still resolves it.
+async function bashTodoQuotedSpacedPathDenied() {
+  const f = fixture();
+  const spaced = path.join(f.root, 'my project');
+  writeTodo(spaced, '# Batch 1: x\n');
+  const p = path.join(spaced, '.tasks', 'todo.md');
+  const session = 'sess-todo-spaced';
+  for (const command of [
+    `echo x > "${p}"`,
+    `echo x >> '${p}'`,
+    `printf 'x' | tee -a "${p}"`,
+    `rm "${p}"`,
+    `mv "${p}" /tmp/todo.md`,
+    `cp /tmp/new.md "${p}"`,
+    `truncate -s 0 "${p}"`,
+    `rm -rf "${path.join(spaced, '.tasks')}"`,
+  ]) {
+    assertTodoShellDeny(run({ ...bashEvent(command, session), cwd: f.root }, f.env));
+  }
+  const fresh = path.join(f.root, 'other dir', '.tasks', 'todo.md');
+  assert.strictEqual(run({ ...bashEvent(`mv tasks/todo.md "${fresh}"`, session), cwd: f.root }, f.env), '', 'legacy migration onto a missing quoted path');
+  assert.strictEqual(run({ ...bashEvent(`cat "${p}"`, session), cwd: f.root }, f.env), '', 'read-only quoted path');
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// Deleting the file or moving it away removes the Migration State block and
+// every in-flight batch with no check running, and so does removing or moving
+// the .tasks directory that holds it.
+async function bashTodoDeleteDenied() {
+  const f = fixture();
+  writeTodo(f.root, '# Batch 1: x\n');
+  const session = 'sess-todo-rm';
+  for (const command of [
+    'rm .tasks/todo.md',
+    'rm -f ./.tasks/todo.md',
+    'unlink .tasks/todo.md',
+    'mv .tasks/todo.md /tmp/todo.md',
+    'rm -rf .tasks',
+    'rm -r ./.tasks/',
+    'mv .tasks /tmp/old-tasks',
+  ]) {
+    assertTodoShellDeny(run({ ...bashEvent(command, session), cwd: f.root }, f.env));
+  }
+  for (const command of [
+    'rm /tmp/x.md',
+    'rm -rf .tasks-old',
+    'rm .tasks/lessons-draft.md',
+    'mv tasks/lessons.md .tasks/lessons.md',
+    'ls .tasks',
+  ]) {
+    assert.strictEqual(run({ ...bashEvent(command, session), cwd: f.root }, f.env), '', command);
+  }
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoReadOnlySilent() {
+  const f = fixture();
+  const session = 'sess-todo-readonly';
+  for (const command of [
+    'cat .tasks/todo.md',
+    'grep -n "Batch" .tasks/todo.md',
+    "sed -n '1,20p' .tasks/todo.md",
+    "sed -n '1,20p' .tasks/todo.md | grep -i batch",
+    'head -20 .tasks/todo.md',
+    'tail -5 .tasks/todo.md',
+    'wc -l .tasks/todo.md',
+    "awk '/Batch/ {print $0}' .tasks/todo.md",
+    'git diff .tasks/todo.md',
+    `python3 -c "print(open('.tasks/todo.md').read())"`,
+    'grep x .tasks/todo.md > /tmp/out',
+    'cp .tasks/todo.md /tmp/todo.bak',
+    'cat .tasks/todo.md | tee /tmp/copy.md',
+    'echo x >> .tasks/todo.md.bak',
+    'echo x > /tmp/other.md',
+  ]) {
+    assert.strictEqual(run(bashEvent(command, session), f.env), '', command);
+  }
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoWarnModeWarns() {
+  const f = fixture();
+  const env = { ...f.env, PLANGATE_WARN: '1' };
+  const stdout = run(bashEvent('echo x >> .tasks/todo.md', 'sess-todo-warn'), env);
+  const parsed = JSON.parse(stdout);
+  assert.strictEqual(parsed.hookSpecificOutput.permissionDecision, undefined);
+  assert.match(parsed.hookSpecificOutput.additionalContext, /Bash command writes or removes \.tasks\/todo\.md/);
+  assert.match(parsed.hookSpecificOutput.additionalContext, /Warn-only mode/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoLintDisabledStillDenies() {
+  const f = fixture();
+  const env = { ...f.env, PLANGATE_LINT_DISABLED: '1' };
+  assertTodoShellDeny(run(bashEvent('echo x >> .tasks/todo.md', 'sess-todo-lint-off'), env));
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoPlangateDisabledSilent() {
+  const f = fixture();
+  const env = { ...f.env, PLANGATE_DISABLED: '1' };
+  assert.strictEqual(run(bashEvent('echo x >> .tasks/todo.md', 'sess-todo-off'), env), '');
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashTodoSubagentDenyNamesCaller() {
+  const f = fixture();
+  const event = { ...bashEvent('echo x >> .tasks/todo.md', 'sess-todo-sub'), agent_id: 'agent-1', agent_type: 'executor' };
+  const reason = assertTodoShellDeny(run(event, f.env));
+  assert.match(reason, /runs inside subagent `executor`/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 const HANDLERS = {
   'npm-test-silent': npmTestSilent,
   'git-push-help-silent': gitPushHelpSilent,
@@ -776,6 +1002,22 @@ const HANDLERS = {
   'review-goal-line-lint-disabled-allowed': reviewGoalLineLintDisabledAllowed,
   'review-in-new-batch-denied': reviewInNewBatchDenied,
   'goal-line-deny-wins-over-in-flight-warning': goalLineDenyWinsOverInFlightWarning,
+  'bash-todo-python-heredoc-denied-unstamped': bashTodoPythonHeredocDeniedUnstamped,
+  'bash-todo-python-heredoc-denied-stamped': bashTodoPythonHeredocDeniedStamped,
+  'bash-todo-sed-in-place-denied': bashTodoSedInPlaceDenied,
+  'bash-todo-append-redirect-denied': bashTodoAppendRedirectDenied,
+  'bash-todo-tee-denied': bashTodoTeeDenied,
+  'bash-todo-node-eval-denied': bashTodoNodeEvalDenied,
+  'bash-todo-absolute-path-denied': bashTodoAbsolutePathDenied,
+  'bash-todo-move-copy-truncate-denied': bashTodoMoveCopyTruncateDenied,
+  'bash-todo-migration-move-allowed': bashTodoMigrationMoveAllowed,
+  'bash-todo-delete-denied': bashTodoDeleteDenied,
+  'bash-todo-quoted-spaced-path-denied': bashTodoQuotedSpacedPathDenied,
+  'bash-todo-read-only-silent': bashTodoReadOnlySilent,
+  'bash-todo-warn-mode-warns': bashTodoWarnModeWarns,
+  'bash-todo-lint-disabled-still-denies': bashTodoLintDisabledStillDenies,
+  'bash-todo-plangate-disabled-silent': bashTodoPlangateDisabledSilent,
+  'bash-todo-subagent-deny-names-caller': bashTodoSubagentDenyNamesCaller,
 };
 
 async function main() {

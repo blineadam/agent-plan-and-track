@@ -120,9 +120,35 @@
  * below. Runs after the migration-state guard and before the tag lint (a
  * hook run emits at most one decision JSON).
  *
+ * TODO.MD SHELL-WRITE GUARD: the todo.md lints above only see Edit/Write/
+ * MultiEdit, so a Bash call that rewrites the file (a redirect, `tee`,
+ * `sed -i`, `mv`/`cp`/`install` onto it, `truncate`, or an inline
+ * python/node/ruby/perl script that names the path and calls a write API) or
+ * removes it (`rm`/`unlink`, `mv` away, or `rm`/`mv` of the `.tasks`
+ * directory) skips every one of them. The one allowed shell write is
+ * plan-and-track's legacy migration, `mv tasks/todo.md .tasks/todo.md` onto a
+ * todo.md that does not exist yet (a `cd` earlier in the command or no hook
+ * cwd for a relative path counts as existing). On the Bash entry, such a command is denied with a
+ * message telling the caller to make the same change with the Edit/Write
+ * tool. Stamped or unstamped, it REPEATS ON EVERY ATTEMPT (no once-marker;
+ * the unlock is switching tools, not a session event), so a bare retry of the
+ * same command is denied again. It scans the raw command text, not
+ * splitShellSegments (which strips heredoc bodies, where an inline script
+ * keeps its write). Read-only uses (cat, grep, sed -n, head, tail, wc, git
+ * diff, an interpreter that only reads, a redirect onto a different file)
+ * pass. ACCEPTED GAPS: a path built dynamically (variables, concatenation,
+ * `cd .tasks` then a bare `todo.md`) and a script file whose body is not in
+ * the command are not seen. PLANGATE_DISABLED turns it off and PLANGATE_WARN
+ * demotes it to a warning; PLANGATE_LINT_DISABLED does NOT turn it off (it
+ * would also unprotect the Migration State data-loss guard). Runs before the
+ * mutation gate's early exit. Appends the subagent line like the other
+ * denies and fails open on any error. No Codex counterpart: plan-gate-pilot.js
+ * has no todo.md content lints.
+ *
  * Config (env):
  *   PLANGATE_DISABLED        "1" turns the gate off entirely.
- *   PLANGATE_WARN            "1" demotes deny to a non-blocking warning.
+ *   PLANGATE_WARN            "1" demotes deny to a non-blocking warning
+ *                             (including the todo.md shell-write guard).
  *   PLANGATE_SCOPE_THRESHOLD distinct-file count that trips the scope gate
  *                             (default 3).
  *   PLANGATE_MUTATION_THRESHOLD distinct-outward-mutation-kind count that
@@ -133,9 +159,9 @@
  *   PLANGATE_LINT_DISABLED   "1" turns off the .tasks/todo.md content lints
  *                             (owner tags, Review goal line) and the
  *                             main-attribution guard only (stamp gate, scope
- *                             gate, mutation gate, and the migration-state
- *                             guard and the in-flight batch warning still
- *                             apply).
+ *                             gate, mutation gate, the migration-state
+ *                             guard, the in-flight batch warning, and the
+ *                             todo.md shell-write guard still apply).
  */
 'use strict';
 
@@ -1120,6 +1146,111 @@ function maybeLintReviewGoalLine(toolName, toolInput) {
   }
 }
 
+// --- Shell writes to .tasks/todo.md ---
+
+// The todo.md path as it appears in a raw command: optionally prefixed by any
+// directory (relative or absolute), either slash, and not a longer name such
+// as todo.md.bak. Case-insensitive like the edit-tool gate (NTFS).
+// A quoted operand may carry spaces in its parent directories, so it gets its
+// own alternative, quotes included, ahead of the unquoted form.
+const TODO_PATH = String.raw`(?:"[^"\n]*[\/\\]\.tasks[\/\\]todo\.md"|'[^'\n]*[\/\\]\.tasks[\/\\]todo\.md'|(?<![\w.\-])(?:[^\s'"<>|;&()=]*[\/\\])?\.tasks[\/\\]todo\.md(?![\w.\-]))`;
+const TODO_REF_RE = new RegExp(TODO_PATH, 'i');
+// `>`, `>>`, `>|`, `2>`, `&>` whose target is the todo path.
+const TODO_REDIRECT_RE = new RegExp(String.raw`>>?\|?[ \t]*['"]?` + TODO_PATH, 'i');
+// `tee` / `tee -a` with the todo path among its arguments (same pipeline segment).
+const TODO_TEE_RE = new RegExp(String.raw`\btee\b[^|;&\n]*` + TODO_PATH, 'i');
+// `sed -i`, `sed --in-place`, `perl -i`, `perl -pi`, `-i.bak`, `-ni`, `-0pi`.
+const IN_PLACE_EDIT_RE = /\b(?:sed|perl)\b[^|;&\n]*?[ \t](?:-[A-Za-z0-9]*i|--in-place)/i;
+// mv/cp/install with the todo path as the last argument of its segment; the
+// verb, the arguments before the path, and the path are captured so the one
+// legal create (the legacy tasks/todo.md migration) can be told apart.
+const TODO_DEST_RE = new RegExp(String.raw`\b(mv|cp|install)\b([^|;&\n]*)[ \t]['"]?(` + TODO_PATH + String.raw`)['"]?(?=[ \t]*(?:[|;&)\n]|$))`, 'i');
+// The legacy source plan-and-track step 1 moves into place: tasks/todo.md not
+// under .tasks.
+const LEGACY_TODO_SOURCE_RE = /(?:^|[ \t'"])(?:\.\/)?tasks[\/\\]todo\.md(?=['"]?[ \t])/i;
+// rm/unlink naming the todo path, or the todo path as an mv source (another
+// argument follows it): both remove the file with no lint running.
+const TODO_DELETE_RE = new RegExp(String.raw`\b(?:rm|unlink)\b[^|;&\n]*` + TODO_PATH, 'i');
+const TODO_MOVE_AWAY_RE = new RegExp(String.raw`\bmv\b[^|;&\n]*[ \t]['"]?` + TODO_PATH + String.raw`['"]?[ \t]+[^|;&\n]*\S`, 'i');
+// The .tasks directory itself as an rm or mv operand (not .tasks-old,
+// .tasks/lessons-draft.md): removing or moving it takes todo.md with it.
+const TASKS_DIR = String.raw`(?:"[^"\n]*[\/\\]\.tasks[\/\\]?"|'[^'\n]*[\/\\]\.tasks[\/\\]?'|(?<![\w.\-])(?:[^\s'"<>|;&()=]*[\/\\])?\.tasks[\/\\]?(?=['"]?(?:[ \t]|[|;&)\n]|$)))`;
+const TASKS_DIR_REMOVE_RE = new RegExp(String.raw`\b(?:rm|mv)\b[^|;&\n]*[ \t]['"]?` + TASKS_DIR, 'i');
+// truncate takes only file operands, so the path anywhere in its segment is a target.
+const TODO_TRUNCATE_RE = new RegExp(String.raw`\btruncate\b[^|;&\n]*` + TODO_PATH, 'i');
+// An interpreter whose program text is inline (heredoc, -c, -e) so the body is
+// visible in the command, plus a write API inside it. sys.stdout/stderr
+// .write( is console output, not a file write, so it is excluded.
+const INLINE_INTERPRETER_RE = /\b(?:python3?(?:\.\d+)?|node|ruby|perl)\b/i;
+const INLINE_BODY_RE = /<<|[ \t]-[A-Za-z]*[ce][ \t]/;
+const WRITE_API_RE = new RegExp(
+  [
+    String.raw`\bopen\([^)]*,\s*(?:mode\s*=\s*)?['"][rbt]*[wax+][^'"]*['"]`,
+    String.raw`(?<!stdout)(?<!stderr)\.write\(`,
+    String.raw`\bwrite_text\b`,
+    String.raw`\b(?:writeFile|appendFile)(?:Sync)?\b`,
+    String.raw`\bFile\.write\b`,
+  ].join('|')
+);
+
+// Does this raw Bash command write .tasks/todo.md? Scans the raw command text,
+// not splitShellSegments (which strips heredoc bodies, where an inline script
+// keeps its write). ACCEPTED GAPS: a path built dynamically (variables,
+// concatenation, `cd .tasks && ... todo.md`, a script file whose body is not
+// in the command) is not seen; a read-only command that merely shares a
+// segment with a -i flag can false-positive, and the retry (Edit/Write) is
+// always available.
+function detectTodoShellWrite(command, cwd) {
+  if (TASKS_DIR_REMOVE_RE.test(command)) return true;
+  if (!TODO_REF_RE.test(command)) return false;
+  if (TODO_REDIRECT_RE.test(command) || TODO_TEE_RE.test(command)) return true;
+  if (IN_PLACE_EDIT_RE.test(command)) return true;
+  if (TODO_TRUNCATE_RE.test(command) || TODO_DELETE_RE.test(command)) return true;
+  if (TODO_MOVE_AWAY_RE.test(command)) return true;
+  const dest = TODO_DEST_RE.exec(command);
+  if (dest && !isLegacyTodoMigration(dest, command, cwd)) return true;
+  return INLINE_INTERPRETER_RE.test(command) && INLINE_BODY_RE.test(command) && WRITE_API_RE.test(command);
+}
+
+// The one shell write allowed onto todo.md: plan-and-track step 1's
+// `mv tasks/todo.md .tasks/todo.md` when .tasks/todo.md does not exist yet,
+// a create carrying the project's own legacy file rather than an overwrite.
+// Anything that keeps the destination from being resolved reliably (a `cd`
+// earlier in the command, no cwd for a relative path) counts as an
+// overwrite, so the doubt lands on the deny side.
+function isLegacyTodoMigration(dest, command, cwd) {
+  const [, verb, sources, rawPath] = dest;
+  if (verb.toLowerCase() !== 'mv' || !LEGACY_TODO_SOURCE_RE.test(sources + ' ')) return false;
+  if (/(?:^|[^\w.\-])cd\b/.test(command)) return false;
+  const p = rawPath.replace(/^(['"])(.*)\1$/, '$2').replace(/\\/g, '/');
+  if (!path.isAbsolute(p) && !cwd) return false;
+  return !fs.existsSync(path.isAbsolute(p) ? p : path.resolve(cwd, p));
+}
+
+function todoShellWriteMsg(input) {
+  return [
+    "[PlanGate] This Bash command writes or removes .tasks/todo.md (or the .tasks directory holding it). plan-gate's todo.md checks (session stamp, owner tags, Review goal line, Migration State, in-flight batch warning) only see Edit/Write/MultiEdit calls, so a shell write would skip every one of them. Make the same change with the Edit or Write tool instead; to close out batches, compress them in place rather than deleting the file.",
+    subagentLine(input),
+    '(PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+// Denies on every attempt (no once-marker, no stamp check): the unlock is
+// switching tools, not a session event. PLANGATE_LINT_DISABLED deliberately
+// does not apply here: this also keeps the Migration State data-loss guard
+// from being bypassed. Returns true when a decision was emitted. Fails open.
+function maybeDenyTodoShellWrite(command, input) {
+  try {
+    if (!detectTodoShellWrite(command, input.cwd)) return false;
+    emitGateDecision(todoShellWriteMsg(input));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function main() {
   let input = {};
   try {
@@ -1153,6 +1284,9 @@ function main() {
   // an empty Set, so this exits before any filesystem work on the hot path
   // every Bash call hits.
   if (toolName === 'Bash') {
+    // Todo shell-write guard first: it applies stamped or unstamped, and a
+    // hook run emits at most one decision JSON.
+    if (maybeDenyTodoShellWrite(String(toolInput.command || ''), input)) process.exit(0);
     const kinds = detectOutwardMutations(String(toolInput.command || ''));
     if (kinds.size === 0) process.exit(0);
     const mstamp = stampPath(input.session_id, input);

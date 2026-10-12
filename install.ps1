@@ -863,7 +863,7 @@ function Install-Claude {
   } else {
     if (-not $hasPlanStamp) { Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-plan-gate.json') $scriptsFwd }
     if (-not $hasPlanBash) { Merge-HookInto $settings 'PreToolUse' (Join-Path $RepoDir 'hooks/claude/pretooluse-plan-gate-bash.json') $scriptsFwd }
-    Write-Host "  plan-gate hook  -> merged into settings.json (PreToolUse on Skill+todo.md edits and Bash git/gh mutations; PLANGATE_DISABLED=1 to turn off, PLANGATE_MUTATION_THRESHOLD to tune the mutation count)"
+    Write-Host "  plan-gate hook  -> merged into settings.json (PreToolUse on Skill+todo.md edits and Bash git/gh mutations and todo.md shell writes; PLANGATE_DISABLED=1 to turn off, PLANGATE_MUTATION_THRESHOLD to tune the mutation count)"
   }
   Write-Host "  done. New Claude Code sessions pick this up automatically."
 }
