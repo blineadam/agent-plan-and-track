@@ -1549,11 +1549,15 @@ function isUnderDir(dir, file) {
 // Raw targets to the normalized absolute paths the scope gate counts. Drops
 // what cannot be resolved (`$` or a backtick), /dev/*, scope-exempt files,
 // and temp scratch (os.tmpdir(), /tmp, /private/tmp, /var/tmp) that lies
-// outside the cwd, so a project living under /tmp is still gated. No fs work.
+// outside the cwd, so a project living under /tmp is still gated. The POSIX
+// temp roots are matched on the target as written, before resolution: on
+// Windows, path.resolve would put `/tmp` on a drive, and not necessarily the
+// one the target lands on. No fs work.
+const POSIX_TEMP_ROOTS = ['/tmp', '/private/tmp', '/var/tmp'];
 function resolveBashTargets(rawTargets, cwd) {
   const base = typeof cwd === 'string' && cwd ? cwd : process.cwd();
   const baseNorm = path.resolve(base).replace(/\\/g, '/');
-  const tempRoots = [os.tmpdir(), '/tmp', '/private/tmp', '/var/tmp'].map((d) => path.resolve(d).replace(/\\/g, '/'));
+  const osTemp = path.resolve(os.tmpdir()).replace(/\\/g, '/');
   const resolved = new Set();
   for (const raw of rawTargets) {
     if (!raw || /[$`]/.test(raw)) continue;
@@ -1562,7 +1566,8 @@ function resolveBashTargets(rawTargets, cwd) {
     if (p.startsWith('/dev/')) continue;
     const abs = path.resolve(base, p).replace(/\\/g, '/');
     if (isScopeExempt(abs)) continue;
-    if (!isUnderDir(baseNorm, abs) && tempRoots.some((root) => isUnderDir(root, abs))) continue;
+    const isTemp = isUnderDir(osTemp, abs) || POSIX_TEMP_ROOTS.some((root) => isUnderDir(root, p) || isUnderDir(root, abs));
+    if (isTemp && !isUnderDir(baseNorm, abs)) continue;
     resolved.add(abs);
   }
   return [...resolved];
