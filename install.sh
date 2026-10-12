@@ -820,7 +820,7 @@ install_claude() {
       'if $add_stamp then .hooks.PreToolUse = ((.hooks.PreToolUse // []) + $stamp[0].hooks.PreToolUse) else . end
        | if $add_bash then .hooks.PreToolUse = ((.hooks.PreToolUse // []) + $bash[0].hooks.PreToolUse) else . end' \
       "$settings" > "$tmp" && write_back "$tmp" "$settings"
-    echo "  plan-gate hook  -> merged into $settings (PreToolUse on Skill+todo.md edits and Bash git/gh mutations and todo.md shell writes; PLANGATE_DISABLED=1 to turn off, PLANGATE_MUTATION_THRESHOLD to tune the mutation count)"
+    echo "  plan-gate hook  -> merged into $settings (PreToolUse on Skill+todo.md edits and Bash git/gh mutations, file writes, and todo.md shell writes; PLANGATE_DISABLED=1 to turn off, PLANGATE_MUTATION_THRESHOLD to tune the mutation count)"
   fi
   echo "  done. New Claude Code sessions pick this up automatically."
 }

@@ -46,8 +46,10 @@ function fixture() {
   return { env, root };
 }
 
-function bashEvent(command, session) {
-  return { session_id: session, tool_name: 'Bash', tool_input: { command } };
+function bashEvent(command, session, cwd) {
+  const event = { session_id: session, tool_name: 'Bash', tool_input: { command } };
+  if (cwd) event.cwd = cwd;
+  return event;
 }
 
 function skillEvent(session) {
@@ -894,7 +896,10 @@ async function bashTodoDeleteDenied() {
     'mv tasks/lessons.md .tasks/lessons.md',
     'ls .tasks',
   ]) {
-    assert.strictEqual(run({ ...bashEvent(command, session), cwd: f.root }, f.env), '', command);
+    // These pass the todo guard but each names a distinct file, so a high
+    // scope threshold keeps the Bash scope gate out of this todo-guard case.
+    const env = { ...f.env, PLANGATE_SCOPE_THRESHOLD: '99' };
+    assert.strictEqual(run({ ...bashEvent(command, session), cwd: f.root }, env), '', command);
   }
   fs.rmSync(f.root, { recursive: true, force: true });
 }
@@ -954,6 +959,238 @@ async function bashTodoSubagentDenyNamesCaller() {
   const event = { ...bashEvent('echo x >> .tasks/todo.md', 'sess-todo-sub'), agent_id: 'agent-1', agent_type: 'executor' };
   const reason = assertTodoShellDeny(run(event, f.env));
   assert.match(reason, /runs inside subagent `executor`/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// --- Scope gate: files written through Bash ---
+//
+// Bash events here carry `cwd` (the hook resolves relative targets against
+// it). The hook process runs with TMPDIR set to the case's scratch root, so
+// os.tmpdir() equals f.root: a file inside a cwd under f.root must still
+// count, while the temp exemption applies only to paths outside the cwd.
+
+function filesDir(root, session) {
+  return stampFile(root, session) + '.files';
+}
+
+function fileMarkerCount(root, session) {
+  try {
+    return fs.readdirSync(filesDir(root, session)).length;
+  } catch {
+    return 0;
+  }
+}
+
+function heredocWrite(name) {
+  return `cat > ${name} <<'EOF'\nconsole.log(1);\nEOF`;
+}
+
+async function bashScopeHeredocSideDoorDenied() {
+  const f = fixture();
+  const session = 'sess-bs-heredoc';
+  assert.strictEqual(run(bashEvent(heredocWrite('a.js'), session, f.root), f.env), '');
+  assert.strictEqual(run(bashEvent(heredocWrite('b.js'), session, f.root), f.env), '');
+  assert.strictEqual(fileMarkerCount(f.root, session), 2);
+  const reason = denyReason(run(bashEvent(heredocWrite('c.js'), session, f.root), f.env));
+  assert.match(reason, /3 distinct files/);
+  assert.match(reason, /retry this command/);
+  // A real deny records nothing, and the edit tools share the same count.
+  assert.strictEqual(fileMarkerCount(f.root, session), 2);
+  const editReason = denyReason(run(writeEvent(session, path.join(f.root, 'd.js'), 'x'), f.env));
+  assert.match(editReason, /3 distinct files/);
+  assert.match(editReason, /retry this edit/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashScopeWriteShapesCount() {
+  const f = fixture();
+  const env = { ...f.env, PLANGATE_SCOPE_THRESHOLD: '1' };
+  const shapes = [
+    'echo x > a.txt',
+    'echo x >> a.txt',
+    'make 2> err.log',
+    'echo x >out.txt',
+    'echo x | tee a.txt',
+    'echo x | tee -a a.txt',
+    "sed -i 's/a/b/' f.txt",
+    "sed -i.bak -e 's/a/b/' f.txt",
+    "perl -pi -e 's/a/b/' f.txt",
+    'cp a.txt b.txt',
+    'mv a.txt b.txt',
+    'install -m 644 a.txt b.txt',
+    'rm f.txt',
+    'rm -rf build',
+    'unlink f.txt',
+    'truncate -s 0 f.txt',
+    "python3 - <<'EOF'\nopen('gen.py', 'w').write('x')\nEOF",
+    `python3 -c "open('x.txt','w').write('1')"`,
+    `node -e "require('fs').writeFileSync('y.js','1')"`,
+    "python3 - <<'EOF'\nfrom pathlib import Path\nPath('z.md').write_text('x')\nEOF",
+  ];
+  for (const [index, command] of shapes.entries()) {
+    const session = `sess-bs-shape-${index}`;
+    const reason = denyReason(run(bashEvent(command, session, f.root), env));
+    assert.match(reason, /1 distinct files/, command);
+    assert.strictEqual(fileMarkerCount(f.root, session), 0, command);
+  }
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// Warn mode records every counted target, so the marker count shows exactly
+// which operands were read as files (the threshold-1 shapes case above only
+// proves that something counted).
+async function bashScopeExactTargetCounts() {
+  const f = fixture();
+  const env = { ...f.env, PLANGATE_WARN: '1', PLANGATE_SCOPE_THRESHOLD: '99' };
+  const cases = [
+    ["sed -i '' 's/a/b/' f.txt", 1],
+    ["sed -i '' -e 's/a/b/' f.txt g.txt", 2],
+    ['mv a.txt b.txt', 2],
+    ['cp -r src dst', 1],
+    ['if true; then cp a.txt b.txt; fi', 1],
+    ['for f in x; do rm a.txt; done', 1],
+    ['! rm a.txt', 1],
+    [`git commit -m "$(cat <<'EOF'\nFix the parser\n\nKeeps quotes 'as is' > none.\nEOF\n)"`, 0],
+  ];
+  for (const [index, [command, expected]] of cases.entries()) {
+    const session = `sess-bs-exact-${index}`;
+    run(bashEvent(command, session, f.root), env);
+    assert.strictEqual(fileMarkerCount(f.root, session), expected, command);
+  }
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashScopeBashAndEditDedupe() {
+  const f = fixture();
+  const session = 'sess-bs-dedupe';
+  assert.strictEqual(run(bashEvent('echo x > a.js', session, f.root), f.env), '');
+  assert.strictEqual(fileMarkerCount(f.root, session), 1);
+  assert.strictEqual(run(writeEvent(session, path.join(f.root, 'a.js'), 'x'), f.env), '');
+  assert.strictEqual(fileMarkerCount(f.root, session), 1);
+  assert.strictEqual(run(writeEvent(session, path.join(f.root, 'b.js'), 'x'), f.env), '');
+  assert.strictEqual(fileMarkerCount(f.root, session), 2);
+  // a.js was counted once across Bash and Write, so the fourth call is the third file.
+  const reason = denyReason(run(writeEvent(session, path.join(f.root, 'c.js'), 'x'), f.env));
+  assert.match(reason, /3 distinct files/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashScopeReadOnlySilent() {
+  const f = fixture();
+  const session = 'sess-bs-readonly';
+  const env = { ...f.env, PLANGATE_SCOPE_THRESHOLD: '1' };
+  for (const command of [
+    'cat a.txt',
+    'grep -rn foo src',
+    "sed -n '1,5p' f.txt",
+    'head -5 f.txt',
+    'git diff',
+    'ls > /dev/null 2>&1',
+    'npm test 2>&1 | tail -5',
+    'cmd 2>/dev/null',
+    'echo hi >&2',
+    'git commit -m "a > b.js"',
+    `python3 -c "print(open('a.py').read())"`,
+    'touch f.txt',
+    'mkdir -p d',
+    'echo x > /tmp/scratch.txt',
+  ]) {
+    assert.strictEqual(run(bashEvent(command, session, f.root), env), '', command);
+  }
+  // Temp scratch under the OS temp dir is exempt only when outside the cwd.
+  const scratch = path.join(f.root, 'scratch.txt');
+  assert.strictEqual(run(bashEvent(`echo x > ${scratch}`, session, path.join(f.root, 'proj')), env), '');
+  assert.strictEqual(fs.existsSync(filesDir(f.root, session)), false);
+  assert.strictEqual(fs.existsSync(mutationsDir(f.root, session)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// The temp exemption must not swallow a project that lives under the temp
+// dir: os.tmpdir() is f.root in the hook process, and the cwd is f.root too.
+async function bashScopeTempInsideCwdCounts() {
+  const f = fixture();
+  const env = { ...f.env, PLANGATE_SCOPE_THRESHOLD: '1' };
+  const reason = denyReason(run(bashEvent(`echo x > ${path.join(f.root, 'scratch.txt')}`, 'sess-bs-temp-cwd', f.root), env));
+  assert.match(reason, /1 distinct files/);
+  denyReason(run(bashEvent('echo x > sub/a.js', 'sess-bs-temp-cwd-rel', path.join(f.root, 'proj')), env));
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashScopeUnresolvedTargetNotCounted() {
+  const f = fixture();
+  const session = 'sess-bs-unresolved';
+  const env = { ...f.env, PLANGATE_SCOPE_THRESHOLD: '1' };
+  for (const command of ['echo x > "$OUT"', 'cat > $(mktemp)', 'echo x > `mktemp`', 'rm "$TARGET"', 'rm $(find . -name x)']) {
+    assert.strictEqual(run(bashEvent(command, session, f.root), env), '', command);
+  }
+  assert.strictEqual(fs.existsSync(filesDir(f.root, session)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashScopeStampedSilent() {
+  const f = fixture();
+  const session = 'sess-bs-stamped';
+  const env = { ...f.env, PLANGATE_SCOPE_THRESHOLD: '1' };
+  assert.strictEqual(run(skillEvent(session), env), '');
+  assert.strictEqual(run(bashEvent('echo x > a.js', session, f.root), env), '');
+  assert.strictEqual(fs.existsSync(filesDir(f.root, session)), false);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashScopeWarnMode() {
+  const f = fixture();
+  const session = 'sess-bs-warn';
+  const env = { ...f.env, PLANGATE_WARN: '1', PLANGATE_SCOPE_THRESHOLD: '1' };
+  const parsed = JSON.parse(run(bashEvent('echo x > a.js', session, f.root), env));
+  assert.deepStrictEqual(Object.keys(parsed), ['hookSpecificOutput']);
+  assert.strictEqual(parsed.hookSpecificOutput.permissionDecision, undefined);
+  assert.match(parsed.hookSpecificOutput.additionalContext, /1 distinct files/);
+  assert.match(parsed.hookSpecificOutput.additionalContext, /retry this command/);
+  assert.match(parsed.hookSpecificOutput.additionalContext, /Warn-only mode/);
+  // Warn mode proceeds, so the file is recorded (unlike a real deny).
+  assert.strictEqual(fileMarkerCount(f.root, session), 1);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashScopeDenyRecordsNothing() {
+  const f = fixture();
+  const session = 'sess-bs-deny-records';
+  const env = { ...f.env, PLANGATE_SCOPE_THRESHOLD: '1' };
+  denyReason(run(bashEvent('echo x > a.js', session, f.root), env));
+  denyReason(run(bashEvent('echo x > a.js', session, f.root), env));
+  assert.strictEqual(fileMarkerCount(f.root, session), 0);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashScopeSubagentDenyNamesCaller() {
+  const f = fixture();
+  const session = 'sess-bs-subagent';
+  assert.strictEqual(run(bashEvent('echo x > a.js', session, f.root), f.env), '');
+  assert.strictEqual(run(bashEvent('echo x > b.js', session, f.root), f.env), '');
+  const event = bashEvent('echo x > c.js', session, f.root);
+  event.agent_id = 'a1';
+  event.agent_type = 'executor';
+  const reason = denyReason(run(event, f.env));
+  assert.match(reason, /stop and report to your caller/);
+  assert.match(reason, /executor/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function bashScopeAndMutationSingleJson() {
+  const f = fixture();
+  const session = 'sess-bs-single-json';
+  assert.strictEqual(run(bashEvent('git push origin main', session, f.root), f.env), '');
+  assert.strictEqual(run(bashEvent('echo x > a.js', session, f.root), f.env), '');
+  assert.strictEqual(run(bashEvent('echo x > b.js', session, f.root), f.env), '');
+  // Both gates would trip here (3rd file, 2nd mutation kind): exactly one
+  // JSON object comes back, the scope deny, and nothing is recorded.
+  const stdout = run(bashEvent('echo x > c.js && gh pr create --fill', session, f.root), f.env);
+  assert.notStrictEqual(atMostOneJson(stdout), null);
+  const reason = denyReason(stdout);
+  assert.match(reason, /3 distinct files/);
+  assert.doesNotMatch(reason, /outward git\/gh mutations/);
+  assert.strictEqual(fileMarkerCount(f.root, session), 2);
+  assert.strictEqual(fs.existsSync(mutationMarker(f.root, session, 'gh-pr-create')), false);
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
@@ -1018,6 +1255,18 @@ const HANDLERS = {
   'bash-todo-lint-disabled-still-denies': bashTodoLintDisabledStillDenies,
   'bash-todo-plangate-disabled-silent': bashTodoPlangateDisabledSilent,
   'bash-todo-subagent-deny-names-caller': bashTodoSubagentDenyNamesCaller,
+  'bash-scope-heredoc-side-door-denied': bashScopeHeredocSideDoorDenied,
+  'bash-scope-write-shapes-count': bashScopeWriteShapesCount,
+  'bash-scope-exact-target-counts': bashScopeExactTargetCounts,
+  'bash-scope-bash-and-edit-dedupe': bashScopeBashAndEditDedupe,
+  'bash-scope-read-only-silent': bashScopeReadOnlySilent,
+  'bash-scope-temp-inside-cwd-counts': bashScopeTempInsideCwdCounts,
+  'bash-scope-unresolved-target-not-counted': bashScopeUnresolvedTargetNotCounted,
+  'bash-scope-stamped-silent': bashScopeStampedSilent,
+  'bash-scope-warn-mode': bashScopeWarnMode,
+  'bash-scope-deny-records-nothing': bashScopeDenyRecordsNothing,
+  'bash-scope-subagent-deny-names-caller': bashScopeSubagentDenyNamesCaller,
+  'bash-scope-and-mutation-single-json': bashScopeAndMutationSingleJson,
 };
 
 async function main() {

@@ -59,6 +59,18 @@
     { "id": "bash-todo-warn-mode-warns", "expect": "warn-context" },
     { "id": "bash-todo-lint-disabled-still-denies", "expect": "deny" },
     { "id": "bash-todo-plangate-disabled-silent", "expect": "silent" },
-    { "id": "bash-todo-subagent-deny-names-caller", "expect": "deny" }
+    { "id": "bash-todo-subagent-deny-names-caller", "expect": "deny" },
+    { "id": "bash-scope-heredoc-side-door-denied", "expect": "deny" },
+    { "id": "bash-scope-write-shapes-count", "expect": "deny" },
+    { "id": "bash-scope-exact-target-counts", "expect": "warn-context" },
+    { "id": "bash-scope-bash-and-edit-dedupe", "expect": "deny" },
+    { "id": "bash-scope-read-only-silent", "expect": "silent" },
+    { "id": "bash-scope-temp-inside-cwd-counts", "expect": "deny" },
+    { "id": "bash-scope-unresolved-target-not-counted", "expect": "silent" },
+    { "id": "bash-scope-stamped-silent", "expect": "silent" },
+    { "id": "bash-scope-warn-mode", "expect": "warn-context" },
+    { "id": "bash-scope-deny-records-nothing", "expect": "deny" },
+    { "id": "bash-scope-subagent-deny-names-caller", "expect": "deny" },
+    { "id": "bash-scope-and-mutation-single-json", "expect": "deny" }
   ]
 }
