@@ -336,11 +336,14 @@ from the file count.
 Files written or removed through `Bash` join the same count, so a heredoc
 `cat > f` is not a way around it (a 2026-09-04 executor, denied by this gate,
 used exactly that). Only literal operands count: redirect targets (`>`, `>>`,
-`N>`, attached `>f`), `tee` operands, the files of an in-place `sed` or `perl`
-(including macOS `sed -i ''`), the `cp`/`install` destination, every `mv`
-operand, `rm`/`unlink`/`truncate` operands, and a string-literal path passed
-to a write API (`open(p, 'w')`, `Path(p).write_text`, `writeFile`,
-`appendFile`, `File.write`) in an inline python, node, ruby, or perl body.
+`N>`, attached `>f`, `>&f`, `>|f`), `tee` operands, the files of an in-place
+`sed` or `perl` (including macOS `sed -i ''`), the `cp`/`install` destination,
+every `mv` operand, `rm`/`unlink`/`truncate` operands, and a string-literal
+path passed to a write API (`open(p, 'w')`, `Path(p).write_text`,
+`writeFile`, `appendFile`, `File.write`) in an interpreter's own program
+text. That text is the `-c`/`-e` argument of a python, node, ruby, or perl
+command, or a heredoc body opened on that command's line. A plain
+`cat > f <<EOF` body is data, so write examples quoted in it don't count.
 Targets resolve against the session cwd and dedupe with the edit tools by
 absolute path, so writing one file through both counts it once. A Bash call
 that reaches the threshold is denied and records nothing; if it would also
@@ -356,9 +359,10 @@ The Bash side is a regex classifier, so it has accepted false negatives: a
 script file whose body is not in the command (`python gen.py`, npm scripts,
 codegen, formatters), `git apply`/`checkout`/`restore`/`stash`, `patch`,
 dynamic paths, command substitution and `eval`, a `cd` before a relative
-write (resolved against the session cwd instead), aliases and full-path
-binaries, and `>|`, which the segment split breaks at the `|`. It is a
-backstop for a session that skipped planning, not a sandbox.
+write (resolved against the session cwd instead), aliases, full-path binaries
+other than an interpreter (`/bin/rm`), and a heredoc nested inside another
+heredoc's data. It is a backstop for a session that skipped planning, not a
+sandbox.
 
 There is no Codex mirror. `plan-gate-pilot.js`'s scope tracker is a
 once-per-session nonblocking warning driven by `apply_patch` disk deltas, with

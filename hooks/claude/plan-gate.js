@@ -51,11 +51,14 @@
  * The same count covers files written or removed through Bash, on the Bash
  * entry, so a heredoc `cat > f` is not a side door (the 2026-09-04 executor
  * used one). Counted, from literal operands only: redirect targets (`>`, `>>`,
- * `N>`, attached `>f`), `tee` operands, the files of an in-place `sed`/`perl`,
- * the `cp`/`install` destination (or `-t DIR`), every `mv` operand, `rm`/
- * `unlink`/`truncate` operands, and a string-literal path handed to a write
- * API (`open(p, 'w')`, `Path(p).write_text`, `writeFile`/`appendFile`,
- * `File.write`) in an inline python/node/ruby/perl body. Targets resolve
+ * `N>`, attached `>f`, `>&f`, `>|f`), `tee` operands, the files of an in-place
+ * `sed`/`perl`, the `cp`/`install` destination (or `-t DIR`), every `mv`
+ * operand, `rm`/`unlink`/`truncate` operands, and a string-literal path handed
+ * to a write API (`open(p, 'w')`, `Path(p).write_text`, `writeFile`/
+ * `appendFile`, `File.write`) in an interpreter's own program text: the -c/-e
+ * argument of a python/node/ruby/perl command, or a heredoc body opened on
+ * that command's line (a plain `cat > f <<EOF` body is data and is not
+ * scanned). Targets resolve
  * against the hook's cwd (`~/` expands, backslashes flip) and dedupe with the
  * edit tools by absolute path, so Bash plus Write of one file counts once.
  * Never counted: read-only commands, `touch`, `mkdir`, fd dups (`2>&1`,
@@ -70,7 +73,8 @@
  * (`python gen.py`, npm scripts, codegen, formatters), `git apply`/`checkout`/
  * `restore`/`stash`, `patch`, dynamic paths, command substitution and `eval`,
  * a `cd` before a relative write (resolved against the session cwd instead),
- * aliases and full-path binaries, and `>|` (split on the `|`).
+ * aliases, full-path binaries other than an interpreter (`/bin/rm`), and a
+ * heredoc nested inside another heredoc's data.
  * No Codex mirror: plan-gate-pilot.js's scope tracker is a once-per-session
  * nonblocking warning fed by apply_patch disk deltas, with no per-call count
  * for a Bash write to join.
@@ -1306,6 +1310,8 @@ const INLINE_WRITE_PATH_RES = [
 // redirect (an attached fd prefix like the `2` in `2>err.log` is dropped, and
 // a `<` input redirect with its operand is skipped). A `$(...)` or backtick
 // substitution stays inside its word, so it is never split into fake operands.
+// `dangling` marks a segment ending in a `>` with no operand, which is what
+// splitShellSegments leaves of `>&word` and `>|word`.
 function tokenizeSegment(segment) {
   const text = String(segment || '');
   const n = text.length;
@@ -1361,6 +1367,7 @@ function tokenizeSegment(segment) {
   }
 
   let lastWordEnd = -1;
+  let dangling = false;
   while (i < n) {
     const ch = text[i];
     if (/\s/.test(ch)) {
@@ -1375,12 +1382,13 @@ function tokenizeSegment(segment) {
       while (i < n && /\s/.test(text[i])) i += 1;
       const target = readWord();
       if (target) redirects.push(target);
+      else if (i >= n) dangling = true;
     } else {
       words.push(readWord());
       lastWordEnd = i;
     }
   }
-  return { words, redirects };
+  return { words, redirects, dangling };
 }
 
 // File operands of a command's words (words[0] is the command). `--` ends
@@ -1466,14 +1474,35 @@ function commandWriteTargets(words) {
   return [];
 }
 
-// String-literal paths written by an inline interpreter (heredoc, -c, -e).
-// Scans the raw command text, not segments: splitShellSegments strips heredoc
-// bodies, where the script keeps its write. Same gate as detectTodoShellWrite.
-function inlineInterpreterTargets(command) {
-  if (!INLINE_INTERPRETER_RE.test(command) || !INLINE_BODY_RE.test(command)) return [];
+// An interpreter as the invoked command (`python3`, `/usr/bin/node`), matched
+// on the word's basename.
+const INTERPRETER_CMD_RE = /^(?:python3?(?:\.\d+)?|node|ruby|perl)$/i;
+function isInterpreterWord(word) {
+  return INTERPRETER_CMD_RE.test(path.basename(String(word || '')));
+}
+
+// Bodies of heredocs whose opening line invokes an interpreter
+// (`python3 - <<'EOF'`, `cat <<'EOF' | node`). splitShellSegments strips
+// heredoc bodies, so these are cut from the raw text; a plain `cat > f <<EOF`
+// body is data, not a script, and is never returned.
+const HEREDOC_OPEN_RE = /^([^\n]*?)<<-?[ \t]*(['"]?)([A-Za-z_][\w-]*)\2([^\n]*)$/gm;
+function interpreterHeredocBodies(command) {
+  const bodies = [];
+  for (const m of command.matchAll(HEREDOC_OPEN_RE)) {
+    const opening = (m[1] + ' ' + m[4]).split(/[\s|;&()]+/);
+    if (!opening.some(isInterpreterWord)) continue;
+    const lines = command.slice(m.index + m[0].length + 1).split('\n');
+    const end = lines.findIndex((line) => line.replace(/^\t+/, '') === m[3]);
+    bodies.push((end === -1 ? lines : lines.slice(0, end)).join('\n'));
+  }
+  return bodies;
+}
+
+// String-literal paths an interpreter body hands to a write API.
+function writeApiTargets(body) {
   const targets = [];
   for (const re of INLINE_WRITE_PATH_RES) {
-    for (const m of command.matchAll(re)) targets.push(m[2]);
+    for (const m of body.matchAll(re)) targets.push(m[2]);
   }
   return targets;
 }
@@ -1481,18 +1510,32 @@ function inlineInterpreterTargets(command) {
 // Raw target strings a Bash command writes or removes (see the SCOPE GATE
 // header paragraph for the counted shapes and accepted gaps). Skips leading
 // VAR=value and `command` like detectOutwardMutations, plus the shell
-// keywords that can precede a command in a segment (`then cp a b`).
+// keywords that can precede a command in a segment (`then cp a b`). Only an
+// interpreter's own program text is scanned for write APIs: its -c/-e
+// arguments, or a heredoc body opened on its line.
 const LEADING_SHELL_KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', 'time']);
 function extractBashWriteTargets(command) {
   const targets = [];
+  let pendingRedirect = false;
   for (const segment of splitShellSegments(command)) {
-    const { words, redirects } = tokenizeSegment(segment);
+    const { words, redirects, dangling } = tokenizeSegment(segment);
     targets.push(...redirects);
+    if (pendingRedirect) {
+      // The split at `&` or `|` cut a `>&word` or `>|word` redirect: this
+      // segment's first word is its operand unless it is an fd dup or close
+      // (`2>&1`, `>&-`), and the rest still belongs to the cut command.
+      pendingRedirect = dangling;
+      if (words.length && !/^(?:\d+|-)$/.test(words[0])) targets.push(words[0]);
+      continue;
+    }
+    pendingRedirect = dangling;
     while (words.length && (LEADING_SHELL_KEYWORDS.has(words[0]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]))) words.shift();
     if (words[0] === 'command') words.shift();
-    if (words.length) targets.push(...commandWriteTargets(words));
+    if (!words.length) continue;
+    targets.push(...commandWriteTargets(words));
+    if (isInterpreterWord(words[0])) targets.push(...writeApiTargets(words.slice(1).join('\n')));
   }
-  targets.push(...inlineInterpreterTargets(command));
+  for (const body of interpreterHeredocBodies(command)) targets.push(...writeApiTargets(body));
   return targets;
 }
 

@@ -1051,6 +1051,18 @@ async function bashScopeExactTargetCounts() {
     ['for f in x; do rm a.txt; done', 1],
     ['! rm a.txt', 1],
     [`git commit -m "$(cat <<'EOF'\nFix the parser\n\nKeeps quotes 'as is' > none.\nEOF\n)"`, 0],
+    // splitShellSegments breaks `>&word` at the `&` and `>|` at the `|`; the
+    // operand still counts, while an fd dup or close does not.
+    ['make >& build.log', 1],
+    ['make >&build.log', 1],
+    ['echo x >| out.txt', 1],
+    ['make 2>&1 | tee build.log', 1],
+    ['echo x >&-', 0],
+    // Only an interpreter's own body is scanned for write APIs: a plain
+    // heredoc that quotes write examples writes just its redirect target.
+    [`cat > README.md <<'EOF'\nRun python3 -c "open('generated.py','w')" or\nPath('other.md').write_text('x') to regenerate.\nEOF`, 1],
+    ["cat <<'EOF' | python3\nopen('a.py', 'w').write('x')\nEOF", 1],
+    [`/usr/bin/python3 -c "open('b.py','w').write('1')"`, 1],
   ];
   for (const [index, [command, expected]] of cases.entries()) {
     const session = `sess-bs-exact-${index}`;
