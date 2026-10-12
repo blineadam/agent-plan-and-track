@@ -15,21 +15,31 @@ writing, and a rewrite of someone else's draft.
    instance of the patterns below in the input.
 2. Write a draft rewrite, don't delete: replace AI-isms with natural
    alternatives and cover everything the original covers; if the original has
-   five paragraphs, the rewrite has five. Preserve meaning and match the
-   intended register (formal, casual, technical). It should read naturally
-   aloud, vary sentence length, and prefer specific detail the source
-   supplies and simple is/are/has constructions.
+   five paragraphs, the rewrite has five. Fixing flow can move sentences
+   between paragraphs, but never merges two paragraphs into one. Preserve
+   meaning and match the intended register (formal, casual, technical). It
+   should read naturally aloud, vary sentence length, and prefer specific
+   detail the source supplies and simple is/are/has constructions. A
+   paragraph made entirely of tells (a generic upbeat closer, a "whether
+   you're X or Y" line) still has a job, usually who the text is for or what
+   it promises: keep that job in a plain sentence instead of dropping the
+   paragraph.
 3. Add personality only when the content and voice call for it (see below);
    encyclopedic, technical, legal, or reference text stays neutral.
 4. Ask "what still makes this obviously AI-generated?" and revise to address
    the remaining tells.
 5. Compare the rewrite against the original: every fact, number, command,
    link, and placeholder survives, each condition or qualification stays
-   attached to its claim, and nothing is stated more strongly than the
-   source supports.
+   attached to its claim, nothing is stated more strongly than the source
+   supports, and nothing is asserted that the source doesn't say.
 6. Last pass, after everything else: scan the prose you wrote (not preserved
    quotations) specifically for `—` and `–`; either one means the pass isn't
    done.
+
+Keep the draft and the still-AI notes as your own working process; hand back
+the final version, noting only what changed, unless the user asks to see the
+editorial breakdown. For fresh writing, just apply this as a checklist and
+write it clean the first time.
 
 ## Facts and evidence
 
@@ -38,12 +48,10 @@ the author didn't supply and you haven't verified, not even to make a vague
 sentence concrete. When the text needs one, leave a visible placeholder such
 as `[needs number]` and name the gap in your notes; a placeholder never ships
 dressed as a claim. A precise claim can still be false, so a date or spec you
-touch gets the same check as a customer count.
-
-Keep the draft and the still-AI notes as your own working process; hand back
-the final version, noting only what changed, unless the user asks to see the
-editorial breakdown. For fresh writing, just apply this as a checklist and
-write it clean the first time.
+touch gets the same check as a customer count. A vague phrase gets the same
+treatment: restate it plainly or cut it, never swap it for a specific claim
+the source doesn't make ("an innovative approach to scheduling" does not
+become "cuts scheduling time in half").
 
 ## Voice calibration (optional)
 
