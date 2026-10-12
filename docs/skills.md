@@ -72,7 +72,8 @@ work, then publish or capture what the session taught you.
   finalizing longer user-facing writing: README sections, docs, PR
   descriptions, blog-style prose. Strips the usual AI writing tells (em
   dashes, promotional puffery, filler, rule-of-three, chatbot artifacts)
-  while preserving the intended meaning and register.
+  while preserving the intended meaning and register, and never invents a
+  number or quote to make a sentence sound specific.
 - **`yeet`** (skill) kicks in once work is done and ready to ship: commits,
   pushes, and opens a draft GitHub PR with the standing PR-body heading set
   via `--body-file`, requests a Copilot review when the repo doesn't
