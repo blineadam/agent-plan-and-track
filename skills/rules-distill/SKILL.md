@@ -42,7 +42,7 @@ After all clusters return, merge candidates: dedupe overlapping principles,
 and re-check the "2+ skills" bar using evidence pooled across **all**
 clusters.
 
-Launch a general-purpose subagent per cluster with this prompt:
+Launch one subagent per cluster, at the tier chosen above, with this prompt:
 
 > You cross-read skills to find principles that should be promoted to standing rules.
 >

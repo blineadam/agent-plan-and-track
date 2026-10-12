@@ -13,7 +13,8 @@ added a Dependencies line, collapsed the decision tree's duplicate reconnaissanc
 steps into a pointer to the Reconnaissance-Then-Action section, folded the Common
 Pitfall networkidle advice into that section's first step (and dropped the code
 comment repeating it), and removed the Best Practices bullet repeating the
-run-`--help`-first black-box guidance. Full license text: LICENSE.txt in this
+run-`--help`-first black-box guidance, and restated that guidance's all-caps
+emphasis as plain directives. Full license text: LICENSE.txt in this
 directory. -->
 
 # Web Application Testing
@@ -25,7 +26,7 @@ To test local web applications, write native Python Playwright scripts.
 **Helper Scripts Available**:
 - `scripts/with_server.py` - Manages server lifecycle (supports multiple servers)
 
-**Always run scripts with `--help` first** to see usage. DO NOT read the source until you try running the script first and find that a customized solution is absolutely necessary. These scripts can be very large and thus pollute your context window. They exist to be called directly as black-box scripts rather than ingested into your context window.
+Run scripts with `--help` first to see usage, and read a script's source only after running it shows a customized solution is needed: these scripts can be very large, and they exist to be called as black boxes rather than read into your context window.
 
 ## Decision Tree: Choosing Your Approach
 
