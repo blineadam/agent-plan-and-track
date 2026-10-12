@@ -426,14 +426,15 @@ The lints above only see `Edit`/`Write`/`MultiEdit`, so a `Bash` call that
 rewrites `.tasks/todo.md` would skip all of them. This was a real incident: an
 inline `python3` heredoc compressed a batch that still had unchecked steps and
 no Review section, which the edit-tool path would have caught. On the `Bash`
-entry, a command that references `.tasks/todo.md` and writes it is denied with
-a message to make the same change with the Edit or Write tool.
+entry, a command that writes or removes `.tasks/todo.md` is denied with a
+message to make the same change with the Edit or Write tool.
 
 Write signals: a `>`/`>>` redirect or `tee` (including `tee -a`) targeting the
-file; `sed -i`, `perl -i`, or `perl -pi` in a command naming it; `truncate`
-on it; `mv`, `cp`, or `install` onto it when it already exists (a move onto a
-missing file is a create, which is how plan-and-track's legacy `tasks/`
-migration lands, and a `cd` earlier in the command or a missing hook `cwd`
+file; `sed -i`, `perl -i`, or `perl -pi` in a command naming it; `truncate`,
+`rm`, or `unlink` on it; `mv` with it as the source; `rm` or `mv` of the
+`.tasks` directory itself; `mv`, `cp`, or `install` onto it, except
+plan-and-track's legacy migration (`mv tasks/todo.md .tasks/todo.md` onto a
+missing file, where a `cd` earlier in the command or a missing hook `cwd`
 counts as existing); or an inline interpreter
 (python, node, ruby, perl, via heredoc, `-c`, or `-e`) whose body names the
 file and calls a write API (`open(` with a `w`/`a`/`x`/`+` mode, `.write(`,

@@ -744,7 +744,7 @@ const TODO_SHELL_PY_HEREDOC = [
 
 function assertTodoShellDeny(stdout) {
   const reason = denyReason(stdout);
-  assert.match(reason, /Bash command writes \.tasks\/todo\.md/);
+  assert.match(reason, /Bash command writes or removes \.tasks\/todo\.md/);
   assert.match(reason, /Edit or Write tool/);
   assert.match(reason, /PLANGATE_DISABLED=1/);
   return reason;
@@ -830,6 +830,45 @@ async function bashTodoMigrationMoveAllowed() {
   }
   assertTodoShellDeny(run({ ...bashEvent('cd sub && mv tasks/todo.md .tasks/todo.md', session), cwd: f.root }, f.env));
   assertTodoShellDeny(run(bashEvent('mv tasks/todo.md .tasks/todo.md', session), f.env));
+  // Only the legacy migration's source creates freely: any other file moved,
+  // copied, or installed onto a missing todo.md lands content no lint read.
+  for (const command of [
+    'mv /tmp/forged.md .tasks/todo.md',
+    'cp tasks/todo.md .tasks/todo.md',
+    'install -m 644 tasks/todo.md .tasks/todo.md',
+  ]) {
+    assertTodoShellDeny(run({ ...bashEvent(command, session), cwd: f.root }, f.env));
+  }
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// Deleting the file or moving it away removes the Migration State block and
+// every in-flight batch with no check running, and so does removing or moving
+// the .tasks directory that holds it.
+async function bashTodoDeleteDenied() {
+  const f = fixture();
+  writeTodo(f.root, '# Batch 1: x\n');
+  const session = 'sess-todo-rm';
+  for (const command of [
+    'rm .tasks/todo.md',
+    'rm -f ./.tasks/todo.md',
+    'unlink .tasks/todo.md',
+    'mv .tasks/todo.md /tmp/todo.md',
+    'rm -rf .tasks',
+    'rm -r ./.tasks/',
+    'mv .tasks /tmp/old-tasks',
+  ]) {
+    assertTodoShellDeny(run({ ...bashEvent(command, session), cwd: f.root }, f.env));
+  }
+  for (const command of [
+    'rm /tmp/x.md',
+    'rm -rf .tasks-old',
+    'rm .tasks/lessons-draft.md',
+    'mv tasks/lessons.md .tasks/lessons.md',
+    'ls .tasks',
+  ]) {
+    assert.strictEqual(run({ ...bashEvent(command, session), cwd: f.root }, f.env), '', command);
+  }
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
@@ -864,7 +903,7 @@ async function bashTodoWarnModeWarns() {
   const stdout = run(bashEvent('echo x >> .tasks/todo.md', 'sess-todo-warn'), env);
   const parsed = JSON.parse(stdout);
   assert.strictEqual(parsed.hookSpecificOutput.permissionDecision, undefined);
-  assert.match(parsed.hookSpecificOutput.additionalContext, /Bash command writes \.tasks\/todo\.md/);
+  assert.match(parsed.hookSpecificOutput.additionalContext, /Bash command writes or removes \.tasks\/todo\.md/);
   assert.match(parsed.hookSpecificOutput.additionalContext, /Warn-only mode/);
   fs.rmSync(f.root, { recursive: true, force: true });
 }
@@ -945,6 +984,7 @@ const HANDLERS = {
   'bash-todo-absolute-path-denied': bashTodoAbsolutePathDenied,
   'bash-todo-move-copy-truncate-denied': bashTodoMoveCopyTruncateDenied,
   'bash-todo-migration-move-allowed': bashTodoMigrationMoveAllowed,
+  'bash-todo-delete-denied': bashTodoDeleteDenied,
   'bash-todo-read-only-silent': bashTodoReadOnlySilent,
   'bash-todo-warn-mode-warns': bashTodoWarnModeWarns,
   'bash-todo-lint-disabled-still-denies': bashTodoLintDisabledStillDenies,

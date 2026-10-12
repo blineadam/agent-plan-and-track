@@ -122,9 +122,13 @@
  *
  * TODO.MD SHELL-WRITE GUARD: the todo.md lints above only see Edit/Write/
  * MultiEdit, so a Bash call that rewrites the file (a redirect, `tee`,
- * `sed -i`, `mv`/`cp`/`install` onto an existing one, `truncate`, or an inline
- * python/node/ruby/perl script that names the path and calls a write API)
- * skips every one of them. On the Bash entry, such a command is denied with a
+ * `sed -i`, `mv`/`cp`/`install` onto it, `truncate`, or an inline
+ * python/node/ruby/perl script that names the path and calls a write API) or
+ * removes it (`rm`/`unlink`, `mv` away, or `rm`/`mv` of the `.tasks`
+ * directory) skips every one of them. The one allowed shell write is
+ * plan-and-track's legacy migration, `mv tasks/todo.md .tasks/todo.md` onto a
+ * todo.md that does not exist yet (a `cd` earlier in the command or no hook
+ * cwd for a relative path counts as existing). On the Bash entry, such a command is denied with a
  * message telling the caller to make the same change with the Edit/Write
  * tool. Stamped or unstamped, it REPEATS ON EVERY ATTEMPT (no once-marker;
  * the unlock is switching tools, not a session event), so a bare retry of the
@@ -1156,9 +1160,20 @@ const TODO_TEE_RE = new RegExp(String.raw`\btee\b[^|;&\n]*` + TODO_PATH, 'i');
 // `sed -i`, `sed --in-place`, `perl -i`, `perl -pi`, `-i.bak`, `-ni`, `-0pi`.
 const IN_PLACE_EDIT_RE = /\b(?:sed|perl)\b[^|;&\n]*?[ \t](?:-[A-Za-z0-9]*i|--in-place)/i;
 // mv/cp/install with the todo path as the last argument of its segment; the
-// path is captured so an existence check can tell a fresh create from an
-// overwrite.
-const TODO_DEST_RE = new RegExp(String.raw`\b(?:mv|cp|install)\b[^|;&\n]*[ \t]['"]?(` + TODO_PATH + String.raw`)['"]?(?=[ \t]*(?:[|;&)\n]|$))`, 'i');
+// verb, the arguments before the path, and the path are captured so the one
+// legal create (the legacy tasks/todo.md migration) can be told apart.
+const TODO_DEST_RE = new RegExp(String.raw`\b(mv|cp|install)\b([^|;&\n]*)[ \t]['"]?(` + TODO_PATH + String.raw`)['"]?(?=[ \t]*(?:[|;&)\n]|$))`, 'i');
+// The legacy source plan-and-track step 1 moves into place: tasks/todo.md not
+// under .tasks.
+const LEGACY_TODO_SOURCE_RE = /(?:^|[ \t'"])(?:\.\/)?tasks[\/\\]todo\.md(?=['"]?[ \t])/i;
+// rm/unlink naming the todo path, or the todo path as an mv source (another
+// argument follows it): both remove the file with no lint running.
+const TODO_DELETE_RE = new RegExp(String.raw`\b(?:rm|unlink)\b[^|;&\n]*` + TODO_PATH, 'i');
+const TODO_MOVE_AWAY_RE = new RegExp(String.raw`\bmv\b[^|;&\n]*[ \t]['"]?` + TODO_PATH + String.raw`['"]?[ \t]+[^|;&\n]*\S`, 'i');
+// The .tasks directory itself as an rm or mv operand (not .tasks-old,
+// .tasks/lessons-draft.md): removing or moving it takes todo.md with it.
+const TASKS_DIR = String.raw`(?<![\w.\-])(?:[^\s'"<>|;&()=]*[\/\\])?\.tasks[\/\\]?(?=['"]?(?:[ \t]|[|;&)\n]|$))`;
+const TASKS_DIR_REMOVE_RE = new RegExp(String.raw`\b(?:rm|mv)\b[^|;&\n]*[ \t]['"]?` + TASKS_DIR, 'i');
 // truncate takes only file operands, so the path anywhere in its segment is a target.
 const TODO_TRUNCATE_RE = new RegExp(String.raw`\btruncate\b[^|;&\n]*` + TODO_PATH, 'i');
 // An interpreter whose program text is inline (heredoc, -c, -e) so the body is
@@ -1184,30 +1199,35 @@ const WRITE_API_RE = new RegExp(
 // segment with a -i flag can false-positive, and the retry (Edit/Write) is
 // always available.
 function detectTodoShellWrite(command, cwd) {
+  if (TASKS_DIR_REMOVE_RE.test(command)) return true;
   if (!TODO_REF_RE.test(command)) return false;
   if (TODO_REDIRECT_RE.test(command) || TODO_TEE_RE.test(command)) return true;
   if (IN_PLACE_EDIT_RE.test(command)) return true;
-  if (TODO_TRUNCATE_RE.test(command)) return true;
+  if (TODO_TRUNCATE_RE.test(command) || TODO_DELETE_RE.test(command)) return true;
+  if (TODO_MOVE_AWAY_RE.test(command)) return true;
   const dest = TODO_DEST_RE.exec(command);
-  if (dest && todoDestinationExists(dest[1], command, cwd)) return true;
+  if (dest && !isLegacyTodoMigration(dest, command, cwd)) return true;
   return INLINE_INTERPRETER_RE.test(command) && INLINE_BODY_RE.test(command) && WRITE_API_RE.test(command);
 }
 
-// mv/cp/install onto a todo.md that does not exist yet creates the file
-// (plan-and-track's legacy tasks/ -> .tasks/ migration does exactly this), so
-// there is no linted content to bypass. Anything that keeps the destination
-// from being resolved reliably (a `cd` earlier in the command, no cwd) counts
-// as existing, so the doubt lands on the deny side.
-function todoDestinationExists(rawPath, command, cwd) {
-  if (/(?:^|[^\w.\-])cd\b/.test(command)) return true;
+// The one shell write allowed onto todo.md: plan-and-track step 1's
+// `mv tasks/todo.md .tasks/todo.md` when .tasks/todo.md does not exist yet,
+// a create carrying the project's own legacy file rather than an overwrite.
+// Anything that keeps the destination from being resolved reliably (a `cd`
+// earlier in the command, no cwd for a relative path) counts as an
+// overwrite, so the doubt lands on the deny side.
+function isLegacyTodoMigration(dest, command, cwd) {
+  const [, verb, sources, rawPath] = dest;
+  if (verb.toLowerCase() !== 'mv' || !LEGACY_TODO_SOURCE_RE.test(sources + ' ')) return false;
+  if (/(?:^|[^\w.\-])cd\b/.test(command)) return false;
   const p = rawPath.replace(/\\/g, '/');
-  if (!path.isAbsolute(p) && !cwd) return true;
-  return fs.existsSync(path.isAbsolute(p) ? p : path.resolve(cwd, p));
+  if (!path.isAbsolute(p) && !cwd) return false;
+  return !fs.existsSync(path.isAbsolute(p) ? p : path.resolve(cwd, p));
 }
 
 function todoShellWriteMsg(input) {
   return [
-    "[PlanGate] This Bash command writes .tasks/todo.md. plan-gate's todo.md checks (session stamp, owner tags, Review goal line, Migration State, in-flight batch warning) only see Edit/Write/MultiEdit calls, so a shell write would skip every one of them. Make the same change with the Edit or Write tool instead.",
+    "[PlanGate] This Bash command writes or removes .tasks/todo.md (or the .tasks directory holding it). plan-gate's todo.md checks (session stamp, owner tags, Review goal line, Migration State, in-flight batch warning) only see Edit/Write/MultiEdit calls, so a shell write would skip every one of them. Make the same change with the Edit or Write tool instead; to close out batches, compress them in place rather than deleting the file.",
     subagentLine(input),
     '(PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
   ]
