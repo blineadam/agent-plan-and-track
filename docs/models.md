@@ -63,14 +63,15 @@ the [egress sandbox](../skills/skill-activation/references/live-run-egress-proxy
 | Agent | Current | Cheaper setting tried | Result | Saving |
 | --- | --- | --- | --- | --- |
 | `executor` | Sonnet, high | Sonnet, medium | Same hidden-test pass rate (100%), slightly more scope creep | About $0.01 per run |
-| `researcher` | Sonnet, high | Sonnet medium; Haiku high; Haiku medium | Sonnet medium scored 0.94 vs 0.99 on fact keys; errors in 2 of 9 answers on Haiku high, 6 of 9 on Haiku medium, 0 of 18 on Sonnet high | About 15% on Sonnet medium, 90% on Haiku |
+| `researcher` | Sonnet, high | Sonnet medium; Haiku high; Haiku medium | Sonnet medium scored 0.94 vs 0.99 on fact keys; errors in 2 of 9 answers on Haiku high, 6 of 9 on Haiku medium, 0 of 9 on Sonnet high (each judged twice) | About 15% on Sonnet medium, 90% on Haiku |
 | `planner` | Opus, xhigh | Opus, high | Blinded review scored its plans 7.0 vs 8.7 | About 35% |
 
 Each setting ran three times per task, on tasks drawn from this repo, and a
 single blinded reviewer scored the planner and Haiku outputs, so treat this as
 the bar a change has to beat, not settled proof. To re-measure with
-`claude -p --agent`, pass `--effort` explicitly: that mode ignores the agent's
-frontmatter effort, though a real subagent dispatch honors it.
+`claude -p --agent`, pass `--effort` explicitly: on Claude Code 2.1.296 that
+mode ignored the agent's frontmatter effort, though a real subagent dispatch
+honored it.
 
 ### Harness mappings and fallbacks
 
