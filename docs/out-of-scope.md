@@ -199,3 +199,39 @@ Decided 2026-10-09 after a paid sandboxed A/B. The gate is the section that says
 It did not discriminate. Over three fresh runs per arm, the head arm passed 2 of 3 (one run went one, one, then the remaining five), and the control arm passed 3 of 3 with waves like [1,3,3] and [1,3,2,3]. Counting the two single-run probes as well, the head arm ramped in 4 of 5 runs and the control in 3 of 5. The control coordinators gated every wave on `npm test` and split the rest on their own, guided by the pilot, validation ladder, and Migration State text that the control keeps, along with plan-and-track's pilot-before-scale step. A probe of the section's one unique clause, ordering waves along the dependency graph, didn't separate the arms either: both picked the upstream module as the pilot unprompted. A planted early failure to test the stop clause wasn't tried, because the control keeps Applying step 8's "stop dispatching and repair the process", and both arms stop on a failing suite regardless.
 
 What would reopen this: a model or harness where the control arm goes from the pilot straight to everything else in most runs, or a reworded section whose behavior the rest of the skill doesn't already produce. The redundancy itself is a reason to consider trimming the section, which is a separate decision.
+
+## A shipper subagent, or one for yeet's Copilot plumbing, stays unadopted
+
+Proposed on 2026-10-13 by the repo owner, pointing at [a post on cutting Claude Code usage with subagents](https://www.andreagrandi.it/posts/claude-code-subagents-to-save-usage/) and asking:
+
+> Should we make any changes to our agents? Should we add any agents, like the shipper?
+
+Three of the post's four agents already have a counterpart here: its `implementer`, `scoper`, and `reviewer` map to `executor`, `researcher`, and the `architect-reviewer` and `security-auditor` pair plus the `/code-review` skill. The post credits its roughly 40% saving per PR to keeping the implement-test-fix loop out of the main session, not to cheaper per-token prices, so no model or effort change to the existing agents came out of it either.
+
+The fourth agent, `shipper`, is a Haiku agent that commits, pushes, and opens the PR. The post's evidence for it is a single session, since it was added days before the measurements. It was declined on fit: `yeet`'s steps 1 to 6 take only a handful of requests, a subagent would re-read diffs the main session already holds, and the PR body needs the reasoning behind the change, which the subagent never saw.
+
+A narrower variant was measured before anyone built it: a subagent for `yeet`'s mechanical Copilot-review calls, meaning polling for the review, paginated fetches of reviews, comments, and threads, posting replies, resolving threads, and re-reading CI. A read-only pass over the saved Claude Code transcripts of 264 PRs, priced at the [list rates](https://platform.claude.com/docs/en/about-claude/pricing) on 2026-10-13, matched Claude Code's own per-session cost records at a median ratio of 0.996. Opus 5.5 served main-session requests in 230 of the 264 PRs, at $4 per million input tokens, $8 per million 1-hour cache writes, $0.20 per million cache reads, and $20 per million output tokens. Per PR, main session only:
+
+| Part of `yeet` | Mean | Median |
+| --- | --- | --- |
+| Steps 1 to 6 | $0.94 | $0.35 |
+| Copilot plumbing | $0.56 | $0.28 |
+| Other loop work: triage, fixes, checks | $2.24 | $0.88 |
+| Loop replies with no tool call | $0.44 | $0.09 |
+| All of `yeet` | $4.19 | $2.01 |
+
+All rows cover the same 264 PRs, and the means sum to the total. The steps 1 to 6 mean is skewed by 36 PRs whose segment began at an early commit and swept in implementation work. Plumbing is 13% of `yeet`'s total, or 25% under a looser count that also treats gh polling glued together with `sed` or `python` as plumbing, which moves some requests out of the loop-work row. `yeet` as a whole is 44% of an average PR's main-session cost of $9.44 ($15.01 with subagents). After the subagent's own cost and the extra hand-off requests, the modeled saving is about $0.20 per PR under the strict count and $0.65 under the looser one, 2 to 7% of that $9.44. That is too little to justify handing the GitHub API details `yeet` encodes (per-surface reviewer spellings, pagination, review ids versus thread ids) to a cheaper model.
+
+What would reopen this: a re-run of the same measurement showing plumbing as most of the review loop's cost.
+
+## Compacting before yeet isn't worth testing yet
+
+The same measurement found `yeet` to be about 44% of an average PR's main-session cost, with review-loop requests running at about 286k tokens of context against about 211k for sessions overall. That made compacting before `yeet` look like a cheaper lever, and the owner asked:
+
+> should we consider or test this first
+
+Breaking the loop's cost down answered most of it. Across 6,698 loop requests, 54% of the cost is cache reads, 34% cache writes, and 12% output, split by each request's `usage` fields. Per the [prompt-caching docs](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#tracking-cache-performance), `cache_read_input_tokens` counts the already-cached prefix a request reuses and `cache_creation_input_tokens` counts tokens newly written to the cache. Only the reads shrink with a smaller context. The writes cover what each turn added since the previous request, mostly tool output, which compaction does not reduce. Compacting from the median 224k at loop start down to about 60k would save about $0.52 in reads over a median 16-request loop and cost about $0.22 to compact and re-cache, for a net of about $0.30 per PR at the median and about $1 at the mean, which long loops drive.
+
+Compaction also drops the reasoning behind the change, and the triage and fixes that depend on it are already the loop's most expensive part, so a worse triage would cost more than the saving. History can't settle it, since only 8 of 185 sessions ever compacted, and a live A/B would put real PRs at risk for a signal that stays noisy at a handful of runs. `strategic-compact` already names a large task wrapping up as a point to compact, which covers the judgment-call version. The owner approved recording both decisions here with "ok add them".
+
+What would reopen this: evidence that review triage holds up after compaction, or a pricing change that makes cache reads most of a loop's cost.
