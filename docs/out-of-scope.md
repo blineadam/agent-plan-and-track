@@ -214,11 +214,13 @@ A narrower variant was measured before anyone built it: a subagent for `yeet`'s 
 
 | Part of `yeet` | Mean | Median |
 | --- | --- | --- |
-| Steps 1 to 6 | $0.41 | $0.31 |
-| Copilot plumbing | $0.56 to $1.06 | $0.28 to $0.59 |
+| Steps 1 to 6 | $0.94 | $0.35 |
+| Copilot plumbing | $0.56 | $0.28 |
 | Other loop work: triage, fixes, checks | $2.24 | $0.88 |
+| Loop replies with no tool call | $0.44 | $0.09 |
+| All of `yeet` | $4.19 | $2.01 |
 
-The first row leaves out 36 PRs whose segment began at an early commit and swept in implementation work. The plumbing range depends on whether gh polling glued together with `sed` or `python` counts as plumbing. By that measure it is 10 to 25% of `yeet`'s main-session cost. After the subagent's own cost and the extra hand-off requests, the modeled saving is about $0.20 to $0.65 per PR, which is 2 to 7% of an average PR's session cost ($9.44 for the main session, $15.01 with subagents). That is too little to justify handing the GitHub API details `yeet` encodes (per-surface reviewer spellings, pagination, review ids versus thread ids) to a cheaper model.
+All rows cover the same 264 PRs, and the means sum to the total. The steps 1 to 6 mean is skewed by 36 PRs whose segment began at an early commit and swept in implementation work. Plumbing is 13% of `yeet`'s total, or 25% under a looser count that also treats gh polling glued together with `sed` or `python` as plumbing, which moves some requests out of the loop-work row. `yeet` as a whole is 44% of an average PR's main-session cost of $9.44 ($15.01 with subagents). After the subagent's own cost and the extra hand-off requests, the modeled saving is about $0.20 per PR under the strict count and $0.65 under the looser one, 2 to 7% of that $9.44. That is too little to justify handing the GitHub API details `yeet` encodes (per-surface reviewer spellings, pagination, review ids versus thread ids) to a cheaper model.
 
 What would reopen this: a re-run of the same measurement showing plumbing as most of the review loop's cost.
 
