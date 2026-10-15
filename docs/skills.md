@@ -51,7 +51,8 @@ work, then publish or capture what the session taught you.
   observability-and-instrumentation skill) kicks in when a new entry
   point, failure path, or external call is built, or logging is added or
   reviewed. Reuses
-  the project's existing logger, shapes events so a person or an LLM can
+  the project's existing logger, proposes a logging library when there is
+  none (recording a decline so it isn't asked again), shapes events so a person or an LLM can
   diagnose a failure from one line, keeps a gitignored local log file an
   agent can read, and requires forcing one failure and
   reading the emitted line before the work counts as done.
