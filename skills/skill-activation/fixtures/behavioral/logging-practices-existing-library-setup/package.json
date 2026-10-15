@@ -1,0 +1,11 @@
+{
+  "name": "invoice-proxy",
+  "version": "0.1.0",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "pino": "^9.0.0"
+  }
+}
