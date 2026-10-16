@@ -87,6 +87,9 @@ below as a review comment, not just a suggestion.
   no visible triage: the finding should be confirmed as real (or rejected)
   against the PR's own context, not accepted or waved off on the reviewer's
   authority alone.
+- Flag a Codex named subagent spawn, in a skill, agent, or rule file, with no
+  `fork_turns` set or set to `all`: it should use `none` for a self-contained
+  handoff, or a positive bounded count only when prior turns are required.
 
 ## Verification
 
