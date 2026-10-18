@@ -71,8 +71,8 @@ Before any billable run, check that the scenario set can come out negative:
   prompt that already describes the behavior it tests for. Remove it, or
   state up front that the run can only report a pin.
 - Include at least one scenario where the bare baseline, with the target
-  rule absent, is expected to fail. If none can be written, the model
-  already behaves this way unaided.
+  rule absent, is expected to fail. If none can be written, leave the
+  rule's effect unmeasured and label the run a regression pin.
 - Have someone other than the rule's author write or judge the assertions:
   the user, or a fresh subagent given only the rule text and the scenarios.
 
