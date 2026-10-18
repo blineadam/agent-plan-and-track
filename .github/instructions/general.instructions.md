@@ -10,9 +10,9 @@ excludeAgent: "cloud-agent"
 This repo is a portable set of agent rules/skills/hooks for Claude Code,
 Copilot, and Codex. The repo-wide conventions below come from
 `rules/agent-guidelines.md`, `AGENTS.md`, `docs/skills.md`,
-`docs/installers.md`, and `docs/out-of-scope.md`; code conventions live in
-`.ai-style-rules.md` and are covered by the path-scoped files. Flag anything
-below as a review comment, not just a suggestion.
+`docs/installers.md`, `docs/out-of-scope.md`, and `skills/yeet/SKILL.md`; code
+conventions live in `.ai-style-rules.md` and are covered by the path-scoped
+files. Flag anything below as a review comment, not just a suggestion.
 
 ## Writing voice
 
@@ -30,6 +30,16 @@ below as a review comment, not just a suggestion.
 
 ## Git and PR hygiene
 
+- Flag a commit message or PR title that skips the target repo's own lookup
+  order: a documented rule (a contributing guide, an agent instruction file,
+  a commit-lint config) first, then recent commits on the same touched paths,
+  then the commit author's own past commits in that style, falling back to a
+  plain descriptive sentence only once none of those apply. Flag a commit
+  that blends two styles the log already shows instead of picking one.
+- Flag a commit body that restates what the diff already makes plain instead
+  of carrying only what a later reader needs to pick the work up from the log
+  alone. A test, doc, or fixture edit made to support the main change belongs
+  inside that change's line, not a line of its own.
 - Flag AI self-attribution in a commit message, PR title, or PR body: a
   `Co-Authored-By:` trailer naming an AI/tool, a "Generated with ..."
   footer, a claude.ai session link, or any other AI/tool self-reference.
