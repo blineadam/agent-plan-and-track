@@ -100,8 +100,8 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   fail-open `try { main() } catch { ...; process.exit(0) }` shape.
 - `lint-pr-body.js`'s numbered HARD/WARN header and its dedicated
   `pr-body-lint.yml` workflow are its own convention, not required of every
-  guard. `check-digest-preview.js` describes its HARD findings in prose and
-  runs in `install.yml`.
+  guard. `check-digest-preview.js` and `check-doc-links.js` describe their
+  HARD findings in prose and run in `install.yml`.
 - Each guard ships a same-directory `run-<name>-fixtures.js`. Flag a new
   guard with no fixture runner.
 - Every free fixture runner (hook, guard, or skill) runs in both the bash job
