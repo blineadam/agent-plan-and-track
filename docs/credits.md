@@ -37,6 +37,7 @@ Every upstream source this repo adapts from, what was taken, and on what terms. 
 - [DannyMac180/fable-advisor](https://github.com/DannyMac180/fable-advisor) (MIT) fed `agents/fable-advisor.md`.
 - [openai/skills](https://github.com/openai/skills) (Apache-2.0) fed the threat-model mode of `agents/security-auditor.md`, carried over when the vendored security-threat-model skill was folded into that agent.
 - [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) (MIT, ideas only, rewritten) fed `agents/security-auditor.md`'s review-mode verdicts, severity anchors, required finding shape, extra attack classes, and hardening-versus-finding split.
+- [LilMGenius/paperthin](https://github.com/LilMGenius/paperthin) (MIT, ideas only, rewritten) fed `agents/architect-reviewer.md`'s single root objection, its "first nail" cheapest falsifying check, and the principle-versus-mechanism check, from the `hate` skill.
 
 ## Docs and process
 
