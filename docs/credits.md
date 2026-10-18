@@ -40,3 +40,4 @@ Every upstream source this repo adapts from, what was taken, and on what terms. 
 ## Docs and process
 
 - [mattpocock/skills](https://github.com/mattpocock/skills) (MIT) is where the idea behind `docs/out-of-scope.md` comes from: a shared file recording decisions not to build something, so a later session does not re-propose ground already covered.
+- [LilMGenius/paperthin](https://github.com/LilMGenius/paperthin) (MIT, ideas only) fed `.github/scripts/check-doc-links.js`: skill-reference resolution, relative link existence, and catalog sync. Rewritten in Node built-ins rather than ported, since the originals are GNU-only bash.
