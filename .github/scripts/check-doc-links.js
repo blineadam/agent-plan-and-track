@@ -128,11 +128,18 @@ function unfencedText(content) {
 // Blanks inline code spans with spaces, keeping newlines so line numbers
 // survive. A span is a backtick run closed by a run of the same length
 // before the paragraph ends (a blank line), so a span may wrap across lines;
-// a run with no such close is literal text.
+// a run with no such close is literal text. Outside a span, a backslash
+// escapes the next character, so an escaped backtick opens nothing; inside
+// a span, backslashes are literal.
 function blankInlineCode(text) {
   let out = '';
   let i = 0;
   while (i < text.length) {
+    if (text[i] === '\\' && i + 1 < text.length) {
+      out += text.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
     if (text[i] !== '`') {
       out += text[i];
       i += 1;

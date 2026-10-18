@@ -255,6 +255,19 @@ async function escapedDestinationResolves(dir) {
   });
 }
 
+// A backslash-escaped backtick opens no code span, so what follows it is
+// prose and still checked; an escaped backslash before a backtick leaves
+// that backtick a real opener.
+async function escapedBacktickIsProse(dir) {
+  expectFail(
+    dir,
+    { 'skills/beta/SKILL.md': '# beta\n\nText \\`[bad](missing.md) [[ghost]]\\` here.\n' },
+    'skills/beta/SKILL.md:3',
+    'missing.md'
+  );
+  expectPass(dir, { 'skills/beta/SKILL.md': '# beta\n\nText \\\\`[bad](missing.md) [[ghost]]` here.\n' });
+}
+
 const CASES = [
   ['pass-clean-tree', passCleanTree],
   ['unresolved-wiki-link-fails', unresolvedWikiLinkFails],
@@ -275,6 +288,7 @@ const CASES = [
   ['parenthesized-title-broken-link-fails', parenthesizedTitleBrokenLinkFails],
   ['wrapped-reference-definition-fails', wrappedReferenceDefinitionFails],
   ['escaped-destination-resolves', escapedDestinationResolves],
+  ['escaped-backtick-is-prose', escapedBacktickIsProse],
 ];
 
 async function main() {
