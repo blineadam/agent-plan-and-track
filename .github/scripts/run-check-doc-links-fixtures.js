@@ -226,6 +226,35 @@ async function wrappedCodeSpanIgnored(dir) {
   assertExitAndSubstrings(runChecker(dir), 1, 'stderr', ['docs/other.md:5', 'nope.md', 'fix:']);
 }
 
+async function parenthesizedTitleBrokenLinkFails(dir) {
+  expectFail(
+    dir,
+    { 'docs/other.md': '# Other\n\nSee [guide](missing.md (Guide)).\n' },
+    'docs/other.md:3',
+    'missing.md'
+  );
+}
+
+// A reference definition's destination may follow its label after one line
+// break; the failure points at the destination's own line.
+async function wrappedReferenceDefinitionFails(dir) {
+  expectFail(
+    dir,
+    { 'docs/other.md': '# Other\n\nSee [guide][ref].\n\n[ref]:\n  missing.md\n' },
+    'docs/other.md:6',
+    'missing.md'
+  );
+}
+
+// Backslash escapes in a destination are removed before resolving, and an
+// escaped parenthesis does not end the destination.
+async function escapedDestinationResolves(dir) {
+  expectPass(dir, {
+    'docs/other.md': '# Other\n\nSee [guide](guide\\(v2\\).md) and [titled](guide\\(v2\\).md (Guide)).\n',
+    'docs/guide(v2).md': '# guide\n',
+  });
+}
+
 const CASES = [
   ['pass-clean-tree', passCleanTree],
   ['unresolved-wiki-link-fails', unresolvedWikiLinkFails],
@@ -243,6 +272,9 @@ const CASES = [
   ['skill-only-in-fenced-catalog-example-fails', skillOnlyInFencedCatalogExampleFails],
   ['wrapped-broken-link-fails', wrappedBrokenLinkFails],
   ['wrapped-code-span-ignored', wrappedCodeSpanIgnored],
+  ['parenthesized-title-broken-link-fails', parenthesizedTitleBrokenLinkFails],
+  ['wrapped-reference-definition-fails', wrappedReferenceDefinitionFails],
+  ['escaped-destination-resolves', escapedDestinationResolves],
 ];
 
 async function main() {

@@ -26,6 +26,13 @@
  * across lines (until a blank line ends the paragraph) and a link
  * destination after one line break are both handled.
  *
+ * The link parser covers the CommonMark subset this repo's docs use (inline
+ * links and images, reference definitions, quoted and parenthesized titles,
+ * backslash escapes in destinations). Known gap: any "](" counts as the end
+ * of a link label, so literal text such as an escaped "\[x](y.md)" is
+ * checked as a link. That gap fails loudly rather than letting a broken link
+ * pass; wrap such text in inline code.
+ *
  * Rules (HARD, each finding is one FAIL line on stderr):
  *   (a) wiki-links: a [[name]] must resolve to skills/<name>/SKILL.md or
  *       agents/<name>.md.
@@ -52,7 +59,13 @@ const ROOT = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirna
 const URI_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 const FENCE_OPEN = /^\s*(`{3,}|~{3,})(.*)$/;
 const WIKI_LINK = /\[\[([^\[\]\n]+?)\]\]/g;
-const REFERENCE_DEFINITION = /^ {0,3}\[([^\]^][^\]]*)\]:\s*(<[^>]*>|\S+)/;
+// A definition's destination may follow its label after one line break.
+const REFERENCE_DEFINITION = /^ {0,3}\[([^\]^][^\]]*)\]:[ \t]*\n?[ \t]*(<[^>\n]*>|\S+)/gm;
+// Link titles: double-quoted, single-quoted, or parenthesized, with escapes.
+const LINK_TITLE = /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\))/;
+// A backslash before ASCII punctuation is a markdown escape, removed before
+// the destination is resolved.
+const ESCAPED_PUNCTUATION = /\\([!-/:-@[-`{-~])/g;
 
 // --- File discovery ---
 
@@ -188,6 +201,10 @@ function parseInlineTarget(text, start) {
     let depth = 0;
     const from = i;
     while (i < text.length && !/\s/.test(text[i])) {
+      if (text[i] === '\\' && i + 1 < text.length && !/\s/.test(text[i + 1])) {
+        i += 2;
+        continue;
+      }
       if (text[i] === '(') depth += 1;
       if (text[i] === ')') {
         if (depth === 0) break;
@@ -198,7 +215,7 @@ function parseInlineTarget(text, start) {
     target = text.slice(from, i);
   }
   i = skipLinkSpace(text, i);
-  const title = text.slice(i).match(/^(?:"[^"]*"|'[^']*')/);
+  const title = text.slice(i).match(LINK_TITLE);
   if (title) i = skipLinkSpace(text, i + title[0].length);
   return text[i] === ')' ? { index, target } : null;
 }
@@ -207,14 +224,12 @@ function parseInlineTarget(text, start) {
 // link or image in the (unfenced, code-blanked) text.
 function linkTargets(text) {
   const targets = [];
-  let lineStart = 0;
-  for (const line of text.split('\n')) {
-    const definition = line.match(REFERENCE_DEFINITION);
-    if (definition) {
-      const raw = definition[2];
-      targets.push({ index: lineStart, target: raw.startsWith('<') ? raw.slice(1, -1) : raw });
-    }
-    lineStart += line.length + 1;
+  for (const definition of text.matchAll(REFERENCE_DEFINITION)) {
+    const raw = definition[2];
+    targets.push({
+      index: definition.index + definition[0].length - raw.length,
+      target: raw.startsWith('<') ? raw.slice(1, -1) : raw,
+    });
   }
   let from = 0;
   for (;;) {
@@ -234,7 +249,7 @@ function resolveTarget(file, rawTarget) {
   if (target === '' || target.startsWith('#') || target.startsWith('//') || URI_SCHEME.test(target)) {
     return null;
   }
-  const bare = target.split(/[#?]/)[0];
+  const bare = target.replace(ESCAPED_PUNCTUATION, '$1').split(/[#?]/)[0];
   if (bare === '') return null;
   let decoded = bare;
   try {
