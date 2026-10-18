@@ -29,8 +29,8 @@ routing runner's `--check` uses.
 
 Each case in `behavioral-cases.jsonl` is `{ id, skill, prompt, max_turns,
 fixture, setup?, allowed_tools?, assertions: [{ kind: file_regex |
-response_regex | trace_agent_dispatch_count | trace_agent_dispatch_names,
-... }], note }`. `fixture` names
+response_regex | trace_agent_dispatch_count | trace_agent_dispatch_names |
+trace_agent_prompt_regex, ... }], note }`. `fixture` names
 a directory under `fixtures/behavioral/` copied into the case's working
 directory before the agent runs (a file the skill's mandated output must be
 appended to, not clobber). Unlike the routing corpus's prompts, a
@@ -99,6 +99,20 @@ assertion with neither is rejected as vacuous, the same rejection the bare
 `/^[a-z][a-z0-9-]*$/`, and naming the same agent in both `expect` and `forbid`
 is rejected too.
 
+`trace_agent_prompt_regex` (`{ regex, flags?, agents? }`) hard-fails when a
+Task/Agent dispatch's prompt string doesn't match its regex. It checks every
+dispatch, or only those whose identity matches a name in `agents`
+(case-insensitive, same grammar as `expect`), and fails on the first
+non-matching prompt, naming the agent and the pattern. A case with no
+checkable dispatch prompt fails with "no dispatch prompt to check" instead of
+passing, so the assertion is never vacuous. To forbid a phrase, write a
+negative-lookahead regex, as `file_regex` cases do (for example
+`^(?![\s\S]*tokenwarden)[\s\S]*$` with flags `i`). It proves the dispatched
+prompt text matched or didn't match the pattern, never what the subagent saw
+beyond that field, and a dispatch whose prompt field the harness doesn't
+expose is skipped, so with `agents` set it can fail as "no dispatch prompt"
+even though the dispatch happened.
+
 ## Modes and roster install
 
 Same three modes as the routing runner, with one deliberate difference:
@@ -110,14 +124,16 @@ just a listing).
 - `--run [RESULTS_DIR] [CORPUS]`: invoke `claude -p` per case (billable, behind
   the same `ACTIVATION_ALLOW_SPEND=1` gate).
 
-A `trace_agent_dispatch_count` or `trace_agent_dispatch_names` case needs the
-roster installed before `--run` does anything else: `PT_BYPASS_PERMISSIONS=1
-HOME=<sandbox> ./install.sh claude` installs it into a sandbox `HOME` with a
+A `trace_agent_dispatch_count`, `trace_agent_dispatch_names`, or
+`trace_agent_prompt_regex` case needs the roster installed before `--run`
+does anything else: `PT_BYPASS_PERMISSIONS=1 HOME=<sandbox> ./install.sh
+claude` installs it into a sandbox `HOME` with a
 bypass posture that avoids an interactive confirmation stalling a headless
 run. The required set is derived from the whole corpus, not one fixed list:
 the existing fixed pair, architect-reviewer.md and security-auditor.md, for
 any `trace_agent_dispatch_count` case, plus every agent named in either
-`expect` or `forbid` of any `trace_agent_dispatch_names` case. Both
+`expect` or `forbid` of any `trace_agent_dispatch_names` case and in `agents`
+of any `trace_agent_prompt_regex` case. Both
 directions matter: skipping `forbid` names would let an uninstalled
 forbidden agent satisfy a forbid trivially, since a dispatch that can't
 happen never appears in the trace either. `--run` refuses up front, before

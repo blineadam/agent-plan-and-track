@@ -85,6 +85,13 @@ function writeFakeExecutables(binDir) {
       "    content.push({type:'tool_use',id:'n1',name:'Task',input:{subagent_type:'architect-reviewer'}});",
       "    content.push({type:'tool_use',id:'n2',name:'Agent',input:{subagent_type:'security-auditor'}});",
       "  }",
+      "  if (prompt.includes('dispatch-prompt')) {",
+      "    const leak = prompt.includes('dispatch-prompt-leak');",
+      "    content.push({type:'tool_use',id:'p1',name:'Task',input:{subagent_type:'fable-advisor',prompt:leak ? 'Goal: pick one. Leaning: the tokenwarden loop.' : 'Goal: pick one. Constraints: none.'}});",
+      "    if (prompt.includes('dispatch-prompt-other')) {",
+      "      content.push({type:'tool_use',id:'p2',name:'Agent',input:{subagent_type:'architect-reviewer',prompt:'Leaning: the tokenwarden loop.'}});",
+      "    }",
+      "  }",
       "  if (prompt.includes('risk-line')) {",
       "    content.push({type:'text',text:'Risk: high (concurrency)'});",
       "  }",
@@ -1696,6 +1703,172 @@ async function testBehavioralDispatchNames(binDir) {
   );
 }
 
+async function testBehavioralPromptRegex(binDir) {
+  const root = path.join(scratchRoot, 'prompt-regex');
+  fs.mkdirSync(root, { recursive: true });
+
+  const home = path.join(root, 'home');
+  const agentsDir = path.join(home, '.claude', 'agents');
+  fs.mkdirSync(agentsDir, { recursive: true });
+  fs.writeFileSync(path.join(agentsDir, 'fable-advisor.md'), '# fable-advisor\n');
+  fs.writeFileSync(path.join(agentsDir, 'architect-reviewer.md'), '# architect-reviewer\n');
+
+  // The negative-lookahead convention file_regex cases use: the phrase must
+  // be absent from the whole prompt.
+  const noPhrase = { regex: '^(?![\\s\\S]*tokenwarden)[\\s\\S]*$', flags: 'i' };
+  const forAdvisor = { kind: 'trace_agent_prompt_regex', ...noPhrase, agents: ['fable-advisor'] };
+
+  // --- run: pass / fail / filtered / unfiltered fail / no dispatch. ----------
+  const runRoot = path.join(root, 'run');
+  const corpus = makeBehavioralCorpus(runRoot, [
+    {
+      id: 'prompt-pass',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-prompt-clean',
+      max_turns: 2,
+      fixture: 'prompt-pass',
+      assertions: [forAdvisor],
+    },
+    {
+      id: 'prompt-fail',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-prompt-leak',
+      max_turns: 2,
+      fixture: 'prompt-fail',
+      assertions: [forAdvisor],
+    },
+    {
+      // The phrase appears only in the architect-reviewer dispatch, which the
+      // agents filter excludes.
+      id: 'prompt-filtered',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-prompt-other',
+      max_turns: 2,
+      fixture: 'prompt-filtered',
+      assertions: [forAdvisor],
+    },
+    {
+      // Same trace without the filter: the architect-reviewer prompt is checked.
+      id: 'prompt-unfiltered',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-prompt-other',
+      max_turns: 2,
+      fixture: 'prompt-unfiltered',
+      assertions: [{ kind: 'trace_agent_prompt_regex', ...noPhrase }],
+    },
+    {
+      id: 'prompt-no-dispatch',
+      skill: 'fixture-skill',
+      prompt: 'success',
+      max_turns: 2,
+      fixture: 'prompt-no-dispatch',
+      assertions: [forAdvisor],
+    },
+  ]);
+  const run = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(runRoot, 'results'), corpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      HOME: home,
+      USERPROFILE: home,
+    })
+  );
+  const report = parseReport(run, 'behavioral prompt regex');
+  assert(run.code === 1, `prompt regex run exited ${run.code}, expected 1`);
+  assert(
+    report.passed === 2 && report.failed === 3,
+    `prompt regex run scored passed=${report.passed} failed=${report.failed}, expected passed=2 failed=3`
+  );
+  const byId = Object.fromEntries(report.cases.map((c) => [c.id, c]));
+  assert(byId['prompt-pass'].status === 'pass', 'a dispatch prompt lacking the phrase did not pass');
+  assert(
+    byId['prompt-fail'].status === 'fail' && byId['prompt-fail'].reason.includes('fable-advisor dispatch prompt'),
+    `prompt-fail did not fail naming the agent: ${JSON.stringify(byId['prompt-fail'])}`
+  );
+  assert(
+    byId['prompt-filtered'].status === 'pass',
+    `a phrase only in a non-listed agent's prompt failed the agents-filtered assertion: ${JSON.stringify(byId['prompt-filtered'])}`
+  );
+  assert(
+    byId['prompt-unfiltered'].status === 'fail' &&
+      byId['prompt-unfiltered'].reason.includes('architect-reviewer dispatch prompt'),
+    `prompt-unfiltered did not fail on the architect-reviewer prompt: ${JSON.stringify(byId['prompt-unfiltered'])}`
+  );
+  assert(
+    byId['prompt-no-dispatch'].status === 'fail' &&
+      byId['prompt-no-dispatch'].reason.includes('no dispatch prompt to check') &&
+      byId['prompt-no-dispatch'].reason.includes('fable-advisor'),
+    `prompt-no-dispatch did not fail as a vacuous assertion: ${JSON.stringify(byId['prompt-no-dispatch'])}`
+  );
+
+  // --- lint: a non-compiling regex and a malformed agents list. ---------------
+  const lintRoot = path.join(root, 'lint');
+  const lintCorpus = makeBehavioralCorpus(lintRoot, [
+    {
+      id: 'prompt-bad-regex',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-prompt-clean',
+      max_turns: 2,
+      fixture: 'prompt-bad-regex',
+      assertions: [{ kind: 'trace_agent_prompt_regex', regex: '(' }],
+    },
+    {
+      id: 'prompt-bad-agents',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-prompt-clean',
+      max_turns: 2,
+      fixture: 'prompt-bad-agents',
+      assertions: [{ kind: 'trace_agent_prompt_regex', regex: 'x', agents: ['Fable Advisor'] }],
+    },
+  ]);
+  const lintRun = await runNode(BEHAVIORAL_RUNNER, ['--dry-run', lintCorpus], baseEnv(binDir));
+  const lintReport = parseReport(lintRun, 'prompt regex lint');
+  assert(lintRun.code === 1, `prompt regex lint dry-run exited ${lintRun.code}, expected 1`);
+  assert(
+    lintReport.cases[0].problems.some((p) => p.includes('regex does not compile')),
+    'a non-compiling trace_agent_prompt_regex regex was not flagged'
+  );
+  assert(
+    lintReport.cases[1].problems.some((p) => p.includes('agents must be a non-empty array')),
+    'a malformed trace_agent_prompt_regex agents list was not flagged'
+  );
+
+  // --- preflight refusal: agents names an agent absent from the roster. -------
+  const preflightRoot = path.join(root, 'preflight-missing');
+  const preflightCorpus = makeBehavioralCorpus(preflightRoot, [
+    {
+      id: 'prompt-missing-agent',
+      skill: 'fixture-skill',
+      prompt: 'dispatch-prompt-clean',
+      max_turns: 2,
+      fixture: 'prompt-missing-agent',
+      assertions: [{ kind: 'trace_agent_prompt_regex', regex: 'x', agents: ['planner'] }],
+    },
+  ]);
+  const preflightMarker = path.join(preflightRoot, 'spawned');
+  const preflightRun = await runNode(
+    BEHAVIORAL_RUNNER,
+    ['--run', path.join(preflightRoot, 'results'), preflightCorpus],
+    baseEnv(binDir, {
+      ACTIVATION_ALLOW_SPEND: '1',
+      LIVE_CASE_TIMEOUT_MS: '2000',
+      FAKE_SPAWN_MARKER: preflightMarker,
+      HOME: home,
+      USERPROFILE: home,
+    })
+  );
+  assert(
+    preflightRun.code !== 0,
+    `a trace_agent_prompt_regex case naming an agent absent from the roster exited ${preflightRun.code}, expected nonzero`
+  );
+  assert(
+    !fs.existsSync(preflightMarker),
+    'a trace_agent_prompt_regex case naming an agent absent from the roster spawned an agent process'
+  );
+}
+
 async function testBehavioralSetupEnvScrub(binDir) {
   const root = path.join(scratchRoot, 'setup-env-scrub');
   fs.mkdirSync(root, { recursive: true });
@@ -2130,6 +2303,7 @@ async function main() {
   await testBehavioralZeroMaxDispatchCount(binDir);
   await testBehavioralRefExists(binDir);
   await testBehavioralDispatchNames(binDir);
+  await testBehavioralPromptRegex(binDir);
   await testBehavioralSetupEnvScrub(binDir);
   await testCodex(binDir, codexRunner);
   await testParentSignal(binDir);

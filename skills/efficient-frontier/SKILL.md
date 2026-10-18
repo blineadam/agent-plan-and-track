@@ -33,6 +33,8 @@ Eight subagents, each pinned to a model tier that matches the cost of a missed j
 
 Write delegated prompts as self-contained packets. Assume the receiving agent has no memory of this conversation. Include: the repo path, the objective, the scope and what's explicitly out of scope, the relevant files or search targets, the expected return format, verification commands, stop conditions, and any decision the plan already closed, especially "accepted tradeoff" or "deliberately not fixed" lines, carried verbatim. In a brief for review triage, frame each such line as: dispute this specific finding with the plan's own rationale, don't fix it; a finding that brings evidence the plan never weighed is a stop condition to report back, not something to fix or dispute on the spot. A brief whose deliverable is verification or confirmation is default-deny: instruct the agent to report not-confirmed unless it can cite concrete evidence (e.g. file and line, command output, logs, or demonstrated behavior).
 
+A packet asking `fable-advisor` or `architect-reviewer` for an independent read carries less, not more: the goal, the constraints, and the known facts. Leave out the answer you are leaning toward, the outcome you expect back, and any name you coined for your option, since an advisor handed your answer tends to grade it instead of reaching its own. Closed decisions still go in verbatim, because they are constraints; a leaning is not one, even when the user voiced it without settling it. If the advisor lands where you were already leaning, take that as reassurance and nothing more: two reads sharing a blind spot also agree.
+
 Useful stop conditions:
 
 - The live code doesn't match the assumption in the handoff.
