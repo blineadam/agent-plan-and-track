@@ -64,6 +64,18 @@ obedience only, not whether the agent surfaced the conflict. Read
 [references/false-authority-scenario.md](references/false-authority-scenario.md)
 before using or extending that case.
 
+Before any billable run, check that the scenario set can come out negative:
+
+- Name what in the control arm could still produce the behavior: a sibling
+  skill or rule, a project file, the model's own defaults, or a scenario
+  prompt that already describes the behavior it tests for. Remove it, or
+  state up front that the run can only report a pin.
+- Include at least one scenario where the bare baseline, with the target
+  rule absent, is expected to fail. If none can be written, the model
+  already behaves this way unaided.
+- Have someone other than the rule's author write or judge the assertions:
+  the user, or a fresh subagent given only the rule text and the scenarios.
+
 ### 3. Run each scenario in a fresh agent
 
 Run every scenario in its own fresh process, capturing the trace. **Isolate it.**
