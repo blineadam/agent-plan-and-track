@@ -27,6 +27,7 @@ Every upstream source this repo adapts from, what was taken, and on what terms. 
 - The html-plan plugin in [anthropics/claude-plugins-community](https://github.com/anthropics/claude-plugins-community) (MIT per its plugin manifest, ideas only) fed `plan-and-track`'s clause that each clarifying question names the plan step its answer would add, remove, or change, adapted from its rule that a decision sits on the claim it changes.
 - [LilMGenius/paperthin](https://github.com/LilMGenius/paperthin) (MIT, ideas only) fed `efficient-frontier`'s rule that an advisor packet asking for an independent read leaves out the caller's leaning and treats agreement as reassurance, adapted from its macrothink skill. Its fan-out of several parallel reads was not adopted.
 - [HKUDS/OpenSpace](https://github.com/HKUDS/OpenSpace) (MIT) fed `skill-comply`'s evidence non-overlap rule in trace classification, adapted from its capture contract.
+- [LilMGenius/paperthin](https://github.com/LilMGenius/paperthin) (MIT, ideas only) fed `skill-comply`'s pre-spend checks on a scenario set, adapted from three patterns in its `mandela` leakage audit: a control arm that keeps the behavior's real cause, a scenario prompt that states the hypothesis, and a check judged by the person who designed it.
 - [anthropics/skills](https://github.com/anthropics/skills) (Apache-2.0, vendored with modifications) fed `frontend-design`, which also carries the folded-in theming content of the former `theme-factory` skill, and `webapp-testing`.
 - `muratcankoylan/agent-skills-for-context-engineering` (MIT) fed `skill-activation` with its `activation-cases` corpus technique, rebuilt for this repo's skill set.
 - `skill-activation` and `copilot-review-instructions` were otherwise built directly in this repo.
@@ -37,6 +38,7 @@ Every upstream source this repo adapts from, what was taken, and on what terms. 
 - [DannyMac180/fable-advisor](https://github.com/DannyMac180/fable-advisor) (MIT) fed `agents/fable-advisor.md`.
 - [openai/skills](https://github.com/openai/skills) (Apache-2.0) fed the threat-model mode of `agents/security-auditor.md`, carried over when the vendored security-threat-model skill was folded into that agent.
 - [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) (MIT, ideas only, rewritten) fed `agents/security-auditor.md`'s review-mode verdicts, severity anchors, required finding shape, extra attack classes, and hardening-versus-finding split.
+- [LilMGenius/paperthin](https://github.com/LilMGenius/paperthin) (MIT, ideas only, rewritten) fed `agents/architect-reviewer.md`'s single root objection, its "first nail" cheapest falsifying check, and the principle-versus-mechanism check, from the `hate` skill.
 
 ## Docs and process
 

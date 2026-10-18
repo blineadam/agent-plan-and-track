@@ -59,6 +59,9 @@ values are not shell-expanded). The `yeet-step15-*` cases do this: their stub
 answers from a state file and appends each argv to a log the assertions read,
 and a live run confirmed the Bash tool resolves it.
 
+Before spending on a new case, run it through [[skill-comply]]'s pre-spend
+checks at the end of its step 2.
+
 ## Assertion kinds
 
 A `file_regex` may set `ref_exists: true` when the file it reads only names
