@@ -19,8 +19,12 @@
  *     rules/*.md
  *   link scope: the wiki-link scope plus README.md, AGENTS.md, docs/*.md
  *   skills: each skills/<name>/ directory containing SKILL.md
- * Fenced code blocks and inline code spans are skipped by every rule, since
- * a link written inside code is an example, not a link.
+ * Rules (a) and (b) skip fenced code blocks and inline code spans, since a
+ * link written inside code is an example, not a link. Rule (c) skips fenced
+ * blocks only, since real catalog entries name skills in inline code. Each
+ * file is scanned whole rather than line by line, so a code span wrapped
+ * across lines (until a blank line ends the paragraph) and a link
+ * destination after one line break are both handled.
  *
  * Rules (HARD, each finding is one FAIL line on stderr):
  *   (a) wiki-links: a [[name]] must resolve to skills/<name>/SKILL.md or
@@ -87,71 +91,93 @@ function skillNames() {
 
 // --- Markdown scanning ---
 
-// Blanks inline code spans (a backtick run closed by a run of the same
-// length on the same line) with spaces, preserving column positions.
-function blankInlineCode(line) {
+// Returns the file as LF-joined text with every fenced block, fence lines
+// included, replaced by empty lines, so line numbers survive. Fenced blocks
+// open on 3+ backticks or tildes and close on the same character at >= the
+// opening length.
+function unfencedText(content) {
+  let fence = null;
+  return content.split(/\r?\n/).map((raw) => {
+    if (fence) {
+      const close = raw.match(/^\s*(`{3,}|~{3,})\s*$/);
+      if (close && close[1][0] === fence.char && close[1].length >= fence.length) fence = null;
+      return '';
+    }
+    const open = raw.match(FENCE_OPEN);
+    if (open && !(open[1][0] === '`' && open[2].includes('`'))) {
+      fence = { char: open[1][0], length: open[1].length };
+      return '';
+    }
+    return raw;
+  }).join('\n');
+}
+
+// Blanks inline code spans with spaces, keeping newlines so line numbers
+// survive. A span is a backtick run closed by a run of the same length
+// before the paragraph ends (a blank line), so a span may wrap across lines;
+// a run with no such close is literal text.
+function blankInlineCode(text) {
   let out = '';
   let i = 0;
-  while (i < line.length) {
-    if (line[i] !== '`') {
-      out += line[i];
+  while (i < text.length) {
+    if (text[i] !== '`') {
+      out += text[i];
       i += 1;
       continue;
     }
     let runEnd = i;
-    while (line[runEnd] === '`') runEnd += 1;
-    const run = line.slice(i, runEnd);
+    while (text[runEnd] === '`') runEnd += 1;
+    const runLength = runEnd - i;
+    const paragraphBreak = /\n[ \t]*\n/g;
+    paragraphBreak.lastIndex = runEnd;
+    const breakMatch = paragraphBreak.exec(text);
+    const limit = breakMatch ? breakMatch.index : text.length;
     let close = -1;
     let search = runEnd;
-    while (search < line.length) {
-      const next = line.indexOf('`', search);
-      if (next === -1) break;
+    while (search < limit) {
+      const next = text.indexOf('`', search);
+      if (next === -1 || next >= limit) break;
       let nextEnd = next;
-      while (line[nextEnd] === '`') nextEnd += 1;
-      if (nextEnd - next === run.length) {
+      while (text[nextEnd] === '`') nextEnd += 1;
+      if (nextEnd - next === runLength) {
         close = nextEnd;
         break;
       }
       search = nextEnd;
     }
     if (close === -1) {
-      out += run;
+      out += text.slice(i, runEnd);
       i = runEnd;
     } else {
-      out += ' '.repeat(close - i);
+      out += text.slice(i, close).replace(/[^\n]/g, ' ');
       i = close;
     }
   }
   return out;
 }
 
-// Returns [{ number, text }] for every line outside fenced code, with inline
-// code spans blanked. Fenced blocks open on 3+ backticks or tildes and close
-// on the same character at >= the opening length.
-function proseLines(content) {
-  const result = [];
-  let fence = null;
-  content.split(/\r?\n/).forEach((raw, index) => {
-    if (fence) {
-      const close = raw.match(/^\s*(`{3,}|~{3,})\s*$/);
-      if (close && close[1][0] === fence.char && close[1].length >= fence.length) fence = null;
-      return;
-    }
-    const open = raw.match(FENCE_OPEN);
-    if (open && !(open[1][0] === '`' && open[2].includes('`'))) {
-      fence = { char: open[1][0], length: open[1].length };
-      return;
-    }
-    result.push({ number: index + 1, text: blankInlineCode(raw) });
-  });
-  return result;
+function lineAt(text, index) {
+  return text.slice(0, index).split('\n').length;
+}
+
+// Skips spaces and tabs with at most one line break among them, the
+// whitespace a link destination and its title may sit between.
+function skipLinkSpace(text, start) {
+  let i = start;
+  while (text[i] === ' ' || text[i] === '\t') i += 1;
+  if (text[i] === '\n') {
+    i += 1;
+    while (text[i] === ' ' || text[i] === '\t') i += 1;
+  }
+  return i;
 }
 
 // Parses the destination of an inline link starting just after "](".
-// Returns the raw target or null when the parentheses never close as a link.
+// Returns { index, target } (index is where the target starts) or null when
+// the parentheses never close as a link.
 function parseInlineTarget(text, start) {
-  let i = start;
-  while (text[i] === ' ' || text[i] === '\t') i += 1;
+  let i = skipLinkSpace(text, start);
+  const index = i;
   let target;
   if (text[i] === '<') {
     const end = text.indexOf('>', i);
@@ -171,23 +197,31 @@ function parseInlineTarget(text, start) {
     }
     target = text.slice(from, i);
   }
-  const rest = text.slice(i).match(/^\s*(?:"[^"]*"|'[^']*')?\s*\)/);
-  return rest ? target : null;
+  i = skipLinkSpace(text, i);
+  const title = text.slice(i).match(/^(?:"[^"]*"|'[^']*')/);
+  if (title) i = skipLinkSpace(text, i + title[0].length);
+  return text[i] === ')' ? { index, target } : null;
 }
 
+// Returns [{ index, target }] for every reference definition and inline
+// link or image in the (unfenced, code-blanked) text.
 function linkTargets(text) {
   const targets = [];
-  const definition = text.match(REFERENCE_DEFINITION);
-  if (definition) {
-    const raw = definition[2];
-    targets.push(raw.startsWith('<') ? raw.slice(1, -1) : raw);
+  let lineStart = 0;
+  for (const line of text.split('\n')) {
+    const definition = line.match(REFERENCE_DEFINITION);
+    if (definition) {
+      const raw = definition[2];
+      targets.push({ index: lineStart, target: raw.startsWith('<') ? raw.slice(1, -1) : raw });
+    }
+    lineStart += line.length + 1;
   }
   let from = 0;
   for (;;) {
     const at = text.indexOf('](', from);
     if (at === -1) break;
-    const target = parseInlineTarget(text, at + 2);
-    if (target !== null) targets.push(target);
+    const parsed = parseInlineTarget(text, at + 2);
+    if (parsed !== null) targets.push(parsed);
     from = at + 2;
   }
   return targets;
@@ -235,33 +269,31 @@ function main() {
 
   for (const file of linkFiles) {
     const label = relPath(file);
-    const content = fs.readFileSync(file, 'utf8');
-    for (const { number, text } of proseLines(content)) {
-      if (wikiSet.has(file)) {
-        for (const match of text.matchAll(WIKI_LINK)) {
-          wikiCount += 1;
-          const name = match[1].trim();
-          const resolved =
-            fs.existsSync(path.join(ROOT, 'skills', name, 'SKILL.md')) ||
-            fs.existsSync(path.join(ROOT, 'agents', `${name}.md`));
-          if (!resolved) {
-            findings.push(
-              `${label}:${number}: wiki-link: [[${name}]] matches no skills/${name}/SKILL.md or agents/${name}.md; ` +
-              'fix: correct the name or add the skill/agent'
-            );
-          }
-        }
-      }
-      for (const rawTarget of linkTargets(text)) {
-        const resolved = resolveTarget(file, rawTarget);
-        if (resolved === null) continue;
-        linkCount += 1;
-        if (!fs.existsSync(resolved)) {
+    const text = blankInlineCode(unfencedText(fs.readFileSync(file, 'utf8')));
+    if (wikiSet.has(file)) {
+      for (const match of text.matchAll(WIKI_LINK)) {
+        wikiCount += 1;
+        const name = match[1].trim();
+        const resolved =
+          fs.existsSync(path.join(ROOT, 'skills', name, 'SKILL.md')) ||
+          fs.existsSync(path.join(ROOT, 'agents', `${name}.md`));
+        if (!resolved) {
           findings.push(
-            `${label}:${number}: relative-link: ${rawTarget.trim()} does not exist (resolved to ${relPath(resolved)}); ` +
-            'fix: correct the path or create the file'
+            `${label}:${lineAt(text, match.index)}: wiki-link: [[${name}]] matches no skills/${name}/SKILL.md ` +
+            `or agents/${name}.md; fix: correct the name or add the skill/agent`
           );
         }
+      }
+    }
+    for (const { index, target: rawTarget } of linkTargets(text)) {
+      const resolved = resolveTarget(file, rawTarget);
+      if (resolved === null) continue;
+      linkCount += 1;
+      if (!fs.existsSync(resolved)) {
+        findings.push(
+          `${label}:${lineAt(text, index)}: relative-link: ${rawTarget.trim()} does not exist ` +
+          `(resolved to ${relPath(resolved)}); fix: correct the path or create the file`
+        );
       }
     }
   }
@@ -273,7 +305,7 @@ function main() {
       'fix: pass the repo root as the first argument, or restore the skills catalog'
     );
   }
-  const catalog = fs.readFileSync(catalogPath, 'utf8');
+  const catalog = unfencedText(fs.readFileSync(catalogPath, 'utf8'));
   const skills = skillNames();
   for (const name of skills) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

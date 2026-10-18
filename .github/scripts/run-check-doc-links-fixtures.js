@@ -192,6 +192,40 @@ async function crlfFilesScanned(dir) {
   assertExitAndSubstrings(runChecker(dir), 1, 'stderr', ['docs/other.md:3', 'nope.md', 'fix:']);
 }
 
+async function skillOnlyInFencedCatalogExampleFails(dir) {
+  expectFail(
+    dir,
+    {
+      'skills/gamma/SKILL.md': '# gamma\n',
+      'docs/skills.md': '# Skills\n\n- **`alpha`** and **beta**.\n\n```md\n- **`gamma`** example entry\n```\n',
+    },
+    'skills/gamma/SKILL.md:1',
+    'gamma'
+  );
+}
+
+// A link destination may follow "](" after one line break, so a wrapped
+// broken link must still fail, reported at the target's own line.
+async function wrappedBrokenLinkFails(dir) {
+  expectFail(
+    dir,
+    { 'docs/other.md': '# Other\n\nSee [gone](\nmissing/page.md\n) here.\n' },
+    'docs/other.md:4',
+    'missing/page.md'
+  );
+}
+
+// A code span may wrap across lines inside one paragraph; what it holds is
+// an example on every line it covers, but a blank line ends it.
+async function wrappedCodeSpanIgnored(dir) {
+  expectPass(dir, {
+    'docs/other.md': '# Other\n\nInline `example\n[x](nope.md) and\n[[ghost]]` stays code.\n',
+    'skills/beta/SKILL.md': '# beta\n\nInline `example\n[[ghost]]` stays code.\n',
+  });
+  writeTree(dir, { 'docs/other.md': '# Other\n\nA lone ` backtick\n\n[x](nope.md)\n' });
+  assertExitAndSubstrings(runChecker(dir), 1, 'stderr', ['docs/other.md:5', 'nope.md', 'fix:']);
+}
+
 const CASES = [
   ['pass-clean-tree', passCleanTree],
   ['unresolved-wiki-link-fails', unresolvedWikiLinkFails],
@@ -206,6 +240,9 @@ const CASES = [
   ['broken-link-in-code-ignored', brokenLinkInCodeIgnored],
   ['urls-anchors-and-fragments-ignored', urlsAnchorsAndFragmentsIgnored],
   ['crlf-files-scanned', crlfFilesScanned],
+  ['skill-only-in-fenced-catalog-example-fails', skillOnlyInFencedCatalogExampleFails],
+  ['wrapped-broken-link-fails', wrappedBrokenLinkFails],
+  ['wrapped-code-span-ignored', wrappedCodeSpanIgnored],
 ];
 
 async function main() {
