@@ -24,7 +24,8 @@
  *       { kind: "file_regex", path, regex, flags, ref_exists? } |
  *       { kind: "response_regex", regex, flags } |
  *       { kind: "trace_agent_dispatch_count", min, max? } |
- *       { kind: "trace_agent_dispatch_names", expect?, forbid? }
+ *       { kind: "trace_agent_dispatch_names", expect?, forbid? } |
+ *       { kind: "trace_agent_prompt_regex", regex, flags?, agents? }
  *     ], note }
  * `fixture` names a directory under fixtures/behavioral/ that is copied into
  * the case's working directory before the agent runs (a file the skill's
@@ -61,8 +62,21 @@
  * `expect`/`forbid` is required (neither present is rejected as vacuous, the
  * same rejection the `trace_agent_dispatch_count` bare min:0 case gets);
  * each present array must be non-empty and match /^[a-z][a-z0-9-]*$/, and
- * the same name is rejected if it names both `expect` and `forbid`. Any
- * trace_agent_dispatch_count or trace_agent_dispatch_names case run via
+ * the same name is rejected if it names both `expect` and `forbid`.
+ * A `trace_agent_prompt_regex` assertion hard-fails the case when a
+ * Task/Agent dispatch's prompt string (input.prompt, else arguments.prompt)
+ * does not match its regex: every dispatch is checked, or only those whose
+ * identity matches a name in `agents` (case-insensitive) when that is given,
+ * and the first non-matching prompt fails the case. A case with no checkable
+ * dispatch prompt fails ("no dispatch prompt to check") rather than passing,
+ * so the assertion is never vacuous. Negation is the case author's
+ * negative-lookahead regex, the convention file_regex cases use. It proves
+ * the dispatched prompt text matched or didn't match the pattern, never what
+ * the subagent saw beyond that field, and a dispatch whose prompt field the
+ * harness doesn't expose is skipped, so with `agents` filtering it can fail
+ * as "no dispatch prompt" even though the dispatch happened. Any
+ * trace_agent_dispatch_count, trace_agent_dispatch_names, or
+ * trace_agent_prompt_regex case run via
  * --run needs the roster entries those assertions actually depend on
  * installed first, or the measurement would measure the sandbox, not the
  * skill: the required set is derived from the corpus, always
@@ -71,8 +85,9 @@
  * case, plus ~/.claude/agents/<name>.md for every name in both a
  * trace_agent_dispatch_names case's expect and its forbid (both
  * directions: an uninstalled forbidden agent would otherwise satisfy a
- * forbid trivially); --run dies up front, before spending, when the corpus
- * needs the roster and any required entry is missing.
+ * forbid trivially) and in a trace_agent_prompt_regex case's agents; --run
+ * dies up front, before spending, when the corpus needs the roster and any
+ * required entry is missing.
  * response_regex and file_regex both compile an operator-supplied pattern and
  * run it over trace/file text this runner caps at 64 MB, so a catastrophic
  * pattern can hang the single-threaded scorer while the per-case timeout only
@@ -288,11 +303,25 @@ function agentDispatchCount(traceFile) {
   return ids.size + idless;
 }
 
-// The set of agent identities a trace dispatched via the Task/Agent tool,
-// harness-tolerant in the same shape as activatedSkills(): identity is read
-// from input.subagent_type (confirmed against a real captured Claude Code
-// trace), falling back to input.agent_type, input.agent, then
-// arguments.subagent_type. Returns a sorted, de-duplicated array. A dispatch
+// Agent identity of one Task/Agent tool_use object, harness-tolerant in the
+// same shape as activatedSkills(): read from input.subagent_type (confirmed
+// against a real captured Claude Code trace), falling back to
+// input.agent_type, input.agent, then arguments.subagent_type. Returns null
+// when none of those fields is exposed. Shared by agentDispatchNames and
+// agentDispatchPrompts so the two can't read identity differently.
+function dispatchAgentIdentity(obj) {
+  const input = obj.input;
+  const args = obj.arguments;
+  let agent = null;
+  if (input && input.subagent_type != null && input.subagent_type !== '') agent = input.subagent_type;
+  else if (input && input.agent_type != null && input.agent_type !== '') agent = input.agent_type;
+  else if (input && input.agent != null && input.agent !== '') agent = input.agent;
+  else if (args && args.subagent_type != null && args.subagent_type !== '') agent = args.subagent_type;
+  return agent != null && agent !== '' ? String(agent) : null;
+}
+
+// The set of agent identities a trace dispatched via the Task/Agent tool.
+// Returns a sorted, de-duplicated array. A dispatch
 // whose identity isn't exposed in any of these fields contributes nothing:
 // this function can under-report a dispatch, never invent one, which means a
 // `forbid` assertion built on it can only prove "no *readable* forbidden
@@ -316,17 +345,48 @@ function agentDispatchNames(traceFile) {
     for (const obj of walkObjects(parsed)) {
       if (obj.type !== 'tool_use' || typeof obj.name !== 'string') continue;
       if (!DISPATCH_TOOL_NAMES.has(obj.name.toLowerCase())) continue;
-      let agent = null;
-      const input = obj.input;
-      const args = obj.arguments;
-      if (input && input.subagent_type != null && input.subagent_type !== '') agent = input.subagent_type;
-      else if (input && input.agent_type != null && input.agent_type !== '') agent = input.agent_type;
-      else if (input && input.agent != null && input.agent !== '') agent = input.agent;
-      else if (args && args.subagent_type != null && args.subagent_type !== '') agent = args.subagent_type;
-      if (agent != null && agent !== '') set.add(String(agent));
+      const agent = dispatchAgentIdentity(obj);
+      if (agent !== null) set.add(agent);
     }
   }
   return Array.from(set).sort();
+}
+
+// Every Task/Agent dispatch in a trace that carries a string prompt, as
+// { agent, prompt } with agent null when the identity isn't exposed. The
+// prompt is read from input.prompt, falling back to arguments.prompt. A
+// dispatch whose prompt isn't a string contributes nothing (under-reports,
+// never invents), which is why the scorer fails an empty result instead of
+// passing it.
+function agentDispatchPrompts(traceFile) {
+  const out = [];
+  let text;
+  try {
+    text = fs.readFileSync(traceFile, 'utf8');
+  } catch {
+    return out;
+  }
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    for (const obj of walkObjects(parsed)) {
+      if (obj.type !== 'tool_use' || typeof obj.name !== 'string') continue;
+      if (!DISPATCH_TOOL_NAMES.has(obj.name.toLowerCase())) continue;
+      const prompt =
+        obj.input && typeof obj.input.prompt === 'string'
+          ? obj.input.prompt
+          : obj.arguments && typeof obj.arguments.prompt === 'string'
+            ? obj.arguments.prompt
+            : null;
+      if (prompt !== null) out.push({ agent: dispatchAgentIdentity(obj), prompt });
+    }
+  }
+  return out;
 }
 
 // Text a response_regex assertion may match: assistant `text` blocks scoped
@@ -471,6 +531,19 @@ function assertionShapeProblems(a) {
         problems.push(`regex does not compile: ${e.message}`);
       }
     }
+  } else if (kind === 'trace_agent_prompt_regex') {
+    if (typeof a.regex !== 'string' || a.regex === '') {
+      problems.push('missing regex');
+    } else {
+      try {
+        new RegExp(a.regex, a.flags);
+      } catch (e) {
+        problems.push(`regex does not compile: ${e.message}`);
+      }
+    }
+    if (a.agents !== undefined && !agentNameListIsValid(a.agents)) {
+      problems.push('agents must be a non-empty array of agent names matching /^[a-z][a-z0-9-]*$/');
+    }
   } else if (kind === 'trace_agent_dispatch_count') {
     // A min of 0 asserts nothing UNLESS max is also given: {min:0,max:0}
     // is a real assertion ("no dispatches"), so only a bare min:0 with no
@@ -505,7 +578,9 @@ function assertionShapeProblems(a) {
       }
     }
   } else {
-    problems.push('kind must be file_regex, response_regex, trace_agent_dispatch_count, or trace_agent_dispatch_names');
+    problems.push(
+      'kind must be file_regex, response_regex, trace_agent_dispatch_count, trace_agent_dispatch_names, or trace_agent_prompt_regex'
+    );
   }
   return problems;
 }
@@ -807,6 +882,33 @@ function scoreCase(c, resultsDir, dups, runState) {
           id,
           status: 'fail',
           reason: `assertion failed: dispatched [${names.join(', ')}], expected one of [${a.expect.join(', ')}]`,
+          activated,
+        };
+      }
+      continue;
+    }
+    if (a.kind === 'trace_agent_prompt_regex') {
+      const wanted = a.agents === undefined ? null : new Set(a.agents.map((n) => n.toLowerCase()));
+      const kept = agentDispatchPrompts(trace).filter(
+        (d) => wanted === null || (d.agent !== null && wanted.has(d.agent.toLowerCase()))
+      );
+      if (kept.length === 0) {
+        const scope = wanted === null ? '' : ` from [${a.agents.join(', ')}]`;
+        return {
+          id,
+          status: 'fail',
+          reason: `assertion failed: no dispatch prompt to check${scope}`,
+          activated,
+        };
+      }
+      // A fresh RegExp per prompt: with a g or y flag, test() carries
+      // lastIndex from one prompt into the next.
+      const miss = kept.find((d) => !new RegExp(a.regex, a.flags).test(d.prompt));
+      if (miss !== undefined) {
+        return {
+          id,
+          status: 'fail',
+          reason: `assertion failed: ${miss.agent === null ? 'unnamed agent' : miss.agent} dispatch prompt !~ /${a.regex}/${a.flags || ''}`,
           activated,
         };
       }
@@ -1152,7 +1254,14 @@ async function modeRun(args) {
   for (const c of cases) {
     if (!Array.isArray(c.assertions)) continue;
     for (const a of c.assertions) {
-      if (!a || a.kind !== 'trace_agent_dispatch_names') continue;
+      if (!a) continue;
+      // An agents filter naming an uninstalled agent could only fail as "no
+      // dispatch prompt" after spending, so it is preflighted like expect.
+      if (a.kind === 'trace_agent_prompt_regex' && agentNameListIsValid(a.agents)) {
+        for (const n of a.agents) requiredAgents.add(`${n}.md`);
+        continue;
+      }
+      if (a.kind !== 'trace_agent_dispatch_names') continue;
       // A malformed expect/forbid is scored invalid by the existing
       // per-case guard below and never spawns; collecting its raw,
       // unvalidated names here would instead die() the whole run over an
@@ -1173,7 +1282,7 @@ async function modeRun(args) {
     const missing = requiredList.filter((entry) => !present.has(entry));
     if (missing.length > 0) {
       die(
-        `error: a trace_agent_dispatch_count or trace_agent_dispatch_names assertion needs the roster ` +
+        `error: a trace_agent_dispatch_count, trace_agent_dispatch_names, or trace_agent_prompt_regex assertion needs the roster ` +
           `entries ${requiredList.join(', ')} installed at ${agentsDir}; missing: ${missing.join(', ')} ` +
           '(fix: PT_BYPASS_PERMISSIONS=1 HOME=<sandbox> ./install.sh claude); without them a dispatch ' +
           'assertion measures the sandbox, not the skill.'
