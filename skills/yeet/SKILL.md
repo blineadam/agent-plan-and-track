@@ -3,7 +3,7 @@ name: yeet
 description: Commit, push, and open a draft GitHub PR, drive Copilot review to resolution, then mark the PR ready for review. Use when finished work is ready to publish, not for planning that merely ends in a PR.
 ---
 
-<!-- Adapted from the Apache-2.0 licensed yeet skill at https://github.com/openai/skills/tree/main/skills/.curated/yeet, by way of the port in https://github.com/ben-ranford/skills. Modified: rewritten throughout; adds the Copilot review loop (request, wait, triage, reply, resolve), the draft-until-ready flow and the ready-for-review flip, the merge gate on head SHA and CI rollup, the required PR body heading set with a humanizer pass and image preservation, AI self-attribution checks on commits and the body, and the references/ notes; drops the conventional-commit title rules, the template-discovery list, and blanket `git add -A` staging. Full license text: LICENSE.txt in this directory. -->
+<!-- Adapted from the Apache-2.0 licensed yeet skill at https://github.com/openai/skills/tree/main/skills/.curated/yeet, by way of the port in https://github.com/ben-ranford/skills. Modified: rewritten throughout; adds the Copilot review loop (request, wait, triage, reply, resolve), the draft-until-ready flow and the ready-for-review flip, the merge gate on head SHA and CI rollup, the required PR body heading set with a humanizer pass and image preservation, AI self-attribution checks on commits and the body, the references/ notes, and the commit-message convention lookup order and commit-body rule (ideas from the re0-git skill in LilMGenius/paperthin, MIT); drops the conventional-commit title rules, the template-discovery list, and blanket `git add -A` staging. Full license text: LICENSE.txt in this directory. -->
 
 # Yeet
 
@@ -16,7 +16,8 @@ Confirm GitHub CLI is installed and signed in with `gh --version` and `gh auth s
 ## Naming
 
 - Branch: short kebab-case description of the change when starting from the default branch.
-- Commit message and PR title: a plain sentence describing the change; follow the target repo's own convention (e.g. Conventional Commits) where one exists.
+- Commit message and PR title: use the target repo's own convention, looked up in this order: a documented rule (a contributing guide, an agent instruction file, a commit-lint config), then recent commits that changed the same paths (`git log --oneline -10 -- <paths>`), then the commit author's own commits that already follow it. When the log mixes styles, that order decides; never blend two styles or copy whatever the newest repo-wide commits use. With no convention found, write a plain sentence describing the change.
+- Commit body: only what a later reader needs to pick the work up from the log alone. A test, doc, or fixture edit made for the main change goes inside that change's line rather than getting its own, and anything the diff already makes plain is left out.
 
 ## Publish
 
