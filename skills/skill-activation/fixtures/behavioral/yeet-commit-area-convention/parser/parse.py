@@ -1,8 +1,12 @@
+import operator
+
+
 class ParseError(Exception):
     pass
 
 
 PRECEDENCE = {"+": 1, "-": 1, "*": 2, "/": 2}
+APPLY = {"+": operator.add, "-": operator.sub, "*": operator.mul, "/": operator.floordiv}
 
 
 def parse(tokens):
@@ -33,5 +37,4 @@ def evaluate(node):
     if isinstance(node, int):
         return node
     op, left, right = node
-    a, b = evaluate(left), evaluate(right)
-    return {"+": a + b, "-": a - b, "*": a * b, "/": a // b}[op]
+    return APPLY[op](evaluate(left), evaluate(right))
