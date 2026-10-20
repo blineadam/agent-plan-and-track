@@ -23,7 +23,7 @@ Several sessions can share one `.tasks/todo.md`, and a session that writes back 
 2. Read `.tasks/lessons.md` if it exists and apply any relevant lessons to the plan.
 3. Enter plan mode if not already in it. Write a detailed spec upfront to reduce ambiguity:
    - **Hard-to-reverse bets first**: sequence the decisions that are costly to undo ahead of everything else.
-   - **Reuse before addition**: for each step, name what it reuses before what it adds.
+   - **Reuse before addition**: for each step, name what it reuses before what it adds. A step whose problem has a published spec or a long tail of edge cases names the mature library it uses, or why none fits, even when hand-rolled code for it already exists in the repo.
    - **No padding, no fake plans**: never pad a plan to look thorough; never ship a single-step "plan".
    - **State the goal before the checklist**: name the concrete outcome the plan proves true, the evidence that proves it, and the scope bounds, before writing steps. The goal is the end state the user asked for ("the file is under its size limit"), not the output of the procedure chosen to reach it ("ran one trim pass"); drawing scope tighter than that end state is the user's decision, not a planning choice. A purely activity-framed request ("make progress on X," "keep investigating") gets turned into that measurable objective first, rather than planned around as-is.
    - **Pilot before scale**: when the plan applies the same change across many files or targets, make the first implementation step (after the hard-to-reverse decisions above are settled) a small representative subset plus a review of its results, and only then the full sweep.
@@ -53,7 +53,7 @@ Several sessions can share one `.tasks/todo.md`, and a session that writes back 
 
    When a diff changes both an implementation and its principal assertions or fixtures, whatever its risk line says, check that the expected values trace to something outside the new code: a pre-fix reproduction, a stated contract, a worked example, or the old implementation's recorded output. A test whose expectation was regenerated from the implementation it checks can never disagree with that implementation, so it reports green by construction; [[migration-discipline]] carries the full argument. A new feature's accepted requirements and a deliberately changed contract are both valid grounds, so this is not a bar on editing tests.
 
-8. If something goes sideways: STOP immediately, re-plan in `.tasks/todo.md`, then continue. Don't keep pushing a failing approach.
+8. If something goes sideways: STOP immediately, re-plan in `.tasks/todo.md`, then continue. Don't keep pushing a failing approach. One form of sideways looks like progress: a third fix to the same unit (a file or function), each handling a different input or case than the last, whether the cases come from review findings or failing tests. Stop patching that unit: record the re-plan in `.tasks/todo.md` before any further edit to it, answering whether the unit itself is the wrong approach and which mature library or simpler design replaces it, per the reuse rule. Running autonomously, this is a re-plan, not a hand-back. The same failure repeating is the separate signal under Running autonomously.
 9. Keep changes minimal: impact only the code the goal requires.
 
 ## When done
