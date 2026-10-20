@@ -318,8 +318,12 @@ Results are written inside the container and copied out afterward: the runner
 writing straight into a directory bind-mounted from macOS failed with
 `EACCES` before any case spawned. Each `--run` needs a results directory that
 does not exist yet. A case takes from under a minute to about eight, so a
-shell with a shorter command timeout should background the `--run`;
-`LIVE_CASE_TIMEOUT_MS` caps each case at 900000 by default. `--check`, like the runner, exits 1 when any case fails or
+shell with a shorter command timeout should background the `--run` through
+the harness's own background facility, which reports when the runner exits,
+rather than a loop that looks for the runner in the process table: a
+`pgrep -f` pattern also matches the waiting shell's own command line, so that
+loop never sees the runner leave; `LIVE_CASE_TIMEOUT_MS` caps each case at
+900000 by default. `--check`, like the runner, exits 1 when any case fails or
 scores invalid, so a non-zero exit there is a verdict, not a broken pipeline.
 
 ### 7. Tear down

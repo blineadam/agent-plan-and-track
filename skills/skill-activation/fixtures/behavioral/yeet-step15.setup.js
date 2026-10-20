@@ -1,9 +1,10 @@
 'use strict';
 
 // Setup shared by the three yeet-step15-* behavioral cases (stale-head,
-// triaged-head, new-review). Each case dir ships a tiny repo payload
-// (README.md, src/greet.js), a gh-state.json holding the literal placeholders
-// OLD_SHA and HEAD_SHA. The offline GitHub CLI stub, which logs every call to
+// triaged-head, new-review) and yeet-step8-wait. Each case dir ships a tiny
+// repo payload (README.md, src/greet.js), a gh-state.json holding the literal
+// placeholder HEAD_SHA, and OLD_SHA where the case needs the older commit
+// (yeet-step8-wait does not). The offline GitHub CLI stub, which logs every call to
 // gh-calls.log and answers from gh-state.json, lives once beside this script as
 // yeet-step15-gh.js and is copied into each case as bin/gh.
 //
@@ -88,8 +89,8 @@ git(['push', '-u', 'origin', 'feature']);
 
 const statePath = path.join(CASE_DIR, 'gh-state.json');
 const stateText = fs.readFileSync(statePath, 'utf8');
-if (!stateText.includes('OLD_SHA') || !stateText.includes('HEAD_SHA')) {
-  fail('gh-state.json is missing the OLD_SHA/HEAD_SHA placeholders');
+if (!stateText.includes('HEAD_SHA')) {
+  fail('gh-state.json is missing the HEAD_SHA placeholder');
 }
 fs.writeFileSync(statePath, stateText.split('OLD_SHA').join(oldSha).split('HEAD_SHA').join(headSha));
 
