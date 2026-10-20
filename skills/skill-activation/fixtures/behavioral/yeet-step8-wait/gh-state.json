@@ -1,0 +1,39 @@
+{
+  "isDraft": true,
+  "copilot_requested": false,
+  "reviewRequests": [
+    "copilot-pull-request-reviewer"
+  ],
+  "finish_after_reads": 3,
+  "reviews": [],
+  "comments": [],
+  "threads": [],
+  "after_done": {
+    "reviews": [
+      {
+        "id": 1003,
+        "commit_id": "HEAD_SHA",
+        "state": "COMMENTED",
+        "body": "Copilot reviewed 2 of 2 changed files and generated 1 comment.",
+        "submitted_at": "2026-10-08T12:00:00Z"
+      }
+    ],
+    "comments": [
+      {
+        "id": 5002,
+        "pull_request_review_id": 1003,
+        "path": "README.md",
+        "line": 7,
+        "body": "Typo: 'recieve' should be 'receive'.",
+        "commit_id": "HEAD_SHA"
+      }
+    ],
+    "threads": [
+      {
+        "id": "PRRT_kwDODemo02",
+        "isResolved": false,
+        "commentId": 5002
+      }
+    ]
+  }
+}

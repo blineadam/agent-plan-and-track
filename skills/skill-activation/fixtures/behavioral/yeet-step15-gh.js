@@ -1,12 +1,31 @@
 #!/usr/bin/env node
 'use strict';
 
-// Offline stub of the GitHub CLI for the yeet-step15 behavioral smokes, copied
-// into each case as bin/gh by yeet-step15.setup.js. Logs
-// every invocation (argv as a JSON array, one line) to gh-calls.log in the
+// Offline stub of the GitHub CLI for the yeet-step15 and yeet-step8-wait
+// behavioral smokes, copied into each case as bin/gh by yeet-step15.setup.js.
+// Logs every invocation (argv as a JSON array, one line) to gh-calls.log in the
 // case dir, then answers from gh-state.json beside it. It models one PR
 // (octo/demo#7, branch feature) and only the calls yeet's steps 7 through 15
 // make; anything else prints `gh stub: unsupported: <argv>` and exits 1.
+//
+// --jq output matches real gh (checked on gh 2.102.0): each output value on its
+// own line, strings raw, every other value as compact JSON, and a top-level
+// null as an empty line, so a null or presence test on jq output never sees
+// the text "null".
+//
+// Optional state field finish_after_reads (an integer) models a Copilot pass
+// that ends while the agent waits. Each read of PR 7's reviewRequests (a
+// GraphQL query naming it, or `gh pr view --json` including it) bumps
+// review_request_reads. Reads up to finish_after_reads still list
+// state.reviewRequests. The next read empties it, merges the after_done
+// reviews, comments, and threads into the state, and logs the line
+// ["#stub","copilot-finished"]; every read from then on, that one included,
+// bumps reads_after_done. A case without the field is unaffected.
+//
+// A GraphQL query naming a PR other than 7 (pullRequest(number: N)) answers as
+// a finished, merged PR with no pending reviewers and does not count as a read;
+// `gh pr list` lists PR 7 (open, draft) and PR 6 (merged), so an agent can find
+// a PR whose Copilot pass is known to be over.
 
 const fs = require('fs');
 const path = require('path');
@@ -46,30 +65,58 @@ function loadState() {
   const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
   // A review that finishes right after the draft flip: hidden until `pr ready`.
   if (!state.isDraft && state.after_ready) {
-    for (const k of ['reviews', 'comments', 'threads']) state[k].push(...(state.after_ready[k] || []));
-    delete state.after_ready;
+    mergeHidden(state, 'after_ready');
     saveState(state);
   }
   return state;
+}
+
+function mergeHidden(state, key) {
+  for (const k of ['reviews', 'comments', 'threads']) state[k].push(...(state[key][k] || []));
+  delete state[key];
+}
+
+// Count one read of PR 7's reviewRequests for a finish_after_reads case. Call
+// it before answering, so the read that exceeds the limit already sees the
+// finished state and every REST surface after it does too.
+function noteReviewRequestRead(state) {
+  if (!Number.isInteger(state.finish_after_reads)) return;
+  state.review_request_reads = (state.review_request_reads || 0) + 1;
+  if (state.review_request_reads > state.finish_after_reads) {
+    if (state.review_request_reads === state.finish_after_reads + 1) {
+      state.reviewRequests = [];
+      if (state.after_done) mergeHidden(state, 'after_done');
+      fs.appendFileSync(LOG_FILE, JSON.stringify(['#stub', 'copilot-finished']) + '\n');
+    }
+    state.reads_after_done = (state.reads_after_done || 0) + 1;
+  }
+  saveState(state);
 }
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
 }
 
-// Print a JSON value, optionally through `jq -r <expr>` (gh's --jq/-q).
+// Print a JSON value, optionally through a jq expression (gh's --jq/-q) with
+// gh's output rules: a string prints raw, null prints as an empty line, any
+// other value as compact JSON.
 function emit(value, jqExpr) {
   const text = JSON.stringify(value);
   if (jqExpr === undefined) {
     process.stdout.write(text + '\n');
     return;
   }
-  const res = spawnSync('jq', ['-r', jqExpr], { input: text, encoding: 'utf8' });
+  const res = spawnSync('jq', ['-c', jqExpr], { input: text, encoding: 'utf8' });
   if (res.error) {
     process.stderr.write(`gh stub: jq failed to start: ${res.error.message}\n`);
     process.exit(1);
   }
-  process.stdout.write(res.stdout);
+  const lines = res.stdout.split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  for (const line of lines) {
+    const out = line === 'null' ? '' : line.startsWith('"') ? JSON.parse(line) : line;
+    process.stdout.write(out + '\n');
+  }
   process.stderr.write(res.stderr);
   if (res.status !== 0) process.exit(res.status || 1);
 }
@@ -79,7 +126,7 @@ function emit(value, jqExpr) {
 const VALUE_FLAGS = new Set([
   '-X', '--method', '-f', '--raw-field', '-F', '--field', '-H', '--header',
   '-q', '--jq', '--json', '--input', '-t', '--template', '--hostname', '--cache',
-  '-R', '--repo', '--add-reviewer', '--body-file', '-b', '--body', '-t', '--title',
+  '-R', '--repo', '-s', '--state', '--add-reviewer', '--body-file', '-b', '--body', '-t', '--title',
 ]);
 
 function parseArgs(args) {
@@ -226,6 +273,29 @@ if (argv[0] === 'repo' && argv[1] === 'view') {
 if (argv[0] === 'pr') {
   const sub = argv[1];
   const parsed = parseArgs(argv.slice(2));
+  if (sub === 'list') {
+    const json = lastFlag(parsed, '--json');
+    const jq = lastFlag(parsed, '--jq', '-q');
+    const wanted = (lastFlag(parsed, '--state', '-s') || 'open').toLowerCase();
+    const state = loadState();
+    const listed = [
+      { number: PR, title: 'Add a default greeting', state: 'OPEN', isDraft: state.isDraft, headRefName: 'feature', url: PR_URL },
+      { number: 6, title: 'Add the greet helper', state: 'MERGED', isDraft: false, headRefName: 'greet', url: `https://github.com/${OWNER}/${REPO}/pull/6` },
+    ].filter((p) => wanted === 'all' || (wanted === 'closed' ? p.state !== 'OPEN' : p.state === wanted.toUpperCase()));
+    if (json === undefined) {
+      for (const p of listed) process.stdout.write(`${p.number}\t${p.title}\t${p.headRefName}\t${p.state}\n`);
+      process.exit(0);
+    }
+    emit(listed.map((p) => {
+      const picked = {};
+      for (const f of json.split(',')) {
+        if (!(f in p)) unsupported();
+        picked[f] = p[f];
+      }
+      return picked;
+    }), jq);
+    process.exit(0);
+  }
   const num = parsed.positional[0];
   if (num !== undefined && num !== String(PR) && num !== 'feature') unsupported();
   const state = loadState();
@@ -239,6 +309,7 @@ if (argv[0] === 'pr') {
       );
       process.exit(0);
     }
+    if (json.split(',').includes('reviewRequests')) noteReviewRequestRead(state);
     const all = {
       number: PR,
       url: PR_URL,
@@ -337,6 +408,17 @@ if (argv[0] === 'api') {
       process.exit(0);
     }
     const pr = {};
+    const asked = query.match(/pullRequest\(\s*number:\s*(\d+)\s*\)/);
+    if (asked && Number(asked[1]) !== PR) {
+      // Any other PR is a finished, merged one: nothing pending, nothing to review.
+      if (/\breviewRequests\b/.test(query)) pr.reviewRequests = { nodes: [] };
+      if (/\breviewThreads\b/.test(query)) pr.reviewThreads = { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] };
+      if (/\breviews\b/.test(query)) pr.reviews = { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] };
+      if (Object.keys(pr).length === 0) unsupported();
+      emit({ data: { repository: { pullRequest: pr } } }, jq);
+      process.exit(0);
+    }
+    if (/\breviewRequests\b/.test(query)) noteReviewRequestRead(state);
     if (/\breviewRequests\b/.test(query)) {
       pr.reviewRequests = {
         nodes: pendingRequests(state).map((login) => ({ requestedReviewer: { __typename: 'Bot', login } })),
