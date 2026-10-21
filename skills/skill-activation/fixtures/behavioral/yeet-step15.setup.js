@@ -1,17 +1,20 @@
 'use strict';
 
 // Setup shared by the three yeet-step15-* behavioral cases (stale-head,
-// triaged-head, new-review) and yeet-step8-wait. Each case dir ships a tiny
-// repo payload (README.md, src/greet.js), a gh-state.json holding the literal
+// triaged-head, new-review), yeet-step8-wait, and the two yeet-step14-* cases.
+// Each case dir ships a tiny repo payload (README.md, src/greet.js, and for a
+// CI case a .github/ directory), a gh-state.json holding the literal
 // placeholder HEAD_SHA, and OLD_SHA where the case needs the older commit
-// (yeet-step8-wait does not). The offline GitHub CLI stub, which logs every call to
+// (yeet-step8-wait and the yeet-step14-* cases do not). The offline GitHub CLI stub, which logs every call to
 // gh-calls.log and answers from gh-state.json, lives once beside this script as
 // yeet-step15-gh.js and is copied into each case as bin/gh.
 //
 // This script builds the git side so the stub's state matches real commits:
 // commit 1 (the payload) is OLD_SHA, commit 2 (a small fix to src/greet.js) is
 // HEAD_SHA, both pushed on branch `feature` to a bare repo kept inside the
-// case dir as `.remote.git`. It then substitutes the real shas into
+// case dir as `.remote.git`. A case's .github/ directory is staged in commit 2
+// only, so it is new at the PR head and absent from commit 1, which the stub
+// models as the default branch. It then substitutes the real shas into
 // gh-state.json, creates an empty gh-calls.log, and writes
 // .claude/settings.json so bin/ leads PATH for the agent's Bash calls. The
 // value is an absolute literal because Claude Code does not expand variables
@@ -80,6 +83,7 @@ const oldSha = git(['rev-parse', 'HEAD'], true);
 
 fs.writeFileSync(path.join(CASE_DIR, 'src', 'greet.js'), FIXED_GREET);
 git(['add', '--', 'src/greet.js']);
+if (fs.existsSync(path.join(CASE_DIR, '.github'))) git(['add', '--', '.github']);
 commit('Default greet name to world');
 const headSha = git(['rev-parse', 'HEAD'], true);
 

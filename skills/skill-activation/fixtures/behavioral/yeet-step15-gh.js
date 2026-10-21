@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 'use strict';
 
-// Offline stub of the GitHub CLI for the yeet-step15 and yeet-step8-wait
-// behavioral smokes, copied into each case as bin/gh by yeet-step15.setup.js.
+// Offline stub of the GitHub CLI for the yeet-step15, yeet-step8-wait, and
+// yeet-step14-* behavioral smokes, copied into each case as bin/gh by
+// yeet-step15.setup.js.
 // Logs every invocation (argv as a JSON array, one line) to gh-calls.log in the
 // case dir, then answers from gh-state.json beside it. It models one PR
 // (octo/demo#7, branch feature) and only the calls yeet's steps 7 through 15
-// make; anything else prints `gh stub: unsupported: <argv>` and exits 1.
+// make, plus step 14's CI probes; anything else prints
+// `gh stub: unsupported: <argv>` and exits 1.
 //
 // --jq output matches real gh (checked on gh 2.102.0): each output value on its
 // own line, strings raw, every other value as compact JSON, and a top-level
@@ -26,6 +28,25 @@
 // a finished, merged PR with no pending reviewers and does not count as a read;
 // `gh pr list` lists PR 7 (open, draft) and PR 6 (merged), so an agent can find
 // a PR whose Copilot pass is known to be over.
+//
+// Optional state fields for step 14's "does this repo have CI" probes; a case
+// without them is unaffected. rollup (an array) replaces PR 7's
+// statusCheckRollup; merged_rollup (default: the one passing CheckRun) is PR
+// 6's, so `gh pr list --state merged --json statusCheckRollup` answers.
+// rollup_after_reads (an integer) with rollup_later (an array) models checks
+// that register after a wait: each read of PR 7's rollup (`gh pr view --json`
+// naming it, `gh pr checks`, or the head's commits/<sha>/check-runs) bumps
+// rollup_reads, and reads beyond the limit
+// see rollup_later, the first of them logging ["#stub","checks-registered"].
+// An empty rollup makes `gh pr checks` print gh's "no checks reported" error
+// and exit 1. branch_rules (an array, default empty) answers the rulesets
+// endpoint and workflows (an array, default empty) the Actions listings. The
+// base branch is unprotected. Workflow files under contents/ come from the
+// case's .remote.git: ref feature or the head sha reads the PR head, no ref
+// (or main) reads the head's parent, which models the default branch, so a
+// workflow added by the PR is new at the head and absent on main. `gh pr
+// merge 7` honours --match-head-commit and the draft state, then records
+// merged and merge_method in the state.
 
 const fs = require('fs');
 const path = require('path');
@@ -97,6 +118,88 @@ function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
 }
 
+const PASSING_ROLLUP = [
+  {
+    __typename: 'CheckRun',
+    name: 'ci',
+    workflowName: 'CI',
+    status: 'COMPLETED',
+    conclusion: 'SUCCESS',
+    detailsUrl: `${PR_URL}/checks`,
+  },
+];
+
+// PR 7's statusCheckRollup as of now, without counting a read.
+function currentRollup(state) {
+  if (Number.isInteger(state.rollup_after_reads) && (state.rollup_reads || 0) > state.rollup_after_reads) {
+    return state.rollup_later || [];
+  }
+  return Array.isArray(state.rollup) ? state.rollup : PASSING_ROLLUP;
+}
+
+// Count one read of PR 7's statusCheckRollup for a rollup_after_reads case and
+// return the rollup that read sees. The first read past the limit logs the
+// checks-registered marker, as noteReviewRequestRead does for copilot-finished.
+function noteRollupRead(state) {
+  if (Number.isInteger(state.rollup_after_reads)) {
+    state.rollup_reads = (state.rollup_reads || 0) + 1;
+    if (state.rollup_reads === state.rollup_after_reads + 1) {
+      fs.appendFileSync(LOG_FILE, JSON.stringify(['#stub', 'checks-registered']) + '\n');
+    }
+    saveState(state);
+  }
+  return currentRollup(state);
+}
+
+function checkBucket(entry) {
+  if (entry.status !== 'COMPLETED') return 'pending';
+  if (entry.conclusion === 'SUCCESS' || entry.conclusion === 'NEUTRAL') return 'pass';
+  if (entry.conclusion === 'SKIPPED') return 'skipping';
+  return 'fail';
+}
+
+// The rows `gh pr checks` derives from a rollup's CheckRun entries.
+function checkRows(rollup) {
+  return rollup.filter((e) => e.__typename === 'CheckRun').map((e) => ({
+    name: e.name,
+    state: e.status === 'COMPLETED' ? e.conclusion : e.status,
+    bucket: checkBucket(e),
+    workflow: e.workflowName || '',
+    link: e.detailsUrl,
+  }));
+}
+
+// Print a REST error the way gh does: the body on stdout, the message on stderr.
+function restError(body, message) {
+  process.stdout.write(JSON.stringify(body) + '\n');
+  process.stderr.write(`gh: ${message}\n`);
+  process.exit(1);
+}
+
+const REMOTE_GIT = path.join(CASE_DIR, '.remote.git');
+
+// The git revision a contents `ref` reads: the PR head for feature or its sha,
+// the head's parent for no ref (or main), which models the default branch.
+function contentsRev(ref) {
+  if (ref === undefined || ref === 'main' || ref === 'refs/heads/main') return 'refs/heads/feature~1';
+  if (ref === 'feature' || ref === 'refs/heads/feature' || ref === currentHead()) return 'refs/heads/feature';
+  return undefined;
+}
+
+function gitRemote(args) {
+  return spawnSync('git', ['--git-dir', REMOTE_GIT, ...args], { encoding: 'utf8' });
+}
+
+// Blob entries directly under a tree path at a revision, or [] when absent.
+function treeFiles(rev, dir) {
+  const r = gitRemote(['ls-tree', rev, `${dir}/`]);
+  if (r.status !== 0) return [];
+  return r.stdout.split('\n').filter(Boolean).map((line) => {
+    const m = line.match(/^\d+ (\w+) ([0-9a-f]+)\t(.+)$/);
+    return m && m[1] === 'blob' ? { sha: m[2], path: m[3], name: path.basename(m[3]) } : null;
+  }).filter(Boolean);
+}
+
 // Print a JSON value, optionally through a jq expression (gh's --jq/-q) with
 // gh's output rules: a string prints raw, null prints as an empty line, any
 // other value as compact JSON.
@@ -126,7 +229,7 @@ function emit(value, jqExpr) {
 const VALUE_FLAGS = new Set([
   '-X', '--method', '-f', '--raw-field', '-F', '--field', '-H', '--header',
   '-q', '--jq', '--json', '--input', '-t', '--template', '--hostname', '--cache',
-  '-R', '--repo', '-s', '--state', '--add-reviewer', '--body-file', '-b', '--body', '-t', '--title',
+  '-R', '--repo', '-s', '--state', '--add-reviewer', '--body-file', '-b', '--body', '-t', '--title', '--match-head-commit',
 ]);
 
 function parseArgs(args) {
@@ -279,8 +382,8 @@ if (argv[0] === 'pr') {
     const wanted = (lastFlag(parsed, '--state', '-s') || 'open').toLowerCase();
     const state = loadState();
     const listed = [
-      { number: PR, title: 'Add a default greeting', state: 'OPEN', isDraft: state.isDraft, headRefName: 'feature', url: PR_URL },
-      { number: 6, title: 'Add the greet helper', state: 'MERGED', isDraft: false, headRefName: 'greet', url: `https://github.com/${OWNER}/${REPO}/pull/6` },
+      { number: PR, title: 'Add a default greeting', state: state.merged ? 'MERGED' : 'OPEN', isDraft: state.isDraft, headRefName: 'feature', url: PR_URL, statusCheckRollup: currentRollup(state) },
+      { number: 6, title: 'Add the greet helper', state: 'MERGED', isDraft: false, headRefName: 'greet', url: `https://github.com/${OWNER}/${REPO}/pull/6`, statusCheckRollup: Array.isArray(state.merged_rollup) ? state.merged_rollup : PASSING_ROLLUP },
     ].filter((p) => wanted === 'all' || (wanted === 'closed' ? p.state !== 'OPEN' : p.state === wanted.toUpperCase()));
     if (json === undefined) {
       for (const p of listed) process.stdout.write(`${p.number}\t${p.title}\t${p.headRefName}\t${p.state}\n`);
@@ -310,6 +413,7 @@ if (argv[0] === 'pr') {
       process.exit(0);
     }
     if (json.split(',').includes('reviewRequests')) noteReviewRequestRead(state);
+    const rollup = json.split(',').includes('statusCheckRollup') ? noteRollupRead(state) : [];
     const all = {
       number: PR,
       url: PR_URL,
@@ -318,17 +422,8 @@ if (argv[0] === 'pr') {
       baseRefName: 'main',
       headRefOid: currentHead(),
       isDraft: state.isDraft,
-      state: 'OPEN',
-      statusCheckRollup: [
-        {
-          __typename: 'CheckRun',
-          name: 'ci',
-          workflowName: 'CI',
-          status: 'COMPLETED',
-          conclusion: 'SUCCESS',
-          detailsUrl: `${PR_URL}/checks`,
-        },
-      ],
+      state: state.merged ? 'MERGED' : 'OPEN',
+      statusCheckRollup: rollup,
       reviewRequests: pendingRequests(state).map((login) => ({ __typename: 'Bot', login })),
       reviews: state.reviews.map((r) => ({
         id: `PRR_${r.id}`,
@@ -352,11 +447,44 @@ if (argv[0] === 'pr') {
   if (sub === 'checks') {
     const json = lastFlag(parsed, '--json');
     const jq = lastFlag(parsed, '--jq', '-q');
-    if (json !== undefined) {
-      emit([{ name: 'ci', state: 'SUCCESS', bucket: 'pass', workflow: 'CI', link: `${PR_URL}/checks` }], jq);
-    } else {
-      process.stdout.write(`ci\tpass\t41s\t${PR_URL}/checks\n`);
+    const rows = checkRows(noteRollupRead(state));
+    if (rows.length === 0) {
+      process.stderr.write("no checks reported on the 'feature' branch\n");
+      process.exit(1);
     }
+    if (json !== undefined) {
+      emit(rows, jq);
+    } else {
+      for (const r of rows) process.stdout.write(`${r.name}\t${r.bucket}\t41s\t${r.link}\n`);
+    }
+    process.exit(0);
+  }
+
+  if (sub === 'merge') {
+    // -s is --squash here, but parseArgs reads it as --state's value flag.
+    const mergeArgs = parseArgs(argv.slice(2).map((a) => (a === '-s' ? '--squash' : a)));
+    const expected = lastFlag(mergeArgs, '--match-head-commit');
+    if (expected !== undefined && expected !== currentHead()) {
+      process.stderr.write('GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)\n');
+      process.exit(1);
+    }
+    if (state.isDraft) {
+      process.stderr.write(`Pull request ${OWNER}/${REPO}#${PR} is still a draft\n`);
+      process.exit(1);
+    }
+    const method = mergeArgs.bool.has('--rebase') || mergeArgs.bool.has('-r') ? 'rebase'
+      : mergeArgs.bool.has('--squash') ? 'squash'
+      : mergeArgs.bool.has('--merge') || mergeArgs.bool.has('-m') ? 'merge' : undefined;
+    if (method === undefined) {
+      // Real gh refuses to pick a method without a terminal to prompt on.
+      process.stderr.write('--merge, --rebase, or --squash required when not running interactively\n');
+      process.exit(1);
+    }
+    state.merged = true;
+    state.merge_method = method;
+    saveState(state);
+    const verb = { squash: 'Squashed and merged', rebase: 'Rebased and merged', merge: 'Merged' }[method];
+    process.stdout.write(`✓ ${verb} pull request ${OWNER}/${REPO}#${PR} (Add a default greeting)\n`);
     process.exit(0);
   }
 
@@ -384,7 +512,10 @@ if (argv[0] === 'pr') {
 if (argv[0] === 'api') {
   const parsed = parseArgs(argv.slice(1));
   const jq = lastFlag(parsed, '--jq', '-q');
-  const endpoint = (parsed.positional[0] || '').replace(/^\/+/, '');
+  const rawEndpoint = (parsed.positional[0] || '').replace(/^\/+/, '');
+  const queryAt = rawEndpoint.indexOf('?');
+  const endpoint = queryAt < 0 ? rawEndpoint : rawEndpoint.slice(0, queryAt);
+  const queryRef = queryAt < 0 ? undefined : new URLSearchParams(rawEndpoint.slice(queryAt + 1)).get('ref') || undefined;
   const explicit = lastFlag(parsed, '-X', '--method');
   const hasFields = Object.keys(parsed.fields).length > 0;
   const method = (explicit || (hasFields ? 'POST' : 'GET')).toUpperCase();
@@ -498,6 +629,90 @@ if (argv[0] === 'api') {
     process.exit(0);
   }
 
+  // ---- step 14's CI probes -------------------------------------------------
+  const repoApi = endpoint.match(/^repos\/[^/]+\/[^/]+\/(.+)$/);
+  const rest = repoApi ? repoApi[1] : '';
+
+  if (rest === 'branches/main') {
+    emit({
+      name: 'main',
+      protected: false,
+      protection: { enabled: false, required_status_checks: { enforcement_level: 'off', contexts: [], checks: [] } },
+    }, jq);
+    process.exit(0);
+  }
+
+  if (rest === 'branches/main/protection' || rest === 'branches/main/protection/required_status_checks') {
+    restError({
+      message: 'Branch not protected',
+      documentation_url: 'https://docs.github.com/rest/branches/branch-protection#get-branch-protection',
+      status: '404',
+    }, 'Branch not protected (HTTP 404)');
+  }
+
+  if (rest === 'rules/branches/main') {
+    emit(state.branch_rules || [], jq);
+    process.exit(0);
+  }
+
+  const contents = rest.match(/^contents\/(\.github\/workflows(?:\/[^/]+)?)\/?$/);
+  if (contents) {
+    const rev = contentsRev(parsed.fields.ref !== undefined ? parsed.fields.ref : queryRef);
+    if (rev === undefined) unsupported();
+    const target = contents[1];
+    const notFound = () => restError({
+      message: 'Not Found',
+      documentation_url: 'https://docs.github.com/rest/repos/contents#get-repository-content',
+      status: '404',
+    }, 'Not Found (HTTP 404)');
+    if (target === '.github/workflows') {
+      const files = treeFiles(rev, target);
+      if (files.length === 0) notFound();
+      emit(files.map((f) => ({ name: f.name, path: f.path, type: 'file', sha: f.sha })), jq);
+      process.exit(0);
+    }
+    const file = treeFiles(rev, '.github/workflows').find((f) => f.path === target);
+    if (!file) notFound();
+    const blob = gitRemote(['cat-file', 'blob', file.sha]);
+    emit({ name: file.name, path: file.path, type: 'file', encoding: 'base64', content: Buffer.from(blob.stdout).toString('base64') }, jq);
+    process.exit(0);
+  }
+
+  if (rest === 'actions/workflows') {
+    const workflows = state.workflows || [];
+    emit({ total_count: workflows.length, workflows }, jq);
+    process.exit(0);
+  }
+
+  if (rest === 'actions/runs') {
+    emit({ total_count: 0, workflow_runs: [] }, jq);
+    process.exit(0);
+  }
+
+  const commitApi = rest.match(/^commits\/([^/]+)\/(check-runs|status|check-suites)$/);
+  if (commitApi) {
+    if (commitApi[2] === 'check-runs') {
+      const isHead = commitApi[1] === currentHead() || commitApi[1] === 'feature';
+      // A head read counts toward rollup_after_reads like the gh pr surfaces.
+      const runs = isHead
+        ? noteRollupRead(state).filter((e) => e.__typename === 'CheckRun').map((e, i) => ({
+            id: 8000 + i,
+            name: e.name,
+            status: e.status.toLowerCase(),
+            conclusion: e.conclusion ? e.conclusion.toLowerCase() : null,
+            html_url: e.detailsUrl,
+            head_sha: currentHead(),
+          }))
+        : [];
+      emit({ total_count: runs.length, check_runs: runs }, jq);
+    } else if (commitApi[2] === 'status') {
+      emit({ state: 'pending', total_count: 0, statuses: [] }, jq);
+    } else {
+      emit({ total_count: 0, check_suites: [] }, jq);
+    }
+    process.exit(0);
+  }
+
   if (pulls.test(endpoint) && /\/requested_reviewers$/.test(endpoint)) {
     if (method === 'GET') {
       // Real REST omits bot reviewers here, so this never shows Copilot.
@@ -515,6 +730,29 @@ if (argv[0] === 'api') {
   }
 
   unsupported();
+}
+
+// ---- gh run list / gh workflow list ----------------------------------------
+if (argv[0] === 'run' && argv[1] === 'list') {
+  const parsed = parseArgs(argv.slice(2));
+  if (lastFlag(parsed, '--json') !== undefined) emit([], lastFlag(parsed, '--jq', '-q'));
+  process.exit(0);
+}
+
+if (argv[0] === 'workflow' && argv[1] === 'list') {
+  const parsed = parseArgs(argv.slice(2));
+  const json = lastFlag(parsed, '--json');
+  const workflows = loadState().workflows || [];
+  if (json === undefined) {
+    for (const w of workflows) process.stdout.write(`${w.name}\t${w.state || 'active'}\t${w.id}\n`);
+    process.exit(0);
+  }
+  emit(workflows.map((w) => {
+    const picked = {};
+    for (const f of json.split(',')) if (f in w) picked[f] = w[f];
+    return picked;
+  }), lastFlag(parsed, '--jq', '-q'));
+  process.exit(0);
 }
 
 unsupported();
