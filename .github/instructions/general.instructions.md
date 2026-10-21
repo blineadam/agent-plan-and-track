@@ -79,6 +79,10 @@ files. Flag anything below as a review comment, not just a suggestion.
 - Flag new code, a pattern, or an abstraction that duplicates something the
   repo already has; the change should say what it reuses, not just what it
   adds.
+- Flag hand-rolled or extended hand-rolled code for a problem with a
+  published spec or a long tail of edge cases (parsers, formats, markup,
+  URLs, dates, encodings, crypto) where a mature, maintained library would
+  do, even if adopting it means a new dependency.
 - Flag a PR that adds a skill, hook, rule, check, or cross-file migration
   that `docs/out-of-scope.md` already records as declined, unless it says why
   the decision is being reopened and updates that entry in place. An entry
