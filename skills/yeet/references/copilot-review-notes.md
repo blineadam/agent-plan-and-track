@@ -44,13 +44,15 @@ An empty rollup is ambiguous: right after a push it is a repo whose checks have 
 # Required checks on the base branch, from rulesets and from classic protection: each prints 0.
 gh api repos/{owner}/{repo}/rules/branches/<base> --jq '[.[] | select(.type == "required_status_checks")] | length'
 gh api repos/{owner}/{repo}/branches/<base> --jq '.protection.required_status_checks | (.contexts + .checks) | length'
-# Workflows at the head that a pull_request event triggers: prints nothing.
+# Workflow files this PR adds or changes, whatever their trigger, then workflows at the head
+# that a pull_request event triggers: each prints nothing.
+git fetch origin <base> && git diff --name-only origin/<base>...<sha> -- .github/workflows/
 git grep -l -e pull_request <sha> -- .github/workflows/
 # Checks on the last five merged PRs, which also covers CI outside Actions: prints 0.
 gh pr list --state merged --limit 5 --json statusCheckRollup --jq '[.[].statusCheckRollup[]] | length'
 ```
 
-The branch read carries `protection.required_status_checks` even on an unprotected branch, and it needs no admin rights, unlike the `branches/<base>/protection` endpoint. The `git grep` also matches `pull_request_target` and `pull_request_review`, which errs toward waiting. A read that errors has not answered, so it counts as CI. A workflow with a `paths` filter the PR does not touch still counts, so an empty rollup there waits and then times out, which is the right place to stop and ask.
+The reads describe one head and one base, so a push or a base change makes them stale: take them again at the new `<sha>` before trusting `noci`. Merged-PR history can only vouch for workflows that already existed, so a workflow file the PR adds or edits counts as CI even when its trigger is `push` alone. The branch read carries `protection.required_status_checks` even on an unprotected branch, and it needs no admin rights, unlike the `branches/<base>/protection` endpoint. The `git grep` also matches `pull_request_target` and `pull_request_review`, which errs toward waiting. A read that errors has not answered, so it counts as CI. A workflow with a `paths` filter the PR does not touch still counts, so an empty rollup there waits and then times out, which is the right place to stop and ask.
 
 ## Sources
 

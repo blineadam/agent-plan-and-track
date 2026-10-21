@@ -12,9 +12,9 @@
 // This script builds the git side so the stub's state matches real commits:
 // commit 1 (the payload) is OLD_SHA, commit 2 (a small fix to src/greet.js) is
 // HEAD_SHA, both pushed on branch `feature` to a bare repo kept inside the
-// case dir as `.remote.git`. A case's .github/ directory is staged in commit 2
-// only, so it is new at the PR head and absent from commit 1, which the stub
-// models as the default branch. It then substitutes the real shas into
+// case dir as `.remote.git`, with commit 1 also pushed as `main`, the default
+// branch, so `git diff origin/main...HEAD` works. A case's .github/ directory
+// is staged in commit 2 only, so it is new at the PR head and absent on main. It then substitutes the real shas into
 // gh-state.json, creates an empty gh-calls.log, and writes
 // .claude/settings.json so bin/ leads PATH for the agent's Bash calls. The
 // value is an absolute literal because Claude Code does not expand variables
@@ -90,6 +90,7 @@ const headSha = git(['rev-parse', 'HEAD'], true);
 git(['init', '--bare', '-b', 'feature', REMOTE]);
 git(['remote', 'add', 'origin', REMOTE]);
 git(['push', '-u', 'origin', 'feature']);
+git(['push', 'origin', `${oldSha}:refs/heads/main`]);
 
 const statePath = path.join(CASE_DIR, 'gh-state.json');
 const stateText = fs.readFileSync(statePath, 'utf8');
