@@ -52,17 +52,18 @@ ci_seen() {
   r="$(gh api "repos/{owner}/{repo}/actions/runs?head_sha=<sha>" --jq .total_count)" &&
   jq -n --argjson s "$s" --argjson r "$r" '$s + $r > 0'
 }
-for i in $(seq 1 8); do
+for i in $(seq 0 8); do
+  [ "$i" -gt 0 ] && sleep 15
   case "$(ci_seen)" in
     true) echo ci; exit 0 ;;
-    false) sleep 15 ;;
+    false) ;;
     *) echo "a CI read failed to answer" >&2; exit 1 ;;
   esac
 done
 echo noci; exit 0
 ```
 
-Before backgrounding it, run `ci_seen` once against a head that has CI and see it print `true`. `total_count` covers every page, so neither endpoint needs `--paginate` here. On a real push, the first check suite appeared 4 seconds after the commit and the last within a minute, while a repo with no CI shows zero suites and zero runs indefinitely. Two minutes therefore covers registration with room to spare. An observation proves nothing about a later head, so take both observations again at the new `<sha>` after any push before trusting `noci`.
+Before backgrounding it, run `ci_seen` once against a head that has CI and see it print `true`. `total_count` covers every page, so neither endpoint needs `--paginate` here. On a real push, the first check suite appeared 4 seconds after the commit and the last within a minute, while a repo with no CI shows zero suites and zero runs indefinitely. Two minutes therefore covers registration with room to spare. The loop reads at 0, 15, and so on through 120 seconds, so the last read closes the window. An observation proves nothing about a later head or about checks the ready flip starts, so take both observations after `gh pr ready`, and again at the new `<sha>` after any push, before trusting `noci`.
 
 ## Sources
 
