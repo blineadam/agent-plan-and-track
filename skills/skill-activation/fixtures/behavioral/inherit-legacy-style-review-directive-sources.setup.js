@@ -17,9 +17,9 @@
 // doesn't depend on the caller's global excludes (see
 // capture-lesson-git-repo.setup.js for the same reasoning).
 
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
 
 const cwd = process.cwd();
 const RULES = '.ai-style-rules.md';
