@@ -35,8 +35,8 @@
 // 6's, so `gh pr list --state merged --json statusCheckRollup` answers.
 // rollup_after_reads (an integer) with rollup_later (an array) models checks
 // that register after a wait: each read of PR 7's rollup (`gh pr view --json`
-// naming it, `gh pr checks`, or the head's commits/<sha>/check-runs) bumps
-// rollup_reads, and reads beyond the limit
+// naming it, `gh pr checks`, or the head's check runs, check suites, or
+// Actions runs) bumps rollup_reads, and reads beyond the limit
 // see rollup_later, the first of them logging ["#stub","checks-registered"].
 // An empty rollup makes `gh pr checks` print gh's "no checks reported" error
 // and exit 1. branch_rules (an array, default empty) answers the rulesets
@@ -515,7 +515,8 @@ if (argv[0] === 'api') {
   const rawEndpoint = (parsed.positional[0] || '').replace(/^\/+/, '');
   const queryAt = rawEndpoint.indexOf('?');
   const endpoint = queryAt < 0 ? rawEndpoint : rawEndpoint.slice(0, queryAt);
-  const queryRef = queryAt < 0 ? undefined : new URLSearchParams(rawEndpoint.slice(queryAt + 1)).get('ref') || undefined;
+  const query = new URLSearchParams(queryAt < 0 ? '' : rawEndpoint.slice(queryAt + 1));
+  const queryRef = query.get('ref') || undefined;
   const explicit = lastFlag(parsed, '-X', '--method');
   const hasFields = Object.keys(parsed.fields).length > 0;
   const method = (explicit || (hasFields ? 'POST' : 'GET')).toUpperCase();
@@ -685,7 +686,18 @@ if (argv[0] === 'api') {
   }
 
   if (rest === 'actions/runs') {
-    emit({ total_count: 0, workflow_runs: [] }, jq);
+    // One run per CheckRun in the head's rollup, as an Actions-backed check would have.
+    const sha = query.get('head_sha');
+    const runs = sha === null || sha === currentHead()
+      ? noteRollupRead(state).filter((e) => e.__typename === 'CheckRun').map((e, i) => ({
+          id: 7000 + i,
+          name: e.workflowName || e.name,
+          head_sha: currentHead(),
+          status: e.status.toLowerCase(),
+          conclusion: e.conclusion ? e.conclusion.toLowerCase() : null,
+        }))
+      : [];
+    emit({ total_count: runs.length, workflow_runs: runs }, jq);
     process.exit(0);
   }
 
@@ -708,7 +720,19 @@ if (argv[0] === 'api') {
     } else if (commitApi[2] === 'status') {
       emit({ state: 'pending', total_count: 0, statuses: [] }, jq);
     } else {
-      emit({ total_count: 0, check_suites: [] }, jq);
+      // One github-actions suite per CheckRun in the head's rollup; none on other commits.
+      const isHead = commitApi[1] === currentHead() || commitApi[1] === 'feature';
+      const suites = isHead
+        ? noteRollupRead(state).filter((e) => e.__typename === 'CheckRun').map((e, i) => ({
+            id: 9500 + i,
+            head_sha: currentHead(),
+            app: { slug: 'github-actions' },
+            status: e.status.toLowerCase(),
+            conclusion: e.conclusion ? e.conclusion.toLowerCase() : null,
+            latest_check_runs_count: 1,
+          }))
+        : [];
+      emit({ total_count: suites.length, check_suites: suites }, jq);
     }
     process.exit(0);
   }
