@@ -36,7 +36,34 @@ Before backgrounding it, run `pending` once against a PR whose Copilot pass has 
 
 ## Step 14: CI rollup shapes
 
-`gh pr view <n> --json statusCheckRollup` mixes two shapes with uppercase GraphQL enums. A check run passes only when its `status` is `COMPLETED` and its `conclusion` is `SUCCESS`, `NEUTRAL`, or `SKIPPED`. A status context passes only when its `state` is `SUCCESS`. An empty rollup is not a pass. A rerun replaces the failed entry, so a passing rerun clears it. The `jq` filter in step 14 encodes exactly this.
+`gh pr view <n> --json statusCheckRollup` mixes two shapes with uppercase GraphQL enums. A check run passes only when its `status` is `COMPLETED` and its `conclusion` is `SUCCESS`, `NEUTRAL`, or `SKIPPED`. A status context passes only when its `state` is `SUCCESS`. A rerun replaces the failed entry, so a passing rerun clears it. The `jq` filter in step 14 encodes exactly this.
+
+An empty rollup is ambiguous: right after a push it is a head whose checks have not registered yet, and in a repo with no CI it stays empty forever. Two observations at the head tell them apart. First, the last five merged PRs carry no checks either, which prints `0`:
+
+```bash
+gh pr list --state merged --limit 5 --json statusCheckRollup --jq '[.[].statusCheckRollup[]] | length'
+```
+
+Second, the head stays without a check suite or an Actions run for two minutes. This loop prints `ci` and exits as soon as either appears, prints `noci` once two minutes pass with neither, and exits 1 on any read that fails to answer:
+
+```bash
+ci_seen() {
+  s="$(gh api repos/{owner}/{repo}/commits/<sha>/check-suites --jq .total_count)" &&
+  r="$(gh api "repos/{owner}/{repo}/actions/runs?head_sha=<sha>" --jq .total_count)" &&
+  jq -n --argjson s "$s" --argjson r "$r" '$s + $r > 0'
+}
+for i in $(seq 0 8); do
+  [ "$i" -gt 0 ] && sleep 15
+  case "$(ci_seen)" in
+    true) echo ci; exit 0 ;;
+    false) ;;
+    *) echo "a CI read failed to answer" >&2; exit 1 ;;
+  esac
+done
+echo noci; exit 0
+```
+
+Before backgrounding it, run `ci_seen` once against a head that has CI and see it print `true`. `total_count` covers every page, so neither endpoint needs `--paginate` here. On a real push, the first check suite appeared 4 seconds after the commit and the last within a minute, while a repo with no CI shows zero suites and zero runs indefinitely. Two minutes therefore covers registration with room to spare. The loop reads at 0, 15, and so on through 120 seconds, so the last read closes the window. An observation proves nothing about a later head or about checks the ready flip starts, so take both observations after `gh pr ready`, and again at the new `<sha>` after any push, before trusting `noci`.
 
 ## Sources
 

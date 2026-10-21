@@ -1,0 +1,31 @@
+{
+  "isDraft": false,
+  "copilot_requested": false,
+  "reviewRequests": [],
+  "reviews": [
+    {
+      "id": 1002,
+      "commit_id": "HEAD_SHA",
+      "state": "COMMENTED",
+      "body": "Copilot reviewed 2 of 2 changed files and generated no comments.",
+      "submitted_at": "2026-10-08T12:00:00Z"
+    }
+  ],
+  "comments": [],
+  "threads": [],
+  "rollup": [],
+  "rollup_after_reads": 2,
+  "rollup_later": [
+    {
+      "__typename": "CheckRun",
+      "name": "ci",
+      "workflowName": "CI",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/octo/demo/pull/7/checks"
+    }
+  ],
+  "merged_rollup": [],
+  "branch_rules": [],
+  "workflows": []
+}
