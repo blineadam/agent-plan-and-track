@@ -22,9 +22,12 @@ Check three things:
    `.github/copilot-instructions.md`, and path-scoped
    `.github/instructions/*.instructions.md`. Read them in every mode so a rule
    they already state isn't repeated, but never write a new rule into one.
-   Skip anything generated from these rules: a path-scoped file carrying the
-   copilot-review-instructions marker, and the marker-owned `# Code reviews`
-   section of `.github/copilot-instructions.md`.
+   A path-scoped file or the `# Code reviews` section of
+   `.github/copilot-instructions.md` often restates rules from another doc as
+   review directives, but anyone may have written or edited it: a rule there
+   that points back to an on-demand doc or `.ai-style-rules.md` belongs to
+   that doc, so don't count it as stated; one backed by no other source does
+   count.
 2. **On-demand convention docs**: markdown read when needed that states how
    code here should be written (naming, structure, error handling, patterns),
    such as `CONTRIBUTING.md`, style or review guides, `docs/**/*.md`, or a
