@@ -20,12 +20,12 @@
       never modified.
     - hooks are merged only if not already installed (Claude/Codex); the Copilot
       hook files are repo-owned and overwritten, with a *.bak if one differed
-    - managed defaults (Claude model=opusplan + switchModelsOnFlag +
+    - managed defaults (Claude model=opus + Opus effort=high + switchModelsOnFlag +
       outputStyle=Concise + enableArtifact=false, Copilot model=auto, Codex
       plan_mode_reasoning_effort=xhigh) are repo-owned and OVERWRITTEN on every
-      install. PT_KEEP_MODEL=1 keeps an existing per-machine model,
-      output-style, or artifact choice; a Copilot settings.json that isn't
-      plain JSON is left alone.
+      install. PT_KEEP_MODEL=1 keeps an existing per-machine model, Opus
+      effort, output-style, or artifact choice; a Copilot settings.json that
+      isn't plain JSON is left alone.
     - the Claude attribution block (attribution.commit="", attribution.pr="",
       attribution.sessionUrl=false) is repo-owned and OVERWRITTEN on every
       install, so no AI trailer, PR text, or session link is added;
@@ -511,7 +511,7 @@ function Get-RenderedHook($template, $scriptsDir) {
 
 # Set a repo-owned JSON default in a settings file, overwriting on every install
 # so a re-run re-asserts the intended value. With PT_KEEP_MODEL=1 this reverts to
-# set-if-absent. $value is a native value ('opusplan', $true).
+# set-if-absent. $value is a native value ('opus', $true).
 function Set-JsonDefault($file, $key, $value, $label) {
   $json = [System.IO.File]::ReadAllText($file) | ConvertFrom-Json
   $has = ($json.PSObject.Properties.Name -contains $key)
@@ -532,9 +532,10 @@ function Set-JsonDefault($file, $key, $value, $label) {
 # (e.g. @('permissions','defaultMode')), walked one segment at a time as data, never
 # string-interpolated into an expression, so a key containing an '@' or a '-' (e.g.
 # "frontend-design@claude-plugins-official") can never be reinterpreted. Missing
-# intermediate objects are created as needed. Not gated by PT_KEEP_MODEL, which
-# covers model, output-style, and artifact settings only.
-function Set-JsonPath($file, $path, $value, $label) {
+# intermediate objects are created as needed. Not gated by PT_KEEP_MODEL unless
+# -Keep is passed: then, with PT_KEEP_MODEL=1, a path that already holds a
+# non-null value is kept and an absent one still gets the default.
+function Set-JsonPath($file, $path, $value, $label, [switch]$Keep) {
   $json = [System.IO.File]::ReadAllText($file) | ConvertFrom-Json
   $node = $json
   $found = $true
@@ -546,6 +547,10 @@ function Set-JsonPath($file, $path, $value, $label) {
     $node = $node.$key
   }
   $prev = if ($found) { $node } else { $null }
+  if ($Keep -and $env:PT_KEEP_MODEL -eq '1' -and $null -ne $prev) {
+    Write-Host ("  {0,-16}-- PT_KEEP_MODEL=1; kept {1}={2}" -f $label, ($path -join '.'), (Format-Val $prev))
+    return
+  }
 
   $node = $json
   for ($i = 0; $i -lt $path.Count - 1; $i++) {
@@ -762,13 +767,21 @@ function Install-Claude {
   New-Item -ItemType Directory -Force -Path $base | Out-Null
   if (-not (Test-Path -LiteralPath $settings)) { [System.IO.File]::WriteAllText($settings, '{}', $Utf8NoBom) }
   # Repo-owned model defaults, re-asserted on every install (PT_KEEP_MODEL=1 keeps
-  # an existing per-machine choice): opusplan runs Opus in Plan mode and Sonnet for
-  # execution; switchModelsOnFlag=true lets Claude Code switch to another model when
+  # an existing per-machine choice): opus runs Opus in every mode;
+  # switchModelsOnFlag=true lets Claude Code switch to another model when
   # a message is flagged by safety measures, instead of pausing the session. See
   # https://code.claude.com/docs/en/model-config and
   # https://code.claude.com/docs/en/settings-reference#switchmodelsonflag.
-  Set-JsonDefault $settings 'model' 'opusplan' 'model default'
+  Set-JsonDefault $settings 'model' 'opus' 'model default'
   Set-JsonDefault $settings 'switchModelsOnFlag' $true 'safety-switch'
+  # Repo-owned Opus effort level, re-asserted on every install (PT_KEEP_MODEL=1
+  # keeps an existing per-machine choice): the opus alias resolves to Opus 5.5,
+  # which defaults to medium effort and ignores a top-level effortLevel in user
+  # settings, so a per-model entry under modelSettings, keyed by the canonical
+  # model ID, is what holds it at high. See
+  # https://code.claude.com/docs/en/settings-reference#modelsettings. The key
+  # names a specific model: when the opus alias moves to a newer model, update it.
+  Set-JsonPath $settings @('modelSettings', 'claude-opus-5-5', 'effortLevel') 'high' 'opus effort' -Keep
   # Repo-owned output-style default, re-asserted on every install (PT_KEEP_MODEL=1
   # keeps an existing per-machine choice): Concise trims narration in responses.
   # Requires Claude Code v2.1.237 or later; installing over an older CLI leaves

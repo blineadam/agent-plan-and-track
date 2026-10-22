@@ -197,8 +197,9 @@ installer takes a `.bak` backup if the existing file differs.
 Model, output-style, and artifact defaults are repo-owned and overwritten on
 each install unless `PT_KEEP_MODEL=1`:
 
-- Claude: `opusplan` + `switchModelsOnFlag` + `outputStyle: Concise` (requires
-  Claude Code v2.1.237 or later) + `enableArtifact: false`.
+- Claude: `opus` + `modelSettings["claude-opus-5-5"].effortLevel: high` +
+  `switchModelsOnFlag` + `outputStyle: Concise` (requires Claude Code v2.1.237
+  or later) + `enableArtifact: false`.
 - Copilot: `auto`.
 
 `enableArtifact: false` turns off the Artifact tool, which publishes HTML pages
@@ -216,8 +217,8 @@ while the same prompt without it reports one, so a session that cannot publish
 is not carrying the tool's schema on every turn.
 
 Codex's plan-mode reasoning effort is separate and always overwritten,
-regardless of `PT_KEEP_MODEL`, which covers model, output-style, and artifact
-settings only.
+regardless of `PT_KEEP_MODEL`, which covers model, Opus effort level,
+output-style, and artifact settings only.
 
 ### Permission posture
 

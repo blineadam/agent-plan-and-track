@@ -57,7 +57,8 @@ jobs:
             "$HOME/.copilot/copilot-instructions.md"; do
             test -f "$f" || { echo "FAIL: missing $f"; exit 1; }
           done
-          [ "$(jq -r .model "$HOME/.claude/settings.json")" = "opusplan" ]
+          [ "$(jq -r .model "$HOME/.claude/settings.json")" = "opus" ]
+          [ "$(jq -r '.modelSettings["claude-opus-5-5"].effortLevel' "$HOME/.claude/settings.json")" = "high" ]
           [ "$(jq -r .outputStyle "$HOME/.claude/settings.json")" = "Concise" ]
           [ "$(jq -r .switchModelsOnFlag "$HOME/.claude/settings.json")" = "true" ]
           [ "$(jq -r .enableArtifact "$HOME/.claude/settings.json")" = "false" ]
@@ -275,11 +276,13 @@ jobs:
           set -euo pipefail
           # 1. Opt-out: PT_KEEP_MODEL=1 must leave a pre-existing managed value alone.
           export HOME="$RUNNER_TEMP/scratch-home-keep-model"; mkdir -p "$HOME/.claude"
-          printf '%s' '{"model":"sonnet","outputStyle":"Explanatory","enableArtifact":true}' > "$HOME/.claude/settings.json"
+          printf '%s' '{"model":"sonnet","outputStyle":"Explanatory","enableArtifact":true,"modelSettings":{"claude-opus-5-5":{"effortLevel":"medium"}}}' > "$HOME/.claude/settings.json"
           PT_KEEP_MODEL=1 ./install.sh claude >/dev/null
           s="$HOME/.claude/settings.json"
           [ "$(jq -r .model "$s")" = "sonnet" ] \
             || { echo "FAIL: PT_KEEP_MODEL=1 overwrote an existing model"; exit 1; }
+          [ "$(jq -r '.modelSettings["claude-opus-5-5"].effortLevel' "$s")" = "medium" ] \
+            || { echo "FAIL: PT_KEEP_MODEL=1 overwrote an existing Opus effort level"; exit 1; }
           [ "$(jq -r .outputStyle "$s")" = "Explanatory" ] \
             || { echo "FAIL: PT_KEEP_MODEL=1 overwrote an existing outputStyle"; exit 1; }
           [ "$(jq -r .enableArtifact "$s")" = "true" ] \
@@ -287,16 +290,18 @@ jobs:
           # 2. Negative control: prove part 1 is not vacuous. The SAME fixture under a
           # BARE install must be overwritten with the repo-owned defaults.
           export HOME="$RUNNER_TEMP/scratch-home-keep-model-negctrl"; mkdir -p "$HOME/.claude"
-          printf '%s' '{"model":"sonnet","outputStyle":"Explanatory","enableArtifact":true}' > "$HOME/.claude/settings.json"
+          printf '%s' '{"model":"sonnet","outputStyle":"Explanatory","enableArtifact":true,"modelSettings":{"claude-opus-5-5":{"effortLevel":"medium"}}}' > "$HOME/.claude/settings.json"
           ./install.sh claude >/dev/null
           s="$HOME/.claude/settings.json"
-          [ "$(jq -r .model "$s")" = "opusplan" ] \
+          [ "$(jq -r .model "$s")" = "opus" ] \
             || { echo "FAIL: bare install did not re-assert the model default"; exit 1; }
+          [ "$(jq -r '.modelSettings["claude-opus-5-5"].effortLevel' "$s")" = "high" ] \
+            || { echo "FAIL: bare install did not re-assert the Opus effort default"; exit 1; }
           [ "$(jq -r .outputStyle "$s")" = "Concise" ] \
             || { echo "FAIL: bare install did not re-assert the outputStyle default"; exit 1; }
           [ "$(jq -r .enableArtifact "$s")" = "false" ] \
             || { echo "FAIL: bare install did not re-assert the enableArtifact default"; exit 1; }
-          echo "OK: PT_KEEP_MODEL=1 preserves model, outputStyle, and enableArtifact; a bare install re-asserts all three"
+          echo "OK: PT_KEEP_MODEL=1 preserves model, Opus effort, outputStyle, and enableArtifact; a bare install re-asserts all four"
       - name: attribution block overwrites existing values, even under PT_KEEP_MODEL
         run: |
           set -euo pipefail
@@ -935,7 +940,8 @@ jobs:
           )
           foreach ($f in $need) { if (-not (Test-Path -LiteralPath $f)) { throw "missing $f" } }
           $s = Get-Content -Raw "$H\.claude\settings.json" | ConvertFrom-Json
-          if ($s.model -ne 'opusplan') { throw "model != opusplan" }
+          if ($s.model -ne 'opus') { throw "model != opus" }
+          if ($s.modelSettings.'claude-opus-5-5'.effortLevel -ne 'high') { throw "Opus effort != high" }
           if ($s.outputStyle -ne 'Concise') { throw "outputStyle != Concise" }
           if ($s.switchModelsOnFlag -ne $true) { throw "switchModelsOnFlag != true" }
           if ($s.enableArtifact -ne $false) { throw "enableArtifact != false" }
@@ -1186,25 +1192,27 @@ jobs:
           # 1. Opt-out: PT_KEEP_MODEL=1 must leave a pre-existing managed value alone.
           $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-keep-model"
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
-          Set-Content -Path "$env:USERPROFILE\.claude\settings.json" -Value '{"model":"sonnet","outputStyle":"Explanatory","enableArtifact":true}'
+          Set-Content -Path "$env:USERPROFILE\.claude\settings.json" -Value '{"model":"sonnet","outputStyle":"Explanatory","enableArtifact":true,"modelSettings":{"claude-opus-5-5":{"effortLevel":"medium"}}}'
           $env:PT_KEEP_MODEL = '1'
           .\install.ps1 claude | Out-Null
           Remove-Item Env:PT_KEEP_MODEL -ErrorAction SilentlyContinue
           $s = Get-Content -Raw "$env:USERPROFILE\.claude\settings.json" | ConvertFrom-Json
           if ($s.model -ne 'sonnet') { throw "PT_KEEP_MODEL=1 overwrote an existing model" }
+          if ($s.modelSettings.'claude-opus-5-5'.effortLevel -ne 'medium') { throw "PT_KEEP_MODEL=1 overwrote an existing Opus effort level" }
           if ($s.outputStyle -ne 'Explanatory') { throw "PT_KEEP_MODEL=1 overwrote an existing outputStyle" }
           if ($s.enableArtifact -ne $true) { throw "PT_KEEP_MODEL=1 overwrote an existing enableArtifact" }
           # 2. Negative control: prove part 1 is not vacuous. The SAME fixture under a
           # BARE install must be overwritten with the repo-owned defaults.
           $env:USERPROFILE = "$env:RUNNER_TEMP\scratch-home-keep-model-negctrl"
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
-          Set-Content -Path "$env:USERPROFILE\.claude\settings.json" -Value '{"model":"sonnet","outputStyle":"Explanatory","enableArtifact":true}'
+          Set-Content -Path "$env:USERPROFILE\.claude\settings.json" -Value '{"model":"sonnet","outputStyle":"Explanatory","enableArtifact":true,"modelSettings":{"claude-opus-5-5":{"effortLevel":"medium"}}}'
           .\install.ps1 claude | Out-Null
           $s = Get-Content -Raw "$env:USERPROFILE\.claude\settings.json" | ConvertFrom-Json
-          if ($s.model -ne 'opusplan') { throw "bare install did not re-assert the model default" }
+          if ($s.model -ne 'opus') { throw "bare install did not re-assert the model default" }
+          if ($s.modelSettings.'claude-opus-5-5'.effortLevel -ne 'high') { throw "bare install did not re-assert the Opus effort default" }
           if ($s.outputStyle -ne 'Concise') { throw "bare install did not re-assert the outputStyle default" }
           if ($s.enableArtifact -ne $false) { throw "bare install did not re-assert the enableArtifact default" }
-          Write-Host "OK: PT_KEEP_MODEL=1 preserves model, outputStyle, and enableArtifact; a bare install re-asserts all three"
+          Write-Host "OK: PT_KEEP_MODEL=1 preserves model, Opus effort, outputStyle, and enableArtifact; a bare install re-asserts all four"
       - name: attribution block overwrites existing values, even under PT_KEEP_MODEL
         shell: powershell
         run: |
