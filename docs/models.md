@@ -11,7 +11,7 @@ machine that has drifted. What each default does depends on the harness:
 | Harness | Default | Effect |
 | --- | --- | --- |
 | Claude Code | `model: opus` | Opus in every mode |
-| Claude Code | `modelSettings.claude-opus-5-5.effortLevel: high` | Hold Opus 5.5 at high effort; its own default is medium |
+| Claude Code | `modelSettings.opus.effortLevel: high` | Hold Opus at high effort (Opus 5.5 defaults to medium) |
 | Claude Code | `switchModelsOnFlag: true` | Switch models on a safety flag instead of stopping |
 | Claude Code | `outputStyle: Concise` | Trim narration in responses (needs Claude Code v2.1.237+) |
 | Claude Code | `enableArtifact: false` | Drop the Artifact tool, and its always-on schema, from sessions |

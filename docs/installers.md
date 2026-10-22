@@ -197,7 +197,7 @@ installer takes a `.bak` backup if the existing file differs.
 Model, output-style, and artifact defaults are repo-owned and overwritten on
 each install unless `PT_KEEP_MODEL=1`:
 
-- Claude: `opus` + `modelSettings["claude-opus-5-5"].effortLevel: high` +
+- Claude: `opus` + `modelSettings.opus.effortLevel: high` +
   `switchModelsOnFlag` + `outputStyle: Concise` (requires Claude Code v2.1.237
   or later) + `enableArtifact: false`.
 - Copilot: `auto`.

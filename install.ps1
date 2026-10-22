@@ -775,13 +775,15 @@ function Install-Claude {
   Set-JsonDefault $settings 'model' 'opus' 'model default'
   Set-JsonDefault $settings 'switchModelsOnFlag' $true 'safety-switch'
   # Repo-owned Opus effort level, re-asserted on every install (PT_KEEP_MODEL=1
-  # keeps an existing per-machine choice): the opus alias resolves to Opus 5.5,
-  # which defaults to medium effort and ignores a top-level effortLevel in user
-  # settings, so a per-model entry under modelSettings, keyed by the canonical
-  # model ID, is what holds it at high. See
-  # https://code.claude.com/docs/en/settings-reference#modelsettings. The key
-  # names a specific model: when the opus alias moves to a newer model, update it.
-  Set-JsonPath $settings @('modelSettings', 'claude-opus-5-5', 'effortLevel') 'high' 'opus effort' -Keep
+  # keeps an existing per-machine choice): Opus 5.5 defaults to medium effort and
+  # ignores a top-level effortLevel in user settings, so a per-model entry under
+  # modelSettings is what holds it at high. See
+  # https://code.claude.com/docs/en/settings-reference#modelsettings. The entry is
+  # keyed by the opus alias rather than a model ID so it follows the alias to newer
+  # Opus releases: Claude Code 2.1.306 reads an alias key, though the docs only
+  # describe ID keys. A level saved with /effort lands under the model ID and
+  # outranks this entry.
+  Set-JsonPath $settings @('modelSettings', 'opus', 'effortLevel') 'high' 'opus effort' -Keep
   # Repo-owned output-style default, re-asserted on every install (PT_KEEP_MODEL=1
   # keeps an existing per-machine choice): Concise trims narration in responses.
   # Requires Claude Code v2.1.237 or later; installing over an older CLI leaves
