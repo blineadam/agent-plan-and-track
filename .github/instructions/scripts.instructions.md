@@ -220,9 +220,12 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   default is preceded by a comment reading "Repo-owned `<name>`, re-asserted
   on every install", plus "(`PT_KEEP_MODEL=1` keeps an existing per-machine
   choice)" when that opt-out gates it, then the rationale, citing an external
-  doc URL when the key name doesn't make the semantics self-evident. Ungated
-  settings written through `set_json_path`/`Set-JsonPath` omit the
-  parenthetical. Flag a new managed default with no such comment.
+  doc URL when the key name doesn't make the semantics self-evident. A
+  setting written through `set_json_path`/`Set-JsonPath` omits the parenthetical
+  unless it's passed the keep flag (a 5th arg to `set_json_path`, `-Keep` on
+  `Set-JsonPath`), which makes `PT_KEEP_MODEL` gate the write and brings the
+  parenthetical back (`modelSettings.opus.effortLevel`). Flag a new managed
+  default with no such comment.
 - Instruction files get repo content inside a marker-delimited managed block;
   content outside the markers survives re-installs, and a file without
   markers is left alone. The installer never touches `core-rules.local.md`.
