@@ -49,10 +49,33 @@
  * them, so treat that side as unverified rather than assumed to match
  * Claude.
  *
- * Skipped: subagent tool calls (the parent session owns the gate),
+ * Skipped: subagent tool calls (the parent session owns the gate; the
+ * repeat-edit notice below is the one thing a subagent still gets),
  * `.claude/settings*.json` (hook repair must never be blocked), and
  * `.tasks/todo.md` / `.tasks/lessons.md` (our own rules force frequent edits
  * there; they have no importers or schemas to investigate).
+ *
+ * REPEAT-EDIT NOTICE: separate from the fact demand and never blocking. When
+ * the default branch's last 2+ landed changes (first parent only) all edited
+ * the file being edited, the hook adds a notice telling the model to report
+ * that count and any spend so far to the user and ask whether to continue,
+ * before its next request for a commit, PR, or spend. The default branch is
+ * the first that exists of origin/HEAD, origin/main, origin/master, main,
+ * master; with none of them the check is silent and never falls back to HEAD,
+ * so a topic branch's own commits cannot count. It fires on every edit of such
+ * a file, not just the first, but once per (agent, path, ref tip), so a long
+ * session is re-warned only after another change lands, and a subagent's
+ * notice does not consume the parent's. Subagents get the notice alone, with
+ * no fact demand. Created files, tests, fixtures, docs, instruction and readme
+ * files (at any depth, any case), and lockfiles never count. Git runs under
+ * one 3000 ms deadline per hook run, each call getting the time remaining.
+ * Expected absences allow silently: no git binary (ENOENT), or a directory
+ * that is not a git repository. Any other git failure (a timeout, dubious
+ * ownership, a non-zero exit) also allows, but writes one stderr line saying
+ * the check did not run. It is a warning on every harness and cannot verify
+ * the user was told; on Copilot it rides the deny reason of a first edit and
+ * degrades to stderr afterwards, like every Copilot warn. GATEGUARD_DISABLED
+ * and GATEGUARD_EXEMPT_GLOBS turn it off along with the rest of the gate.
  *
  * DEFAULT POSTURE: warn, not deny, on Claude and Codex (GATEGUARD_DENY=1
  * restores blocking). Copilot defaults to deny instead, because its
@@ -83,6 +106,7 @@
  */
 'use strict';
 
+const childProcess = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
@@ -430,6 +454,169 @@ function condensedMsg(paths, ordinal, mode) {
   return `[GateGuard] (${label} this session) ${what}: ${tail}`;
 }
 
+// --- Repeat-edit notice ---
+//
+// Warns when the default branch's last REPEAT_MIN_STREAK or more landed
+// changes all edited the file being edited. The check fails open: any git
+// failure yields streak 0, and only an unexpected one (not a missing git
+// binary or a non-repository) is reported, once, on stderr.
+
+const REPEAT_MIN_STREAK = 2;
+const REPEAT_WINDOW = 10;
+const REPEAT_DEADLINE_MS = 3000;
+
+// First that exists wins. HEAD is deliberately not a fallback: on a topic
+// branch with no origin/HEAD it would count the branch's own commits.
+const DEFAULT_REFS = [
+  'refs/remotes/origin/HEAD',
+  'refs/remotes/origin/main',
+  'refs/remotes/origin/master',
+  'refs/heads/main',
+  'refs/heads/master',
+];
+
+// Matched against the repo-relative path, at any depth and in any case. Churn
+// in these is expected, so it is not a runaway signal. No bare `lock`
+// substring: it would match block.js.
+const REPEAT_EXEMPT_RES = [
+  /(^|\/)(?:tests?|__tests__|fixtures?)\//i,
+  /\.(?:test|spec)\.[^/]+$/i,
+  /(^|\/)test_[^/]*$|_test\.[^/]+$/i,
+  /(^|\/)docs\//i,
+  /(^|\/)(?:AGENTS|CLAUDE|README|CHANGELOG)(?:\.[^/]*)?$/i,
+  /(^|\/)\.ai-style-rules\.md$/i,
+  /(^|\/)\.github\/(?:instructions\/|copilot-instructions\.md$)/i,
+  /(^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|Gemfile\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|composer\.lock|go\.sum)$/i,
+];
+
+// Each call gets the time left until `deadline`, so one hook run spends at
+// most REPEAT_DEADLINE_MS on git however many paths it checks.
+function runGit(cwd, args, deadline) {
+  const left = deadline - Date.now();
+  if (left <= 0) {
+    const err = new Error('time limit spent');
+    err.code = 'EDEADLINE';
+    throw err;
+  }
+  return childProcess.execFileSync('git', args, {
+    cwd,
+    timeout: Math.ceil(left),
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
+}
+
+// '' for an expected absence (no git binary, not a repository); otherwise a
+// short single-line reason.
+function gitFailureReason(err) {
+  const stderr = String((err && err.stderr) || '');
+  if ((err && err.code === 'ENOENT') || stderr.includes('not a git repository')) return '';
+  let reason;
+  if (err && err.code === 'EDEADLINE') reason = `the ${REPEAT_DEADLINE_MS} ms time limit was spent`;
+  else if (err && err.code === 'ETIMEDOUT') reason = 'git timed out';
+  else if (err && typeof err.status === 'number')
+    reason = `git exited ${err.status}: ${stderr.trim().split('\n')[0] || 'no message'}`;
+  else reason = String((err && err.message) || err);
+  return reason.replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+
+// Returns { streak, tip, failure, spent }: how many of the newest first-parent
+// commits on the default branch edited this file (exact repo-relative path
+// match against one `git log --name-only`, so glob characters in a name never
+// match another file), that branch's tip sha, and '' or the reason an
+// unexpected git failure stopped the check, plus `spent` when that failure was
+// the shared deadline running out.
+function landedStreak(absPath, deadline) {
+  const none = { streak: 0, tip: '', failure: '' };
+  try {
+    const cwd = path.dirname(absPath);
+    const rel = runGit(cwd, ['rev-parse', '--show-prefix'], deadline).trim() + path.basename(absPath);
+    if (REPEAT_EXEMPT_RES.some((re) => re.test(rel))) return none;
+    const present = new Set(
+      runGit(cwd, ['for-each-ref', '--format=%(refname)', ...DEFAULT_REFS], deadline)
+        .split('\n')
+        .filter(Boolean)
+    );
+    const ref = DEFAULT_REFS.find((r) => present.has(r));
+    if (!ref) return none;
+    const log = runGit(
+      cwd,
+      ['-c', 'diff.relative=false', 'log', '--first-parent', '-m', '-z', '-n', String(REPEAT_WINDOW), '--format=%x01%H', '--name-only', ref],
+      deadline
+    );
+    const commits = log
+      .split('\x01')
+      .slice(1)
+      .map((chunk) => {
+        // -z output is `<hash>\0\n<file>\0<file>\0`: only the first name has the newline.
+        const [hash, ...files] = chunk.split('\0');
+        return { hash, files: new Set(files.map((f) => f.replace(/^\n/, '')).filter(Boolean)) };
+      });
+    let streak = 0;
+    while (streak < commits.length && commits[streak].files.has(rel)) streak += 1;
+    return { streak, tip: commits.length ? commits[0].hash : '', failure: '' };
+  } catch (err) {
+    const spent = !!err && (err.code === 'ETIMEDOUT' || err.code === 'EDEADLINE');
+    return { ...none, failure: gitFailureReason(err), spent };
+  }
+}
+
+function repeatEditMsg(streak, filePath) {
+  // The log reads REPEAT_WINDOW commits, so a full window is a lower bound.
+  const capped = streak >= REPEAT_WINDOW;
+  const count = capped ? `at least the last ${streak} changes` : `the last ${streak} changes`;
+  const next = capped ? `change ${streak + 1} or later` : `change ${streak + 1}`;
+  return `[GateGuard] Repeat edit: ${count} landed on the default branch all edited ${sanitizePath(filePath)}, so this would be ${next} in a row. Before the next request for a commit, PR, or spend yes, tell the user that count and any spend so far and ask whether to continue or stop; a yes to the single step does not answer that. A subagent reports this line to its caller. Running autonomously, put it in the recap.`;
+}
+
+// A subagent's id, else 'parent', so a subagent's claim never consumes the
+// parent's notice for the same path and tip (same four fields as isSubagent).
+function agentKey(input) {
+  const ids = [input.agent_id, input.agentId, input.parent_tool_use_id, input.parentToolUseId];
+  return ids.find((v) => typeof v === 'string' && v.trim()) || 'parent';
+}
+
+function skippedLine(filePath, reason) {
+  return `[GateGuard] repeat-edit check skipped for ${sanitizePath(filePath)}: ${reason}. The notice did not run; check that git works in that directory.\n`;
+}
+
+// Returns '' or the notice lines for edits whose file has a streak. Each
+// (agent, path, ref tip) triple is claimed once in a sibling dir of the session
+// dir, so countMarkers ordinals don't move, stale pruning still covers it, and
+// a session is re-warned only after a new change lands. All git calls share one
+// REPEAT_DEADLINE_MS deadline; once it is spent the remaining paths are skipped
+// with a single diagnostic.
+function repeatEditNotice(edits, input, dir) {
+  const base = String((input && input.cwd) || process.cwd());
+  const repeatDir = `${dir}-repeat`;
+  const agent = agentKey(input || {});
+  const deadline = Date.now() + REPEAT_DEADLINE_MS;
+  const lines = [];
+  for (const e of edits) {
+    if (e.create) continue;
+    if (Date.now() >= deadline) {
+      process.stderr.write(skippedLine(e.path, gitFailureReason({ code: 'EDEADLINE' })));
+      break;
+    }
+    const abs = path.resolve(base, e.path);
+    const { streak, tip, failure, spent } = landedStreak(abs, deadline);
+    if (failure) {
+      process.stderr.write(skippedLine(e.path, failure));
+      if (spent) break; // the shared time is gone: skip the rest
+      continue;
+    }
+    if (streak < REPEAT_MIN_STREAK) continue;
+    try {
+      fs.mkdirSync(repeatDir, { recursive: true });
+    } catch {
+      /* the claim below fails and the notice is skipped */
+    }
+    if (claimMarker(repeatDir, `${agent}\n${abs}\n${tip}`) !== 'ok') continue;
+    lines.push(repeatEditMsg(streak, e.path));
+  }
+  return lines.join('\n');
+}
+
 function main() {
   let input = {};
   try {
@@ -448,13 +635,6 @@ function main() {
     process.exit(0);
   }
 
-  // Subagent calls: the parent session owns the gate. (Claude only carries
-  // these fields; a no-op for Codex/Copilot.)
-  if (isSubagent(input)) {
-    emitAllow(dialect);
-    process.exit(0);
-  }
-
   const { edits, recognized } = extractEdits(input, dialect);
   if (!recognized || edits.length === 0) {
     emitAllow(dialect);
@@ -466,6 +646,20 @@ function main() {
   const gatable = edits.filter((e) => !isBuiltinExempt(e.path) && !isEnvExempt(e.path));
   if (gatable.length === 0) {
     emitAllow(dialect);
+    process.exit(0);
+  }
+
+  // Subagent calls: the parent session owns the fact gate, so a subagent gets
+  // only the repeat-edit notice. (Claude only carries these fields; a no-op
+  // for Codex/Copilot.)
+  if (isSubagent(input)) {
+    const subNotice = repeatEditNotice(
+      gatable,
+      input,
+      sessionDir(input.session_id || input.sessionId, input)
+    );
+    if (subNotice) emitWarn(dialect, subNotice);
+    else emitAllow(dialect);
     process.exit(0);
   }
 
@@ -493,9 +687,15 @@ function main() {
     if (res === 'ok') newlyGated.push(e);
   }
 
-  // Every path was already gated once this session → allow (loop-free retry).
+  // Computed on every edit, after the claims, so a path that could not be
+  // recorded above has already allowed without a notice.
+  const notice = repeatEditNotice(gatable, input, dir);
+
+  // Every path was already gated once this session → allow (loop-free retry),
+  // carrying the repeat-edit notice when one is due.
   if (newlyGated.length === 0) {
-    emitAllow(dialect);
+    if (notice) emitWarn(dialect, notice);
+    else emitAllow(dialect);
     process.exit(0);
   }
 
@@ -523,9 +723,10 @@ function main() {
       : creatingAll
         ? createGateMsg(paths, mode)
         : editGateMsg(paths, mode);
+  const full = notice ? `${reason}\n\n${notice}` : reason;
 
-  if (deny) emitDeny(dialect, reason);
-  else emitWarn(dialect, reason);
+  if (deny) emitDeny(dialect, full);
+  else emitWarn(dialect, full);
   process.exit(0);
 }
 

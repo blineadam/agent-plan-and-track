@@ -76,6 +76,12 @@ same session is never gated again.
 Skipped automatically: subagent tool calls, `.claude/settings*.json` (so hook
 repair is never blocked), and `.tasks/todo.md` / `.tasks/lessons.md`.
 
+The hook also adds a repeat-edit notice, never blocking, when the default
+branch's last two or more landed changes all edited the file you are editing:
+tell the user that count and any spend so far, and ask whether to continue,
+before the next request for a commit, PR, or spend. A subagent gets that notice
+alone and reports it to its caller.
+
 Env vars: `GATEGUARD_DISABLED=1` turns the gate off; `GATEGUARD_WARN=1`
 forces the non-blocking warning; `GATEGUARD_DENY=1` forces the blocking deny
 (wins if both are set); `GATEGUARD_EXEMPT_GLOBS` (comma-separated globs)

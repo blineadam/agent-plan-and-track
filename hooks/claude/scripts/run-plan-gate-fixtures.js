@@ -733,6 +733,141 @@ async function goalLineDenyWinsOverInFlightWarning() {
   fs.rmSync(f.root, { recursive: true, force: true });
 }
 
+// --- Budget-line lint cases ---
+//
+// Same shape as the goal-line cases. Expectations come from the lint's stated
+// contract: when the baseline carries a `Budget:` line anywhere, a Batch N
+// block new to the file needs its own `Budget:` line; a baseline without one,
+// and edits to a batch already on disk, are never linted. Each allow case ends
+// with a liveness deny on the same baseline, so a silent no-op can't pass.
+
+const BUDGET_STEP = '- [ ] run it (executor)\n';
+const BUDGET_BASELINE =
+  '# Todo\n\nBudget: 100 of 200, billing console 2026-01-01\n\n## Batch 60: spend work\nGoal: first goal\nBudget: 100 of 200, billing console 2026-01-01\n### Plan\n' +
+  BUDGET_STEP;
+const NEW_BATCH_NO_BUDGET = '\n## Batch 61: more spend\nGoal: second goal\n### Plan\n- [ ] run again (executor)\n';
+const NEW_BATCH_WITH_BUDGET =
+  '\n## Batch 61: more spend\nGoal: second goal\nBudget: 120 of 200, billing console 2026-01-02\n### Plan\n- [ ] run again (executor)\n';
+
+function assertBudgetDeny(stdout, batchPattern) {
+  assert.notStrictEqual(atMostOneJson(stdout), null);
+  const reason = denyReason(stdout);
+  assert.match(reason, /new batch needs one too/);
+  assert.match(reason, /no spend in this batch/);
+  assert.match(reason, batchPattern);
+  return reason;
+}
+
+async function budgetNewBatchWithoutLineDenied() {
+  const f = fixture();
+  const session = 'sess-budget-missing';
+  const todo = writeTodo(f.root, BUDGET_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  const event = editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET);
+  assertBudgetDeny(run(event, f.env), /Batch 61: more spend/);
+  // No once-marker: the identical retry is denied again.
+  assertBudgetDeny(run(event, f.env), /Batch 61: more spend/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function budgetNewBatchWithLineAllowed() {
+  const f = fixture();
+  const session = 'sess-budget-present';
+  const todo = writeTodo(f.root, BUDGET_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assert.strictEqual(run(editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_WITH_BUDGET), f.env), '');
+  assertBudgetDeny(run(editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET), f.env), /Batch 61: more spend/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function budgetBaselineWithoutLineAllowed() {
+  const f = fixture();
+  const session = 'sess-budget-none';
+  const baseline = '# Todo\n\n## Batch 60: spend work\nGoal: first goal\n### Plan\n' + BUDGET_STEP;
+  const todo = writeTodo(f.root, baseline);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assert.strictEqual(run(editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET), f.env), '');
+  // Liveness: once the baseline records a budget, the same new batch is denied.
+  const withBudget = writeTodo(f.root, BUDGET_BASELINE);
+  assertBudgetDeny(run(editEvent(session, withBudget, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET), f.env), /Batch 61: more spend/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function budgetEditExistingBatchAllowed() {
+  const f = fixture();
+  const session = 'sess-budget-existing';
+  // Batch 60 is already on disk without a Budget line of its own; the only
+  // Budget line is the one above the batches.
+  const baseline =
+    '# Todo\n\nBudget: 100 of 200, billing console 2026-01-01\n\n## Batch 60: spend work\nGoal: first goal\n### Plan\n' + BUDGET_STEP;
+  const todo = writeTodo(f.root, baseline);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assert.strictEqual(
+    run(editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + '- [ ] next step; verify: npm test (executor)\n'), f.env),
+    ''
+  );
+  // Liveness: a new batch on the same baseline is denied.
+  assertBudgetDeny(run(editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET), f.env), /Batch 61: more spend/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// A Budget line only inside an old batch is a stray note, not the project
+// record above the first batch, so it must not arm the lint.
+async function budgetLineOnlyInsideOldBatchDoesNotArm() {
+  const f = fixture();
+  const session = 'sess-budget-stray';
+  const stray =
+    '# Todo\n\n## Batch 60: spend work\nGoal: first goal\nBudget: 100 of 200, billing console 2026-01-01\n### Plan\n' + BUDGET_STEP;
+  const todo = writeTodo(f.root, stray);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assert.strictEqual(run(editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET), f.env), '');
+  // Liveness: with the line moved above the batch, the same new batch is denied.
+  const record = writeTodo(f.root, BUDGET_BASELINE);
+  assertBudgetDeny(run(editEvent(session, record, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET), f.env), /Batch 61: more spend/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// `budget: none` is a lowercase note, not a `Budget:` record.
+async function budgetNoneNoteDoesNotArm() {
+  const f = fixture();
+  const session = 'sess-budget-none-note';
+  const note = '# Todo\n\nbudget: none yet\n\n## Batch 60: spend work\nGoal: first goal\n### Plan\n' + BUDGET_STEP;
+  const todo = writeTodo(f.root, note);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  assert.strictEqual(run(editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET), f.env), '');
+  // Liveness: the capitalized record arms it.
+  const record = writeTodo(f.root, note.replace('budget: none yet', 'Budget: none yet'));
+  assertBudgetDeny(run(editEvent(session, record, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET), f.env), /Batch 61: more spend/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+// A new batch's own line has to sit before its Plan heading; one in a trailing
+// section is denied, and the same line moved up is allowed.
+async function budgetLineAfterPlanDoesNotSatisfy() {
+  const f = fixture();
+  const session = 'sess-budget-after-plan';
+  const todo = writeTodo(f.root, BUDGET_BASELINE);
+  assert.strictEqual(run(skillEvent(session), f.env), '');
+  const trailing =
+    '\n## Batch 61: more spend\nGoal: second goal\n### Plan\n- [ ] run again (executor)\n\n### Notes\nBudget: 120 of 200, billing console 2026-01-02\n';
+  assertBudgetDeny(run(editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + trailing), f.env), /Batch 61: more spend/);
+  assert.strictEqual(run(editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_WITH_BUDGET), f.env), '');
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
+async function budgetLintDisabledAllowed() {
+  const f = fixture();
+  const session = 'sess-budget-lintoff';
+  const todo = writeTodo(f.root, BUDGET_BASELINE);
+  const env = { ...f.env, PLANGATE_LINT_DISABLED: '1' };
+  assert.strictEqual(run(skillEvent(session), env), '');
+  const event = editEvent(session, todo, BUDGET_STEP, BUDGET_STEP + NEW_BATCH_NO_BUDGET);
+  assert.strictEqual(run(event, env), '');
+  // Liveness: the same write in the same session without the opt-out is denied.
+  assertBudgetDeny(run(event, f.env), /Batch 61: more spend/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+}
+
 // --- Bash writes to .tasks/todo.md ---
 
 const TODO_SHELL_PY_HEREDOC = [
@@ -1255,6 +1390,14 @@ const HANDLERS = {
   'review-goal-line-lint-disabled-allowed': reviewGoalLineLintDisabledAllowed,
   'review-in-new-batch-denied': reviewInNewBatchDenied,
   'goal-line-deny-wins-over-in-flight-warning': goalLineDenyWinsOverInFlightWarning,
+  'budget-new-batch-without-line-denied': budgetNewBatchWithoutLineDenied,
+  'budget-new-batch-with-line-allowed': budgetNewBatchWithLineAllowed,
+  'budget-baseline-without-line-allowed': budgetBaselineWithoutLineAllowed,
+  'budget-edit-existing-batch-allowed': budgetEditExistingBatchAllowed,
+  'budget-line-only-inside-old-batch-does-not-arm': budgetLineOnlyInsideOldBatchDoesNotArm,
+  'budget-none-note-does-not-arm': budgetNoneNoteDoesNotArm,
+  'budget-line-after-plan-does-not-satisfy': budgetLineAfterPlanDoesNotSatisfy,
+  'budget-lint-disabled-allowed': budgetLintDisabledAllowed,
   'bash-todo-python-heredoc-denied-unstamped': bashTodoPythonHeredocDeniedUnstamped,
   'bash-todo-python-heredoc-denied-stamped': bashTodoPythonHeredocDeniedStamped,
   'bash-todo-sed-in-place-denied': bashTodoSedInPlaceDenied,
