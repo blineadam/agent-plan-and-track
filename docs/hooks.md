@@ -93,8 +93,8 @@ The count reads git from the file's directory. The default branch is the first
 of `origin/HEAD`, `origin/main`, `origin/master`, `main`, and `master` that
 exists, found with one `git for-each-ref`, first parent only. With none of them
 the check is silent. It never falls back to `HEAD`, so a topic branch's own
-commits cannot count even when `origin/HEAD` is unset. One
-`git log --name-only` over the newest 10 commits gives each commit's changed
+commits cannot count even when `origin/HEAD` is unset. One NUL-delimited
+`git log -z --name-only` over the newest 10 commits gives each commit's changed
 paths, and the streak is the leading commits whose list contains the file's
 exact repo-relative path, so a full window reads as at least 10. There is no pathspec, so glob characters in a name
 such as `app/[id].tsx` cannot match another file. A merge commit on the first

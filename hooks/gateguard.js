@@ -541,15 +541,16 @@ function landedStreak(absPath, deadline) {
     if (!ref) return none;
     const log = runGit(
       cwd,
-      ['-c', 'core.quotepath=off', 'log', '--first-parent', '-m', '-n', String(REPEAT_WINDOW), '--format=%x01%H', '--name-only', ref],
+      ['-c', 'diff.relative=false', 'log', '--first-parent', '-m', '-z', '-n', String(REPEAT_WINDOW), '--format=%x01%H', '--name-only', ref],
       deadline
     );
     const commits = log
       .split('\x01')
       .slice(1)
       .map((chunk) => {
-        const [hash, ...files] = chunk.split('\n');
-        return { hash, files: new Set(files.filter(Boolean)) };
+        // -z output is `<hash>\0\n<file>\0<file>\0`: only the first name has the newline.
+        const [hash, ...files] = chunk.split('\0');
+        return { hash, files: new Set(files.map((f) => f.replace(/^\n/, '')).filter(Boolean)) };
       });
     let streak = 0;
     while (streak < commits.length && commits[streak].files.has(rel)) streak += 1;

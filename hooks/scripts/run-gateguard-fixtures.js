@@ -474,6 +474,26 @@ const CASES = {
       assert.ok(live.includes('the last 3 changes'), live);
     }),
 
+  // diff.relative=true would make --name-only paths relative to the file's dir.
+  'diff-relative-config-does-not-hide-nested-file': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, [['src/a.js'], ['src/a.js'], ['src/a.js']]);
+      git(repo, env, 'config', 'diff.relative', 'true');
+      const text = context(spawnHook(claudeEdit('r1', path.join(repo, 'src', 'a.js')), env));
+      assert.ok(text.includes('the last 3 changes'), text);
+    }),
+
+  // Git C-quotes this name in its human-readable output. Windows forbids `"`.
+  'quoted-filename-matches': posixOnly(() =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, [['a"b.js'], ['a"b.js']]);
+      const text = context(spawnHook(claudeEdit('q1', path.join(repo, 'a"b.js')), env));
+      assert.ok(text.includes('the last 2 changes'), text);
+    })
+  ),
+
   // Twelve landed edits against a ten-commit window: the count is a lower bound.
   'full-window-reports-lower-bound': () =>
     withScratch((root, env) => {
