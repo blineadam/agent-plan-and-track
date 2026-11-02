@@ -187,8 +187,14 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
 - A hook's fixture tests sit one level below the hook:
   `hooks/<harness>/scripts/run-<name>-*.js` with
   `hooks/<harness>/fixtures/<name>/cases.json` for a harness-specific hook,
-  or `hooks/scripts/` and `hooks/fixtures/<name>/` for a shared hook. Flag a
-  hook fixture runner or cases file placed anywhere else under `hooks/`.
+  or `hooks/scripts/` and `hooks/fixtures/<name>/` for a shared hook. The
+  `cases.json` split is for declarative cases (`run-git-guard-fixtures.js`,
+  `run-delivery-gate-fixtures.js`); a runner whose cases need imperative
+  per-case setup, such as building a scratch git repo, keeps them inline and
+  ships no `fixtures/<name>/` directory (`run-gateguard-fixtures.js`, whose
+  header explains the variant). Flag a hook fixture runner or cases file placed
+  anywhere else under `hooks/`, but don't flag a runner with inline cases and
+  no cases file when its header documents the variant.
 
 ## Installers and cross-platform portability
 
