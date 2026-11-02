@@ -1254,7 +1254,7 @@ jobs:
           node hooks\claude\scripts\run-plan-gate-fixtures.js | Out-Null; Assert-Node 'Claude plan-gate fixtures'
           node hooks\claude\scripts\run-suggest-compact-fixtures.js | Out-Null; Assert-Node 'Claude suggest-compact fixtures'
           node hooks\scripts\run-git-guard-fixtures.js | Out-Null; Assert-Node 'git-guard fixtures'
-          node hooks\scripts\run-gateguard-fixtures.js; Assert-Node 'gateguard fixtures'
+          node hooks\scripts\run-gateguard-fixtures.js | Out-Null; Assert-Node 'gateguard fixtures'
           node hooks\scripts\run-delivery-gate-fixtures.js | Out-Null; Assert-Node 'delivery-gate fixtures'
           node hooks\scripts\run-core-rules-digest-fixtures.js | Out-Null; Assert-Node 'core-rules-digest fixtures'
           node skills\rules-distill\scripts\scan-rules.js | Out-Null; Assert-Node 'scan-rules'
