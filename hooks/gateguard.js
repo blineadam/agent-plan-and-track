@@ -485,7 +485,7 @@ const REPEAT_EXEMPT_RES = [
   /(^|\/)docs\//i,
   /(^|\/)(?:AGENTS|CLAUDE|README|CHANGELOG)(?:\.[^/]*)?$/i,
   /(^|\/)\.ai-style-rules\.md$/i,
-  /^\.github\/(?:instructions\/|copilot-instructions\.md$)/i,
+  /(^|\/)\.github\/(?:instructions\/|copilot-instructions\.md$)/i,
   /(^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|Gemfile\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|composer\.lock|go\.sum)$/i,
 ];
 
@@ -561,7 +561,11 @@ function landedStreak(absPath, deadline) {
 }
 
 function repeatEditMsg(streak, filePath) {
-  return `[GateGuard] Repeat edit: the last ${streak} changes landed on the default branch all edited ${sanitizePath(filePath)}, so this would be change ${streak + 1} in a row. Before the next request for a commit, PR, or spend yes, tell the user that count and any spend so far and ask whether to continue or stop; a yes to the single step does not answer that. A subagent reports this line to its caller. Running autonomously, put it in the recap.`;
+  // The log reads REPEAT_WINDOW commits, so a full window is a lower bound.
+  const capped = streak >= REPEAT_WINDOW;
+  const count = capped ? `at least the last ${streak} changes` : `the last ${streak} changes`;
+  const next = capped ? `change ${streak + 1} or later` : `change ${streak + 1}`;
+  return `[GateGuard] Repeat edit: ${count} landed on the default branch all edited ${sanitizePath(filePath)}, so this would be ${next} in a row. Before the next request for a commit, PR, or spend yes, tell the user that count and any spend so far and ask whether to continue or stop; a yes to the single step does not answer that. A subagent reports this line to its caller. Running autonomously, put it in the recap.`;
 }
 
 // A subagent's id, else 'parent', so a subagent's claim never consumes the

@@ -47,13 +47,16 @@ function scratchEnv(root) {
   }
   const state = path.join(root, 'state');
   fs.mkdirSync(state, { recursive: true });
+  // An empty file, not os.devNull: Git for Windows can't open `\\.\nul`.
+  const globalConfig = path.join(root, 'gitconfig');
+  fs.writeFileSync(globalConfig, '');
   return {
     ...env,
     TMPDIR: state,
     TEMP: state,
     TMP: state,
     GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: os.devNull,
+    GIT_CONFIG_GLOBAL: globalConfig,
     GIT_CEILING_DIRECTORIES: root,
   };
 }
@@ -457,6 +460,8 @@ const CASES = {
         'readme.md',
         'Tests/foo.py',
         '.github/copilot-instructions.md',
+        'packages/a/.github/instructions/style.instructions.md',
+        'packages/a/.github/copilot-instructions.md',
       ];
       const control = 'packages/a/src/y.js';
       const all = [...exempt, control];
@@ -467,6 +472,16 @@ const CASES = {
       });
       const live = context(spawnHook(claudeEdit('ctl', path.join(repo, control)), env));
       assert.ok(live.includes('the last 3 changes'), live);
+    }),
+
+  // Twelve landed edits against a ten-commit window: the count is a lower bound.
+  'full-window-reports-lower-bound': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, Array.from({ length: 12 }, () => ['a.js']));
+      const text = context(spawnHook(claudeEdit('w1', path.join(repo, 'a.js')), env));
+      assert.ok(text.includes('at least the last 10 changes landed'), text);
+      assert.ok(text.includes('this would be change 11 or later in a row'), text);
     }),
 
   // A fake git that exits 2 with a message stands in for any unexpected git
