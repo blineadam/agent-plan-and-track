@@ -117,6 +117,23 @@
  * the tag lint, via maybeLintReviewGoalLine(); PLANGATE_LINT_DISABLED turns
  * it off. No Codex counterpart: plan-gate-pilot.js has no todo content lint.
  *
+ * BUDGET-LINE LINT: also once stamped, backing plan-and-track's "Cap repeated
+ * paid work" step: when the on-disk baseline carries a `Budget:` line above
+ * its first `Batch N` heading (the project record; at line start, optionally
+ * as a list item, with text after the colon, case-sensitive), a .tasks/todo.md
+ * write that adds a `Batch N` block new to the file must put its own `Budget:`
+ * line in that block before its Plan heading (anywhere in the block if it has
+ * no Plan heading), so the budget survives batch compression and is restated
+ * under each new batch's Goal line, and a trailing section cannot satisfy it.
+ * Denied until the line is present, like the goal-line lint: no once-marker,
+ * the retry self-corrects; the message offers `no spend in this batch` as the
+ * honest form for unpaid work. A baseline with no such record (a stray note
+ * inside a batch, or a lowercase `budget: none`, does not arm it), and edits
+ * to a batch already on disk, are never linted, so a project that records no
+ * budget is unaffected. Runs after the goal-line lint, via maybeLintBudgetLine();
+ * PLANGATE_LINT_DISABLED turns it off. No Codex counterpart: plan-gate-pilot.js
+ * has no todo content lint.
+ *
  * MIGRATION-STATE GUARD: also once stamped, a .tasks/todo.md write that would
  * delete an existing `## Migration State` heading (the durable cross-session
  * block the migration-discipline skill keeps there) is denied once
@@ -188,7 +205,7 @@
  *                             gh-pr-merge), so a value above 3 effectively
  *                             disables this gate.
  *   PLANGATE_LINT_DISABLED   "1" turns off the .tasks/todo.md content lints
- *                             (owner tags, Review goal line) and the
+ *                             (owner tags, Review goal line, Budget line) and the
  *                             main-attribution guard only (stamp gate, scope
  *                             gate, mutation gate, the migration-state
  *                             guard, the in-flight batch warning, and the
@@ -1177,6 +1194,72 @@ function maybeLintReviewGoalLine(toolName, toolInput) {
   }
 }
 
+// --- Budget-line lint ---
+
+// `Budget:` followed by text, at line start, optionally as a list item.
+// Case-sensitive, so a `budget: none` note is not a record. [ \t] rather than
+// \s, so an empty line can never borrow the next line's text.
+const BUDGET_LINE_RE = /^[ \t]*(?:[-*][ \t]+)?Budget:[ \t]*\S/m;
+const PLAN_HEADING_RE = /^\s{0,3}#{1,6}\s+Plan\b/im;
+
+// The baseline arms the lint only through a Budget line above its first batch
+// heading (the project record), so a stray note inside a batch cannot.
+function baselineRecordsBudget(baseline) {
+  const lines = baseline.split('\n');
+  const firstBatch = lines.findIndex((line) => BATCH_HEADING_RE.test(line));
+  return BUDGET_LINE_RE.test((firstBatch === -1 ? lines : lines.slice(0, firstBatch)).join('\n'));
+}
+
+// A new batch's own line has to sit before its Plan heading (the whole block
+// when it has none), so a trailing section cannot satisfy it.
+function batchHasBudgetLine(block) {
+  const at = block.search(PLAN_HEADING_RE);
+  return BUDGET_LINE_RE.test(at === -1 ? block : block.slice(0, at));
+}
+
+// Batches in `result` whose number is absent from `baseline` and that lack a
+// Budget line. Only applies when the baseline records a budget, so a project
+// that never set one is untouched.
+function collectNewBatchesMissingBudget(baseline, result) {
+  if (!baselineRecordsBudget(baseline)) return [];
+  const before = collectBatches(baseline);
+  const offenders = [];
+  for (const [num, b] of collectBatches(result)) {
+    if (before.has(num)) continue;
+    if (!batchHasBudgetLine(b.block)) offenders.push(b);
+  }
+  return offenders;
+}
+
+function budgetLineMsg(offenders) {
+  const shown = offenders.slice(0, 3).map((b) => `  ${b.title.length > 100 ? b.title.slice(0, 100) + '...' : b.title}`);
+  if (offenders.length > 3) shown.push(`  ...and ${offenders.length - 3} more`);
+  return [
+    '[PlanGate] .tasks/todo.md records a `Budget:` line, so a new batch needs one too:',
+    ...shown,
+    "Repeat the budget under the new batch's `Goal:` line, above its Plan heading, with the current total from the billing meter, e.g. `Budget: $X of $Y, <meter source and date>`, or label an agent-side sum partial and name what it leaves out. A batch that spends nothing says so: `Budget: $X of $Y, no spend in this batch`. Reaching the budget is a stop for the user's decision, not a reason to start another batch. Retry the same write with the line added.",
+    '(PLANGATE_LINT_DISABLED=1 turns off this lint; PLANGATE_DISABLED=1 turns off the whole gate; PLANGATE_WARN=1 demotes to a warning.)',
+  ].join('\n');
+}
+
+// Deny-until-fixed like maybeLintReviewGoalLine (no once-marker): the retry
+// self-corrects by adding the line. Runs only once stamped, after the goal-line
+// lint; respects PLANGATE_LINT_DISABLED and fails open on any error. Returns
+// true when a decision was emitted, so the caller skips the in-flight warning.
+function maybeLintBudgetLine(toolName, toolInput) {
+  if (process.env.PLANGATE_LINT_DISABLED === '1') return false;
+  try {
+    const sim = simulateResult(toolName, toolInput);
+    if (!sim) return false;
+    const offenders = collectNewBatchesMissingBudget(sim.baseline, sim.result);
+    if (!offenders.length) return false;
+    emitGateDecision(budgetLineMsg(offenders));
+    return true;
+  } catch {
+    return false; // fail open: any simulation/lint error allows the edit
+  }
+}
+
 // --- Shell writes to .tasks/todo.md ---
 
 // The todo.md path as it appears in a raw command: optionally prefixed by any
@@ -1683,6 +1766,7 @@ function main() {
       if (maybeGuardMainAttribution(toolName, toolInput, stamp)) process.exit(0);
       if (maybeLintTodoContent(toolName, toolInput)) process.exit(0); // emitted emitGateDecision(lintMsg(...))
       if (maybeLintReviewGoalLine(toolName, toolInput)) process.exit(0); // emitted emitGateDecision(goalLineMsg(...))
+      if (maybeLintBudgetLine(toolName, toolInput)) process.exit(0); // emitted emitGateDecision(budgetLineMsg(...))
       maybeWarnInFlightBatchRemoval(toolName, toolInput);
       process.exit(0);
     }

@@ -81,6 +81,49 @@ harness.
 - `GATEGUARD_FULL_DENIALS` sets how many firings per session get the full fact
   block before condensing to one line (default 3).
 
+### Repeat-edit notice
+
+Separate from the fact demand, the hook warns when the default branch's last
+two or more landed changes all edited the file being edited. The warning tells
+the model to report that count and any spend so far to the user and ask whether
+to continue or stop before its next request for a commit, PR, or spend, and
+says that a yes to the single step does not answer that.
+
+The count reads git from the file's directory. The default branch is the first
+of `origin/HEAD`, `origin/main`, `origin/master`, `main`, and `master` that
+exists, found with one `git for-each-ref`, first parent only. With none of them
+the check is silent. It never falls back to `HEAD`, so a topic branch's own
+commits cannot count even when `origin/HEAD` is unset. One
+`git log --name-only` over the newest 10 commits gives each commit's changed
+paths, and the streak is the leading commits whose list contains the file's
+exact repo-relative path. There is no pathspec, so glob characters in a name
+such as `app/[id].tsx` cannot match another file. A merge commit on the first
+parent counts its diff against its first parent. Created files never count, and
+these paths are exempt at any depth and in any case: tests, fixtures, `docs/`,
+`AGENTS`, `CLAUDE`, `README`, and `CHANGELOG` files, `.ai-style-rules.md`,
+`.github/instructions/`, `.github/copilot-instructions.md`, and lockfiles.
+
+It fires on every edit of such a file, not only the first, but once per agent,
+path, and ref tip: the claim is made in a `-repeat` sibling of the session
+state directory, so a long session is warned again only after another change
+lands, and a subagent's notice does not use up the parent's. A subagent gets
+the notice alone, with no fact demand.
+
+Git runs under one 3 second deadline per hook run, not per call: each call gets
+the time remaining, and once it is spent the remaining paths are skipped. A
+missing git binary and a directory that is not a git repository are expected
+and allow silently. Any other git failure (a timeout, dubious ownership, a
+non-zero exit) also allows, but writes one line to stderr, for example
+`[GateGuard] repeat-edit check skipped for <path>: git exited 2: <first line of
+git's message>. The notice did not run; check that git works in that
+directory.` A spent deadline writes that line once, for the path it stopped on.
+
+It is a warning on every harness, so it cannot verify the user was told. On
+Copilot it rides the deny reason of a first edit, and a later edit degrades to
+a stderr note like every other warn there. `GATEGUARD_DISABLED` and
+`GATEGUARD_EXEMPT_GLOBS` cover it; there is no separate setting. The fixtures
+are `hooks/scripts/run-gateguard-fixtures.js`.
+
 ### Why warn by default on Claude and Codex
 
 The hook used to deny the first edit and mark the file "checked" at the
@@ -394,7 +437,7 @@ without that line, wrote through a Bash heredoc instead of stopping.
 
 Once a session is stamped, writes to `.tasks/todo.md` are content-linted. A new
 unchecked `## Plan` step must carry a trailing owner tag, and `(main)` needs a
-colon-separated reason. `PLANGATE_LINT_DISABLED=1` turns off this lint and the Review goal-line lint below.
+colon-separated reason. `PLANGATE_LINT_DISABLED=1` turns off this lint, the Review goal-line lint, and the Budget-line lint below.
 
 ### Review goal-line lint
 
@@ -411,6 +454,27 @@ once-marker, and `PLANGATE_LINT_DISABLED=1` turns it off. Reviews already on
 disk, including ones written before this lint existed, are never linted.
 Batch blocks are parsed the same way as the in-flight batch warning below, so
 a Review under no `Batch N` heading is not seen. It covers Claude only:
+Codex's `plan-gate-pilot.js` has no `.tasks/todo.md` content lint, and Copilot
+has no plan gate.
+
+### Budget-line lint
+
+When the on-disk `.tasks/todo.md` carries a `Budget:` line above its first
+`Batch N` heading (at line start, optionally as a list item, with text after
+the colon, case-sensitive), a stamped write that adds a `Batch N` block new to
+the file must put its own `Budget:` line in that block before its Plan heading,
+or anywhere in the block if it has no Plan heading. A line in a trailing
+section does not count. This backs `plan-and-track`'s step on capping repeated
+paid work, which has the line recorded above the batches and repeated under
+each new batch's `Goal:` line so batch compression cannot drop it.
+
+It denies until the line is present, with no once-marker, and
+`PLANGATE_LINT_DISABLED=1` turns it off. The deny message also offers the form
+for a batch that spends nothing, `Budget: $X of $Y, no spend in this batch`.
+Only the record above the first batch arms the lint, so a stray `Budget:` note
+inside a batch, or a lowercase `budget: none` note, does not. A baseline with
+no such record and edits to a batch already on disk are never linted. It covers
+Claude only:
 Codex's `plan-gate-pilot.js` has no `.tasks/todo.md` content lint, and Copilot
 has no plan gate.
 

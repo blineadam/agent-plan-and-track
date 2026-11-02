@@ -235,3 +235,20 @@ Breaking the loop's cost down answered most of it. Across 6,698 loop requests, 5
 Compaction also drops the reasoning behind the change, and the triage and fixes that depend on it are already the loop's most expensive part, so a worse triage would cost more than the saving. History can't settle it, since only 8 of 185 sessions ever compacted, and a live A/B would put real PRs at risk for a signal that stays noisy at a handful of runs. `strategic-compact` already names a large task wrapping up as a point to compact, which covers the judgment-call version. The owner approved recording both decisions here with "ok add them".
 
 What would reopen this: evidence that review triage holds up after compaction, or a pricing change that makes cache reads most of a loop's cost.
+
+## mattpocock/skills' grilling, retro, prototype, and codebase-design stay unadopted
+
+Decided 2026-11-01, while looking for a fix to a runaway spend loop and checking whether anything in `mattpocock/skills` fit. The evidence was a pipeline in another project that grew through eight consecutive PRs on one file, each paid run approved on its own while the cumulative spend and the repeated rework were never put in front of the user. Presented with the recommendation below, of these changes and no skill copies, the owner answered:
+
+> ok make your suggested changes, test, /yeet squash and merge and install all
+
+Four candidates were declined, each for its own reason:
+
+- The grilling skill. `plan-and-track` step 3 already runs question rounds with a recommended answer attached to each, and a bare yes accepting the recommendation is the shape that failed here. A second interview loop would add another place for the same yes.
+- The retro skill. It runs after the fact, so it cannot stop the next run, and it depends on `writing-for-agents` and `CODING_STANDARDS.md`, which this repo does not carry.
+- The prototype skill. Its claim that prototyping first cuts rework is untested here, and the defects in the evidence came from live-run data, which a prototype does not produce.
+- The codebase-design and improve-codebase-architecture skills. They trigger on module design, and the loop in the evidence was not a design problem. `efficient-frontier` already routes state machinery to `architect-reviewer`.
+
+What shipped instead targets the actual failure, which was that nobody asked the user whether to keep going. `plan-and-track` now has a step that asks for a budget before the first spend of repeated paid work and records it as a `Budget:` line, with the total taken from the billing meter, and plan-gate denies a new batch that drops the line. `efficient-frontier` now treats whether to keep going as scope, which goes to the user with the totals even where method choices are delegated. `gateguard.js` warns, without blocking, when the default branch's last two or more landed changes all edited the file being edited, and a subagent gets that warning too.
+
+What would reopen this: a run of the budget and repeat-edit changes that still ends in an unasked keep-going decision, which would make an interview step worth a second look, or a measured case where prototyping changed which defects reached the user.
