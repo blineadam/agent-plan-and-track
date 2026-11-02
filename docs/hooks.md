@@ -96,7 +96,7 @@ the check is silent. It never falls back to `HEAD`, so a topic branch's own
 commits cannot count even when `origin/HEAD` is unset. One
 `git log --name-only` over the newest 10 commits gives each commit's changed
 paths, and the streak is the leading commits whose list contains the file's
-exact repo-relative path. There is no pathspec, so glob characters in a name
+exact repo-relative path, so a full window reads as at least 10. There is no pathspec, so glob characters in a name
 such as `app/[id].tsx` cannot match another file. A merge commit on the first
 parent counts its diff against its first parent. Created files never count, and
 these paths are exempt at any depth and in any case: tests, fixtures, `docs/`,
