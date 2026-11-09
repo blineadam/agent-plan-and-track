@@ -76,8 +76,9 @@ same session is never gated again.
 Skipped automatically: subagent tool calls, `.claude/settings*.json` (so hook
 repair is never blocked), and `.tasks/todo.md` / `.tasks/lessons.md`.
 
-The hook also adds a repeat-edit notice, never blocking, when the default
-branch's last two or more landed changes all edited the file you are editing:
+The hook also adds a repeat-edit notice, never blocking, when two or more of
+your own last five landed changes on the default branch edited the file you are
+editing (matched on git user.name or user.email, so teammates' changes don't count):
 tell the user that count and any spend so far, and ask whether to continue,
 before the next request for a commit, PR, or spend. A subagent gets that notice
 alone and reports it to its caller.

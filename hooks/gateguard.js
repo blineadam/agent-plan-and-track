@@ -56,15 +56,21 @@
  * there; they have no importers or schemas to investigate).
  *
  * REPEAT-EDIT NOTICE: separate from the fact demand and never blocking. When
- * the default branch's last 2+ landed changes (first parent only) all edited
- * the file being edited, the hook adds a notice telling the model to report
- * that count and any spend so far to the user and ask whether to continue,
- * before its next request for a commit, PR, or spend. The default branch is
+ * 2+ of the git user's own last 5 landed changes on the default branch (first
+ * parent only) edited the file being edited, the hook adds a notice telling
+ * the model to report that count and any spend so far to the user and ask
+ * whether to continue, before its next request for a commit, PR, or spend.
+ * "Own" means the mailmapped author name or email equals the configured
+ * user.name or user.email, found among the newest 100 commits; a squash merge
+ * carrying a forge noreply email still matches on name, and .mailmap covers
+ * any other alias. Teammates' changes neither count nor break the count, and
+ * with no identity configured the check is silent. The default branch is
  * the first that exists of origin/HEAD, origin/main, origin/master, main,
  * master; with none of them the check is silent and never falls back to HEAD,
  * so a topic branch's own commits cannot count. It fires on every edit of such
- * a file, not just the first, but once per (agent, path, ref tip), so a long
- * session is re-warned only after another change lands, and a subagent's
+ * a file, not just the first, but once per (agent, path, the user's newest
+ * own change), so a long session is re-warned only after the user lands
+ * another change, not after a teammate's, and a subagent's
  * notice does not consume the parent's. Subagents get the notice alone, with
  * no fact demand. Created files, tests, fixtures, docs, instruction and readme
  * files (at any depth, any case), and lockfiles never count. Git runs under
@@ -456,13 +462,17 @@ function condensedMsg(paths, ordinal, mode) {
 
 // --- Repeat-edit notice ---
 //
-// Warns when the default branch's last REPEAT_MIN_STREAK or more landed
-// changes all edited the file being edited. The check fails open: any git
-// failure yields streak 0, and only an unexpected one (not a missing git
-// binary or a non-repository) is reported, once, on stderr.
+// Warns when REPEAT_MIN_TOUCHES or more of the git user's own last
+// REPEAT_OWN_WINDOW landed changes on the default branch edited the file being
+// edited. The check fails open: any git failure yields no notice, and only an
+// unexpected one (not a missing git binary or a non-repository) is reported,
+// once, on stderr.
 
-const REPEAT_MIN_STREAK = 2;
-const REPEAT_WINDOW = 10;
+const REPEAT_MIN_TOUCHES = 2;
+const REPEAT_OWN_WINDOW = 5;
+// How many of the newest first-parent commits are read to find the user's
+// own, so the walk stays bounded in a busy repo the user rarely commits to.
+const REPEAT_SCAN = 100;
 const REPEAT_DEADLINE_MS = 3000;
 
 // First that exists wins. HEAD is deliberately not a fallback: on a topic
@@ -520,18 +530,50 @@ function gitFailureReason(err) {
   return reason.replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
-// Returns { streak, tip, failure, spent }: how many of the newest first-parent
-// commits on the default branch edited this file (exact repo-relative path
-// match against one `git log --name-only`, so glob characters in a name never
-// match another file), that branch's tip sha, and '' or the reason an
-// unexpected git failure stopped the check, plus `spent` when that failure was
-// the shared deadline running out.
-function landedStreak(absPath, deadline) {
-  const none = { streak: 0, tip: '', failure: '' };
+// The configured user.name and user.email, mapped through .mailmap the same
+// way %aN/%aE map commit authors, then lowercased; '' for an unset one. `git
+// config` exits 1 when no key matches, which is an absence, not a failure.
+// Mailmap keys on email, so a name-only identity is used as configured.
+function gitIdentity(cwd, deadline) {
+  let out = '';
+  try {
+    out = runGit(cwd, ['config', '--get-regexp', '^user\\.(name|email)$'], deadline);
+  } catch (err) {
+    if (!(err && err.status === 1)) throw err;
+  }
+  const id = { name: '', email: '' };
+  for (const line of out.split('\n')) {
+    const m = /^user\.(name|email) (.*)$/.exec(line);
+    if (m) id[m[1]] = m[2].trim();
+  }
+  if (id.email) {
+    const ident = id.name ? `${id.name} <${id.email}>` : `<${id.email}>`;
+    const m = /^(.*?)\s*<([^>]*)>$/.exec(runGit(cwd, ['check-mailmap', ident], deadline).trim());
+    if (m) {
+      if (m[1]) id.name = m[1];
+      id.email = m[2];
+    }
+  }
+  return { name: id.name.toLowerCase(), email: id.email.toLowerCase() };
+}
+
+// Returns { touches, seen, tip, failure, spent }: of the user's own newest
+// REPEAT_OWN_WINDOW first-parent commits on the default branch (found among
+// the newest REPEAT_SCAN, matched on the mailmapped author name or email),
+// `seen` is how many there were and `touches` how many edited this file (exact
+// repo-relative path match against one `git log --name-only`, so glob
+// characters in a name never match another file). Also the sha of the user's
+// newest own change (so a teammate's merge doesn't re-arm the notice), and ''
+// or the reason an unexpected git failure stopped the check, plus
+// `spent` when that failure was the shared deadline running out.
+function ownTouches(absPath, deadline) {
+  const none = { touches: 0, seen: 0, tip: '', failure: '' };
   try {
     const cwd = path.dirname(absPath);
     const rel = runGit(cwd, ['rev-parse', '--show-prefix'], deadline).trim() + path.basename(absPath);
     if (REPEAT_EXEMPT_RES.some((re) => re.test(rel))) return none;
+    const me = gitIdentity(cwd, deadline);
+    if (!me.name && !me.email) return none;
     const present = new Set(
       runGit(cwd, ['for-each-ref', '--format=%(refname)', ...DEFAULT_REFS], deadline)
         .split('\n')
@@ -541,32 +583,36 @@ function landedStreak(absPath, deadline) {
     if (!ref) return none;
     const log = runGit(
       cwd,
-      ['-c', 'diff.relative=false', 'log', '--first-parent', '-m', '-z', '-n', String(REPEAT_WINDOW), '--format=%x01%H', '--name-only', ref],
+      ['-c', 'diff.relative=false', 'log', '--first-parent', '-m', '-z', '-n', String(REPEAT_SCAN), '--format=%x01%H%x02%aN%x02%aE', '--name-only', ref],
       deadline
     );
     const commits = log
       .split('\x01')
       .slice(1)
       .map((chunk) => {
-        // -z output is `<hash>\0\n<file>\0<file>\0`: only the first name has the newline.
-        const [hash, ...files] = chunk.split('\0');
-        return { hash, files: new Set(files.map((f) => f.replace(/^\n/, '')).filter(Boolean)) };
+        // -z output is `<header>\0\n<file>\0<file>\0`: only the first name has the newline.
+        const [header, ...files] = chunk.split('\0');
+        const [hash, name, email] = header.split('\x02');
+        return {
+          hash,
+          name: name.toLowerCase(),
+          email: email.toLowerCase(),
+          files: new Set(files.map((f) => f.replace(/^\n/, '')).filter(Boolean)),
+        };
       });
-    let streak = 0;
-    while (streak < commits.length && commits[streak].files.has(rel)) streak += 1;
-    return { streak, tip: commits.length ? commits[0].hash : '', failure: '' };
+    const own = commits
+      .filter((c) => (me.name && c.name === me.name) || (me.email && c.email === me.email))
+      .slice(0, REPEAT_OWN_WINDOW);
+    const touches = own.filter((c) => c.files.has(rel)).length;
+    return { touches, seen: own.length, tip: own.length ? own[0].hash : '', failure: '' };
   } catch (err) {
     const spent = !!err && (err.code === 'ETIMEDOUT' || err.code === 'EDEADLINE');
     return { ...none, failure: gitFailureReason(err), spent };
   }
 }
 
-function repeatEditMsg(streak, filePath) {
-  // The log reads REPEAT_WINDOW commits, so a full window is a lower bound.
-  const capped = streak >= REPEAT_WINDOW;
-  const count = capped ? `at least the last ${streak} changes` : `the last ${streak} changes`;
-  const next = capped ? `change ${streak + 1} or later` : `change ${streak + 1}`;
-  return `[GateGuard] Repeat edit: ${count} landed on the default branch all edited ${sanitizePath(filePath)}, so this would be ${next} in a row. Before the next request for a commit, PR, or spend yes, tell the user that count and any spend so far and ask whether to continue or stop; a yes to the single step does not answer that. A subagent reports this line to its caller. Running autonomously, put it in the recap.`;
+function repeatEditMsg(touches, seen, filePath) {
+  return `[GateGuard] Repeat edit: ${touches} of your last ${seen} changes landed on the default branch edited ${sanitizePath(filePath)}, so this would be another. Before the next request for a commit, PR, or spend yes, tell the user that count and any spend so far and ask whether to continue or stop; a yes to the single step does not answer that. A subagent reports this line to its caller. Running autonomously, put it in the recap.`;
 }
 
 // A subagent's id, else 'parent', so a subagent's claim never consumes the
@@ -580,10 +626,11 @@ function skippedLine(filePath, reason) {
   return `[GateGuard] repeat-edit check skipped for ${sanitizePath(filePath)}: ${reason}. The notice did not run; check that git works in that directory.\n`;
 }
 
-// Returns '' or the notice lines for edits whose file has a streak. Each
-// (agent, path, ref tip) triple is claimed once in a sibling dir of the session
-// dir, so countMarkers ordinals don't move, stale pruning still covers it, and
-// a session is re-warned only after a new change lands. All git calls share one
+// Returns '' or the notice lines for edits whose file is due one. Each
+// (agent, path, user's newest own change) triple is claimed once in a sibling
+// dir of the session dir, so countMarkers ordinals don't move, stale pruning
+// still covers it, and a session is re-warned only after the user lands
+// another change. All git calls share one
 // REPEAT_DEADLINE_MS deadline; once it is spent the remaining paths are skipped
 // with a single diagnostic.
 function repeatEditNotice(edits, input, dir) {
@@ -599,20 +646,20 @@ function repeatEditNotice(edits, input, dir) {
       break;
     }
     const abs = path.resolve(base, e.path);
-    const { streak, tip, failure, spent } = landedStreak(abs, deadline);
+    const { touches, seen, tip, failure, spent } = ownTouches(abs, deadline);
     if (failure) {
       process.stderr.write(skippedLine(e.path, failure));
       if (spent) break; // the shared time is gone: skip the rest
       continue;
     }
-    if (streak < REPEAT_MIN_STREAK) continue;
+    if (touches < REPEAT_MIN_TOUCHES) continue;
     try {
       fs.mkdirSync(repeatDir, { recursive: true });
     } catch {
       /* the claim below fails and the notice is skipped */
     }
     if (claimMarker(repeatDir, `${agent}\n${abs}\n${tip}`) !== 'ok') continue;
-    lines.push(repeatEditMsg(streak, e.path));
+    lines.push(repeatEditMsg(touches, seen, e.path));
   }
   return lines.join('\n');
 }

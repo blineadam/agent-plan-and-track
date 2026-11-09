@@ -83,8 +83,9 @@ harness.
 
 ### Repeat-edit notice
 
-Separate from the fact demand, the hook warns when the default branch's last
-two or more landed changes all edited the file being edited. The warning tells
+Separate from the fact demand, the hook warns when two or more of the git
+user's own last five landed changes on the default branch edited the file being
+edited. The warning tells
 the model to report that count and any spend so far to the user and ask whether
 to continue or stop before its next request for a commit, PR, or spend, and
 says that a yes to the single step does not answer that.
@@ -94,9 +95,14 @@ of `origin/HEAD`, `origin/main`, `origin/master`, `main`, and `master` that
 exists, found with one `git for-each-ref`, first parent only. With none of them
 the check is silent. It never falls back to `HEAD`, so a topic branch's own
 commits cannot count even when `origin/HEAD` is unset. One NUL-delimited
-`git log -z --name-only` over the newest 10 commits gives each commit's changed
-paths, and the streak is the leading commits whose list contains the file's
-exact repo-relative path, so a full window reads as at least 10. There is no pathspec, so glob characters in a name
+`git log -z --name-only` over the newest 100 commits gives each commit's
+mailmapped author and changed paths. The user's own commits are those whose
+author name or email equals the configured `user.name` or `user.email`, so a
+squash merge stamped with a forge's noreply email still matches on name, and
+`.mailmap` covers any other alias. Of the newest five of those, the count is
+the ones whose list contains the file's exact repo-relative path. Teammates'
+changes neither count nor break the count, and with no identity configured the
+check is silent. There is no pathspec, so glob characters in a name
 such as `app/[id].tsx` cannot match another file. A merge commit on the first
 parent counts its diff against its first parent. Created files never count, and
 these paths are exempt at any depth and in any case: tests, fixtures, `docs/`,
@@ -104,9 +110,9 @@ these paths are exempt at any depth and in any case: tests, fixtures, `docs/`,
 `.github/instructions/`, `.github/copilot-instructions.md`, and lockfiles.
 
 It fires on every edit of such a file, not only the first, but once per agent,
-path, and ref tip: the claim is made in a `-repeat` sibling of the session
-state directory, so a long session is warned again only after another change
-lands, and a subagent's notice does not use up the parent's. A subagent gets
+path, and the user's newest own change: the claim is made in a `-repeat`
+sibling of the session state directory, so a long session is warned again only
+after the user lands another change, not after a teammate's, and a subagent's notice does not use up the parent's. A subagent gets
 the notice alone, with no fact demand.
 
 Git runs under one 3 second deadline per hook run, not per call: each call gets

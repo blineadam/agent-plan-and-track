@@ -9,7 +9,7 @@
  *
  * NO cases.json. Unlike git-guard's declarative cases, each case here builds
  * a scratch git repository with a commit script (which files each commit
- * changed, in order) and the expected streak is read off that script, never
+ * changed, in order) and the expected count is read off that script, never
  * off the hook's output. That setup is imperative, so the cases live in this
  * file next to the script that builds their repos.
  *
@@ -71,9 +71,10 @@ function git(cwd, env, ...args) {
 
 // The commit script. Each entry is one commit and lists the repo-relative
 // files it changes; a leading '-' deletes the file instead. `first` numbers
-// the commits so every change writes distinct content. Expected streaks in
-// the cases are counted from these lists.
-function commit(repo, env, entries, first = 0) {
+// the commits so every change writes distinct content. `author` ('Name
+// <email>') makes them someone else's; by default they are the repo's own
+// user's. Expected counts in the cases are read off these lists.
+function commit(repo, env, entries, first = 0, author = '') {
   entries.forEach((files, i) => {
     for (const f of files) {
       if (f.startsWith('-')) {
@@ -85,14 +86,20 @@ function commit(repo, env, entries, first = 0) {
       fs.appendFileSync(abs, `change ${first + i}\n`);
       git(repo, env, 'add', '--', f);
     }
-    git(repo, env, 'commit', '-q', '-m', `commit ${first + i}`);
+    git(repo, env, 'commit', '-q', '-m', `commit ${first + i}`, ...(author ? [`--author=${author}`] : []));
   });
 }
 
+const TEAMMATE = 'teammate <teammate@example.invalid>';
+
+// The repo's own user.name/user.email are the identity the hook reads; they
+// match the -c identity git() commits with.
 function newRepo(root, env, name = 'repo', branch = 'main') {
   const repo = path.join(root, 'work', name);
   fs.mkdirSync(repo, { recursive: true });
   git(repo, env, 'init', '-q', '-b', branch);
+  git(repo, env, 'config', 'user.name', 'fixture');
+  git(repo, env, 'config', 'user.email', 'fixture@example.invalid');
   return repo;
 }
 
@@ -161,29 +168,130 @@ function withScratch(fn) {
 }
 
 const CASES = {
-  // Commits (oldest first): [a,x] [x] [a] [a]. The newest two touch a.js and
-  // the third from the top does not, so a.js has a streak of 2.
-  'streak-2-warns-with-count': () =>
+  // Own commits (oldest first): [a,x] [x] [a] [a]. Three of the four
+  // touched a.js.
+  'own-touches-warn-with-count': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
       commit(repo, env, [['a.js', 'x.js'], ['x.js'], ['a.js'], ['a.js']]);
       const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
-      assert.ok(
-        text.includes('Repeat edit: the last 2 changes landed on the default branch all edited'),
-        text
-      );
-      assert.ok(text.includes('this would be change 3 in a row'), text);
+      assert.ok(text.includes('Repeat edit: 3 of your last 4 changes landed on the default branch edited'), text);
+      assert.ok(text.includes('so this would be another'), text);
       assert.ok(text.includes(path.join(repo, 'a.js')), text);
       assert.ok(text.includes('First edit of'), `first-edit fact demand should still ride along: ${text}`);
     }),
 
-  // Commits: [a,x] [x] [a]. Only the newest touches a.js: streak 1.
-  'streak-1-silent': () =>
+  // Commits: [x] [x] [a]. Only the newest touches a.js: 1 of 3.
+  'one-touch-silent': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
-      commit(repo, env, [['a.js', 'x.js'], ['x.js'], ['a.js']]);
+      commit(repo, env, [['x.js'], ['x.js'], ['a.js']]);
       const result = spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env);
       assert.ok(!context(result).includes(NOTICE), context(result));
+    }),
+
+  // A teammate's three landed changes all edited a.js; the user's own one did
+  // not. Someone else's churn is not the user's to stop.
+  'teammate-changes-not-counted': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, [['x.js']]);
+      commit(repo, env, [['a.js'], ['a.js'], ['a.js']], 10, TEAMMATE);
+      const result = spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env);
+      assert.ok(!context(result).includes(NOTICE), context(result));
+    }),
+
+  // Own [a], teammate [x], own [a]: the teammate's merge between the user's
+  // two does not break the count, so 2 of the user's last 2 edited a.js.
+  'teammate-change-between-own-still-counts': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, [['a.js']]);
+      commit(repo, env, [['x.js']], 10, TEAMMATE);
+      commit(repo, env, [['a.js']], 20);
+      const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
+      assert.ok(text.includes('Repeat edit: 2 of your last 2 changes landed on the default branch edited'), text);
+    }),
+
+  // Own [a] [a]: warned once. A teammate's merge moves the branch tip but not
+  // the user's count, so it does not re-arm the notice; the user's next own
+  // change does.
+  'teammate-merge-does-not-rewarn': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, [['a.js'], ['a.js']]);
+      const file = path.join(repo, 'a.js');
+      assert.ok(context(spawnHook(claudeEdit('s1', file), env)).includes(NOTICE));
+      commit(repo, env, [['x.js']], 10, TEAMMATE);
+      const after = spawnHook(claudeEdit('s1', file), env);
+      assert.strictEqual(after.stdout, '', `a teammate's merge should not re-warn: ${after.stdout}`);
+      commit(repo, env, [['a.js']], 20);
+      assert.ok(context(spawnHook(claudeEdit('s1', file), env)).includes('3 of your last 3 changes'));
+    }),
+
+  // Own [a] [x] [x] [a] [x]: not consecutive, but 2 of the last 5 edited a.js.
+  'two-of-last-five-not-consecutive-warns': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, [['a.js'], ['x.js'], ['x.js'], ['a.js'], ['x.js']]);
+      const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
+      assert.ok(text.includes('2 of your last 5 changes'), text);
+    }),
+
+  // Own [a] [a] [x] [x] [x] [x]: the older a.js edits fall outside the last
+  // five, which hold one.
+  'touches-outside-last-five-silent': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, [['a.js'], ['a.js'], ['x.js'], ['x.js'], ['x.js'], ['x.js']]);
+      const result = spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env);
+      assert.ok(!context(result).includes(NOTICE), context(result));
+    }),
+
+  // A squash merge is authored with the forge's identity, often a noreply
+  // email that differs from the local user.email; the name still matches.
+  'name-match-with-different-email-counts': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, [['a.js'], ['a.js']], 0, 'fixture <123+fixture@users.noreply.github.com>');
+      const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
+      assert.ok(text.includes('2 of your last 2 changes'), text);
+    }),
+
+  // .mailmap maps an old identity onto the user's, so its changes count.
+  'mailmap-identity-counts': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      fs.writeFileSync(path.join(repo, '.mailmap'), 'fixture <fixture@example.invalid> Old Name <old@example.invalid>\n');
+      commit(repo, env, [['a.js'], ['a.js']], 0, 'Old Name <old@example.invalid>');
+      const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
+      assert.ok(text.includes('2 of your last 2 changes'), text);
+    }),
+
+  // The local config still holds the old alias that .mailmap maps to the
+  // canonical identity, so both sides must be mapped before comparing.
+  'mailmap-alias-config-counts': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      fs.writeFileSync(path.join(repo, '.mailmap'), 'Canon <canon@example.invalid> Old Name <old@example.invalid>\n');
+      git(repo, env, 'config', 'user.name', 'Old Name');
+      git(repo, env, 'config', 'user.email', 'old@example.invalid');
+      commit(repo, env, [['a.js'], ['a.js']], 0, 'Old Name <old@example.invalid>');
+      const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
+      assert.ok(text.includes('2 of your last 2 changes'), text);
+    }),
+
+  // No user.name or user.email configured: whose changes are whose is
+  // unknown, so the check stays silent and reports nothing.
+  'no-git-identity-silent': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      commit(repo, env, [['a.js'], ['a.js'], ['a.js']]);
+      git(repo, env, 'config', '--unset', 'user.name');
+      git(repo, env, 'config', '--unset', 'user.email');
+      const result = spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env);
+      assert.ok(!context(result).includes(NOTICE), context(result));
+      assert.strictEqual(result.stderr, '', 'no identity is an expected absence, not a failure');
     }),
 
   'non-repo-silent': () =>
@@ -218,7 +326,7 @@ const CASES = {
     }),
 
   // test/a.test.js and src/a.js change in the same three commits, so both
-  // have a streak of 3; only the non-exempt file warns.
+  // were edited by 3 of 3; only the non-exempt file warns.
   'exempt-test-file-silent': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
@@ -230,15 +338,15 @@ const CASES = {
       const exempt = spawnHook(claudeEdit('s1', path.join(repo, 'test', 'a.test.js')), env);
       assert.ok(!context(exempt).includes(NOTICE), context(exempt));
       const live = spawnHook(claudeEdit('s1', path.join(repo, 'src', 'a.js')), env);
-      assert.ok(context(live).includes('the last 3 changes'), context(live));
+      assert.ok(context(live).includes('3 of your last 3 changes'), context(live));
     }),
 
-  // origin/HEAD is main at [a,x] [x] [a]: a.js streak 1. Two topic-branch
-  // commits then edit a.js, which would make 3 if the topic commits counted.
+  // origin/HEAD is main at [x] [x] [a]: a.js 1 of 3. Two topic-branch
+  // commits then edit a.js, which would make 3 of 5 if the topic commits counted.
   'topic-branch-commits-not-counted': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
-      commit(repo, env, [['a.js', 'x.js'], ['x.js'], ['a.js']]);
+      commit(repo, env, [['x.js'], ['x.js'], ['a.js']]);
       setOriginHead(repo, env);
       git(repo, env, 'switch', '-q', '-c', 'topic');
       commit(repo, env, [['a.js'], ['a.js']], 10);
@@ -246,8 +354,8 @@ const CASES = {
       assert.ok(!context(result).includes(NOTICE), context(result));
     }),
 
-  // origin/HEAD is main at [a,x] [x] [a] [a]: streak 2. One topic commit on
-  // a.js would make 3 if counted; the message must say 2.
+  // origin/HEAD is main at [a,x] [x] [a] [a]: 3 of 4. One topic commit on
+  // a.js would make 4 of 5 if counted; the message must say 3 of 4.
   'origin-head-count-excludes-topic': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
@@ -256,45 +364,44 @@ const CASES = {
       git(repo, env, 'switch', '-q', '-c', 'topic');
       commit(repo, env, [['a.js']], 10);
       const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
-      assert.ok(text.includes('the last 2 changes'), text);
-      assert.ok(!text.includes('the last 3 changes'), text);
+      assert.ok(text.includes('3 of your last 4 changes'), text);
     }),
 
-  // Commits: [a] [a]: streak 2 at tip T1. A second edit at T1 is silent; a
-  // new commit moves the tip, streak 3, and the next edit warns again.
+  // Commits: [a] [a]: 2 of 2 at tip T1. A second edit at T1 is silent; a
+  // new commit moves the tip, 3 of 3, and the next edit warns again.
   'second-edit-same-tip-silent-new-tip-rewarns': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
       commit(repo, env, [['a.js'], ['a.js']]);
       const file = path.join(repo, 'a.js');
       const first = spawnHook(claudeEdit('s1', file), env);
-      assert.ok(context(first).includes('the last 2 changes'), context(first));
+      assert.ok(context(first).includes('2 of your last 2 changes'), context(first));
       const second = spawnHook(claudeEdit('s1', file), env);
       assert.strictEqual(second.stdout, '', `same tip should stay silent: ${second.stdout}`);
       commit(repo, env, [['a.js']], 10);
       const third = context(spawnHook(claudeEdit('s1', file), env));
-      assert.ok(third.includes('the last 3 changes'), third);
+      assert.ok(third.includes('3 of your last 3 changes'), third);
       assert.ok(!third.includes('First edit of'), `not a first edit: ${third}`);
       const fourth = spawnHook(claudeEdit('s1', file), env);
       assert.strictEqual(fourth.stdout, '', `new tip already warned: ${fourth.stdout}`);
     }),
 
-  // Commits: [a] [a]: streak 2. A subagent payload gets the notice and no
-  // fact demand; on a file with no streak it is silent.
+  // Commits: [a,b] [a]: a.js 2 of 2, b.js 1 of 2. A subagent payload gets
+  // the notice and no fact demand; on b.js it is silent.
   'subagent-gets-notice-only': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
       commit(repo, env, [['a.js', 'b.js'], ['a.js']]);
       const sub = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js'), { agent_id: 'sub-1' }), env));
-      assert.ok(sub.includes('the last 2 changes'), sub);
+      assert.ok(sub.includes('2 of your last 2 changes'), sub);
       assert.ok(sub.includes('A subagent reports this line to its caller'), sub);
       assert.ok(!sub.includes('First edit of'), sub);
       assert.ok(!sub.includes('present these facts'), sub);
       const quiet = spawnHook(claudeEdit('s1', path.join(repo, 'b.js'), { agent_id: 'sub-1' }), env);
-      assert.strictEqual(quiet.stdout, '', `no streak, no fact demand for a subagent: ${quiet.stdout}`);
+      assert.strictEqual(quiet.stdout, '', `no notice due, no fact demand for a subagent: ${quiet.stdout}`);
     }),
 
-  // Commits: [a] [a]: streak 2. Copilot denies a first edit, so the notice
+  // Commits: [a] [a]: 2 of 2. Copilot denies a first edit, so the notice
   // rides the deny reason; after a new commit a later edit degrades to stderr.
   'copilot-first-edit-deny-carries-notice': () =>
     withScratch((root, env) => {
@@ -305,14 +412,14 @@ const CASES = {
       const parsed = JSON.parse(first.stdout);
       assert.strictEqual(parsed.permissionDecision, 'deny', first.stdout);
       assert.ok(parsed.permissionDecisionReason.includes('First edit of'), parsed.permissionDecisionReason);
-      assert.ok(parsed.permissionDecisionReason.includes('the last 2 changes'), parsed.permissionDecisionReason);
+      assert.ok(parsed.permissionDecisionReason.includes('2 of your last 2 changes'), parsed.permissionDecisionReason);
       const retry = spawnHook(copilotTool('c1', 'edit', file), env);
       assert.strictEqual(retry.stdout, JSON.stringify({ permissionDecision: 'allow' }));
       assert.ok(!retry.stderr.includes(NOTICE), retry.stderr);
       commit(repo, env, [['a.js']], 10);
       const later = spawnHook(copilotTool('c1', 'edit', file), env);
       assert.strictEqual(later.stdout, JSON.stringify({ permissionDecision: 'allow' }));
-      assert.ok(later.stderr.includes('(warn)') && later.stderr.includes('the last 3 changes'), later.stderr);
+      assert.ok(later.stderr.includes('(warn)') && later.stderr.includes('3 of your last 3 changes'), later.stderr);
     }),
 
   // Commits: [a,x] [a] [-a]: a.js was edited by the last three changes, the
@@ -329,22 +436,22 @@ const CASES = {
       const copilotCreate = spawnHook(copilotTool('c1', 'create', file), env);
       assert.ok(!copilotCreate.stdout.includes(NOTICE), copilotCreate.stdout);
       const edited = context(spawnHook(claudeEdit('s2', file), env));
-      assert.ok(edited.includes('the last 3 changes'), edited);
+      assert.ok(edited.includes('3 of your last 3 changes'), edited);
     }),
 
-  // Commits: [d/f] [d/f]: streak 2 on a path with spaces in directory and file.
+  // Commits: [d/f] [d/f]: 2 of 2 on a path with spaces in directory and file.
   'path-with-space': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
       commit(repo, env, [['my dir/sub dir/file name.js'], ['my dir/sub dir/file name.js']]);
       const file = path.join(repo, 'my dir', 'sub dir', 'file name.js');
       const text = context(spawnHook(claudeEdit('s1', file), env));
-      assert.ok(text.includes('the last 2 changes'), text);
+      assert.ok(text.includes('2 of your last 2 changes'), text);
       assert.ok(text.includes(file), text);
     }),
 
   // Codex sends a relative path in an apply_patch envelope plus the cwd.
-  // Commits: [src/a] [src/a]: streak 2.
+  // Commits: [src/a] [src/a]: 2 of 2.
   'relative-path-resolved-against-cwd': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
@@ -356,13 +463,13 @@ const CASES = {
         tool_input: { command: '*** Begin Patch\n*** Update File: src/a.js\n@@\n-a\n+b\n*** End Patch' },
       };
       const text = context(spawnHook(payload, env));
-      assert.ok(text.includes('the last 2 changes'), text);
+      assert.ok(text.includes('2 of your last 2 changes'), text);
       assert.ok(text.includes('edited src/a.js'), text);
     }),
 
-  // origin/main is main at [a,x] [x] [a] [a]: a.js streak 2. origin/HEAD is
-  // unset, local main then moves on with [x] (streak 0 if it were the ref), and
-  // two topic commits on a.js sit on HEAD (streak 4 if HEAD were the ref).
+  // origin/main is main at [a,x] [x] [a] [a]: a.js 3 of 4. origin/HEAD is
+  // unset, local main then moves on with [x] (3 of 5 if it were the ref), and
+  // two topic commits on a.js sit on HEAD (4 of 5 if HEAD were the ref).
   'origin-main-used-when-origin-head-unset': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
@@ -372,12 +479,12 @@ const CASES = {
       git(repo, env, 'switch', '-q', '-c', 'topic');
       commit(repo, env, [['a.js'], ['a.js']], 20);
       const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
-      assert.ok(text.includes('the last 2 changes'), text);
+      assert.ok(text.includes('3 of your last 4 changes'), text);
     }),
 
   // The only branch is `develop` and no remote refs exist: no default branch is
   // known, so nothing is counted and nothing is reported. Commits: [a] [a] [a].
-  // Renaming the branch to main makes the same history count 3.
+  // Renaming the branch to main makes the same history count 3 of 3.
   'only-develop-branch-silent': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env, 'repo', 'develop');
@@ -388,20 +495,19 @@ const CASES = {
       assert.strictEqual(result.stderr, '', 'no default branch is an expected absence, not a failure');
       git(repo, env, 'branch', '-m', 'main');
       const live = context(spawnHook(claudeEdit('s2', file), env));
-      assert.ok(live.includes('the last 3 changes'), live);
+      assert.ok(live.includes('3 of your last 3 changes'), live);
     }),
 
   // Commits: [app/i.tsx] [app/[id].tsx] [app/[id].tsx]. [id].tsx was edited by
-  // the newest two changes only: streak 2. As a glob, `[id].tsx` would also
-  // match i.tsx and count the oldest commit too (3). i.tsx itself was not in
-  // the newest commit: no notice.
+  // the newest two changes only: 2 of 3. As a glob, `[id].tsx` would also
+  // match i.tsx and count the oldest commit too (3 of 3). i.tsx itself was
+  // edited by 1 of 3: no notice.
   'glob-characters-in-name-match-exactly': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
       commit(repo, env, [['app/i.tsx'], ['app/[id].tsx'], ['app/[id].tsx']]);
       const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'app', '[id].tsx')), env));
-      assert.ok(text.includes('the last 2 changes'), text);
-      assert.ok(!text.includes('the last 3 changes'), text);
+      assert.ok(text.includes('2 of your last 3 changes'), text);
       const plain = context(spawnHook(claudeEdit('s2', path.join(repo, 'app', 'i.tsx')), env));
       assert.ok(!plain.includes(NOTICE), plain);
     }),
@@ -409,8 +515,8 @@ const CASES = {
   // main: C1 [a,x]; topic from C1: T1 [a]; main: C2 [x]; merge topic with a
   // merge commit M; main: C3 [a]. First-parent history is C3 [a], M, C2 [x],
   // C1. M's diff against its first parent (C2) is a.js, which only topic
-  // changed, so a.js streak is 2 (C3, M). Counted against the second parent M
-  // would show x.js instead and the streak would be 1.
+  // changed, so a.js was edited by 3 of 4 (C3, M, C1). Counted against the
+  // second parent M would show x.js instead and the count would be 2 of 4.
   'merge-commit-counts-first-parent-diff': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
@@ -422,10 +528,10 @@ const CASES = {
       git(repo, env, 'merge', '--no-ff', '-q', '-m', 'merge topic', 'topic');
       commit(repo, env, [['a.js']], 30);
       const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
-      assert.ok(text.includes('the last 2 changes'), text);
+      assert.ok(text.includes('3 of your last 4 changes'), text);
     }),
 
-  // Commits: [a] [a]: streak 2. A subagent's notice does not use up the
+  // Commits: [a] [a]: 2 of 2. A subagent's notice does not use up the
   // parent's, a second subagent has its own, and each agent is quiet at the
   // same tip afterwards.
   'subagent-claim-does-not-consume-parent': () =>
@@ -434,12 +540,12 @@ const CASES = {
       commit(repo, env, [['a.js'], ['a.js']]);
       const file = path.join(repo, 'a.js');
       const sub1 = context(spawnHook(claudeEdit('s1', file, { agent_id: 'sub-1' }), env));
-      assert.ok(sub1.includes('the last 2 changes'), sub1);
+      assert.ok(sub1.includes('2 of your last 2 changes'), sub1);
       const parent = context(spawnHook(claudeEdit('s1', file), env));
-      assert.ok(parent.includes('the last 2 changes'), parent);
+      assert.ok(parent.includes('2 of your last 2 changes'), parent);
       assert.ok(parent.includes('First edit of'), parent);
       const sub2 = context(spawnHook(claudeEdit('s1', file, { agent_id: 'sub-2' }), env));
-      assert.ok(sub2.includes('the last 2 changes'), sub2);
+      assert.ok(sub2.includes('2 of your last 2 changes'), sub2);
       assert.strictEqual(spawnHook(claudeEdit('s1', file), env).stdout, '', 'parent is quiet at the same tip');
       assert.strictEqual(
         spawnHook(claudeEdit('s1', file, { agent_id: 'sub-1' }), env).stdout,
@@ -448,7 +554,7 @@ const CASES = {
       );
     }),
 
-  // Every file changes in all three commits, so each has a streak of 3. All of
+  // Every file changes in all three commits, so each was edited by 3 of 3. All of
   // these are exempt wherever they sit and whatever their case, except the
   // control, which warns.
   'exemptions-match-any-depth-and-case': () =>
@@ -471,7 +577,7 @@ const CASES = {
         assert.ok(!text.includes(NOTICE), `${rel} should be exempt: ${text}`);
       });
       const live = context(spawnHook(claudeEdit('ctl', path.join(repo, control)), env));
-      assert.ok(live.includes('the last 3 changes'), live);
+      assert.ok(live.includes('3 of your last 3 changes'), live);
     }),
 
   // diff.relative=true would make --name-only paths relative to the file's dir.
@@ -481,7 +587,7 @@ const CASES = {
       commit(repo, env, [['src/a.js'], ['src/a.js'], ['src/a.js']]);
       git(repo, env, 'config', 'diff.relative', 'true');
       const text = context(spawnHook(claudeEdit('r1', path.join(repo, 'src', 'a.js')), env));
-      assert.ok(text.includes('the last 3 changes'), text);
+      assert.ok(text.includes('3 of your last 3 changes'), text);
     }),
 
   // Git C-quotes this name in its human-readable output. Windows forbids `"`.
@@ -490,18 +596,17 @@ const CASES = {
       const repo = newRepo(root, env);
       commit(repo, env, [['a"b.js'], ['a"b.js']]);
       const text = context(spawnHook(claudeEdit('q1', path.join(repo, 'a"b.js')), env));
-      assert.ok(text.includes('the last 2 changes'), text);
+      assert.ok(text.includes('2 of your last 2 changes'), text);
     })
   ),
 
-  // Twelve landed edits against a ten-commit window: the count is a lower bound.
-  'full-window-reports-lower-bound': () =>
+  // Twelve own landed edits: only the last five are read.
+  'own-window-caps-at-five': () =>
     withScratch((root, env) => {
       const repo = newRepo(root, env);
       commit(repo, env, Array.from({ length: 12 }, () => ['a.js']));
       const text = context(spawnHook(claudeEdit('w1', path.join(repo, 'a.js')), env));
-      assert.ok(text.includes('at least the last 10 changes landed'), text);
-      assert.ok(text.includes('this would be change 11 or later in a row'), text);
+      assert.ok(text.includes('5 of your last 5 changes landed'), text);
     }),
 
   // A fake git that exits 2 with a message stands in for any unexpected git
