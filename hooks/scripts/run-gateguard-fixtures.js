@@ -268,6 +268,19 @@ const CASES = {
       assert.ok(text.includes('2 of your last 2 changes'), text);
     }),
 
+  // The local config still holds the old alias that .mailmap maps to the
+  // canonical identity, so both sides must be mapped before comparing.
+  'mailmap-alias-config-counts': () =>
+    withScratch((root, env) => {
+      const repo = newRepo(root, env);
+      fs.writeFileSync(path.join(repo, '.mailmap'), 'Canon <canon@example.invalid> Old Name <old@example.invalid>\n');
+      git(repo, env, 'config', 'user.name', 'Old Name');
+      git(repo, env, 'config', 'user.email', 'old@example.invalid');
+      commit(repo, env, [['a.js'], ['a.js']], 0, 'Old Name <old@example.invalid>');
+      const text = context(spawnHook(claudeEdit('s1', path.join(repo, 'a.js')), env));
+      assert.ok(text.includes('2 of your last 2 changes'), text);
+    }),
+
   // No user.name or user.email configured: whose changes are whose is
   // unknown, so the check stays silent and reports nothing.
   'no-git-identity-silent': () =>

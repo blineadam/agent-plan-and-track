@@ -530,8 +530,10 @@ function gitFailureReason(err) {
   return reason.replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
-// The configured user.name and user.email, lowercased; '' for an unset one.
-// `git config` exits 1 when no key matches, which is an absence, not a failure.
+// The configured user.name and user.email, mapped through .mailmap the same
+// way %aN/%aE map commit authors, then lowercased; '' for an unset one. `git
+// config` exits 1 when no key matches, which is an absence, not a failure.
+// Mailmap keys on email, so a name-only identity is used as configured.
 function gitIdentity(cwd, deadline) {
   let out = '';
   try {
@@ -542,9 +544,17 @@ function gitIdentity(cwd, deadline) {
   const id = { name: '', email: '' };
   for (const line of out.split('\n')) {
     const m = /^user\.(name|email) (.*)$/.exec(line);
-    if (m) id[m[1]] = m[2].trim().toLowerCase();
+    if (m) id[m[1]] = m[2].trim();
   }
-  return id;
+  if (id.email) {
+    const ident = id.name ? `${id.name} <${id.email}>` : `<${id.email}>`;
+    const m = /^(.*?)\s*<([^>]*)>$/.exec(runGit(cwd, ['check-mailmap', ident], deadline).trim());
+    if (m) {
+      if (m[1]) id.name = m[1];
+      id.email = m[2];
+    }
+  }
+  return { name: id.name.toLowerCase(), email: id.email.toLowerCase() };
 }
 
 // Returns { touches, seen, tip, failure, spent }: of the user's own newest
