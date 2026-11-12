@@ -35,9 +35,10 @@ work, then publish or capture what the session taught you.
   variables. Either way, it marks the file when it fires, so later edits to
   that file are not gated again in the same session.
 - **`read-the-damn-docs`** (skill) fires before leaning on memory for how a
-  third-party API, library, or provider actually behaves right now. Forces
-  a web search for the real docs first, complementing gateguard's local
-  digging with an external check.
+  third-party API, library, or provider actually behaves right now, or
+  before testing around a third-party tool, product, or platform suspected
+  in a failure. Forces a web search for the real docs first, complementing
+  gateguard's local digging with an external check.
 - **`efficient-frontier`** (skill) steps in before handing research, coding,
   or testing off to one of this repo's tiered subagents. Picks the tier
   that actually fits the work, so delegation doesn't burn the main
