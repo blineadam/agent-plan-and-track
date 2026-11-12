@@ -1,6 +1,6 @@
 ---
 name: read-the-damn-docs
-description: "Use when implementing, integrating, upgrading, debugging, or answering anything involving third-party APIs, libraries, frameworks, CLIs, cloud services, model or provider SDKs, fast-moving product behavior, a user request for latest, current, or official behavior, unfamiliar repo docs or specs, an error that may indicate API drift, or high-stakes auth, security, billing, data, migration, deployment, compliance, or privacy behavior: forces a web search for current official docs and a read of primary sources before assuming from memory."
+description: "Use when implementing, integrating, upgrading, debugging, or answering anything involving third-party APIs, libraries, frameworks, CLIs, cloud services, model or provider SDKs, fast-moving product behavior, any third-party tool, product, or platform in the path of a failure (developer tools, OS features, devices, not just code dependencies), a user request for latest, current, or official behavior, unfamiliar repo docs or specs, an error that may indicate API drift, or high-stakes auth, security, billing, data, migration, deployment, compliance, or privacy behavior: forces a web search for current official docs and a read of primary sources before assuming from memory or testing around a suspect tool."
 ---
 
 # Read The Damn Docs
@@ -19,6 +19,7 @@ Read docs before proceeding when any of these are true:
 - The API is fast-moving or version-sensitive: SDKs, frameworks, provider and cloud APIs, auth libraries, browser APIs, deployment platforms, and similar.
 - The implementation depends on auth, OAuth scopes, permissions, secrets, webhooks, billing, payments, PII, encryption, data retention, migrations, retries, rate limits, quotas, caching, deploys, or compliance.
 - An error mentions deprecation, unknown options, missing exports, invalid config, unsupported fields, changed defaults, or a version mismatch.
+- A third-party tool, product, or platform sits in the path of a failure: developer tools, OS features, and devices count, not just code dependencies. When one is a suspect, read its docs before testing around it.
 - The repo has local docs, ADRs, generated schemas, OpenAPI specs, route/action registries, design-system docs, or package-level READMEs that could define the contract.
 - The choice is expensive to reverse: public wire formats, database schema, migration strategy, persistent IDs, event names, customer-visible behavior, or external automation contracts.
 - The next sentence is about to start with "usually", "probably", "I think", "from memory", or code copied from memory for an external API.
