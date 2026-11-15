@@ -9,7 +9,8 @@ Applies to the Node hook, guard, and skill scripts, the bash and PowerShell
 installers, hook wiring JSON, and CI workflows. Conventions come from
 `.ai-style-rules.md` (Golden Files: `gateguard.js`, `install.sh`,
 `lint-pr-body.js`; Naming & State-Control; DONTs), `docs/hooks.md`,
-`docs/installers.md`, `docs/models.md`, `README.md`, and `AGENTS.md`.
+`docs/installers.md`, `docs/models.md`, `docs/style-enforcement.md`,
+`README.md`, and `AGENTS.md`.
 
 ## JS hooks
 

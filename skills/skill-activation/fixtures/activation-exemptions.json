@@ -1,0 +1,3 @@
+{
+  "gateguard": "Its enforcement is the PreToolUse gateguard hook, which fires on the first edit to each file whether or not the Skill tool loads this skill, so a routing case would measure a load nothing depends on."
+}

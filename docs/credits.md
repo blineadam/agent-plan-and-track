@@ -33,6 +33,7 @@ Every upstream source this repo adapts from, what was taken, and on what terms. 
 - [LilMGenius/paperthin](https://github.com/LilMGenius/paperthin) (MIT, ideas only) fed `skill-comply`'s pre-spend checks on a scenario set, adapted from three patterns in its `mandela` leakage audit: a control arm that keeps the behavior's real cause, a scenario prompt that states the hypothesis, and a check judged by the person who designed it.
 - [anthropics/skills](https://github.com/anthropics/skills) (Apache-2.0, vendored with modifications) fed `frontend-design`, which also carries the folded-in theming content of the former `theme-factory` skill, and `webapp-testing`.
 - `muratcankoylan/agent-skills-for-context-engineering` (MIT) fed `skill-activation` with its `activation-cases` corpus technique, rebuilt for this repo's skill set.
+- [vercel-labs/ui](https://github.com/vercel-labs/ui) (Apache-2.0, ideas only) fed `skill-activation`'s coverage guard: `run-activation-cases.js --dry-run` fails when a skill has no routing case, unless `fixtures/activation-exemptions.json` exempts it with a stated reason, and a stale exemption fails too, so no exemption outlives its reason. The idea comes from that repo's per-component test exemption file; the check and its wording are this repo's own.
 - `skill-activation` and `copilot-review-instructions` were otherwise built directly in this repo.
 
 ## Agents
