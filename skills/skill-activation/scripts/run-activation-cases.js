@@ -15,7 +15,8 @@
  * find, or grep). Node built-ins only.
  *
  * Usage:
- *   node run-activation-cases.js [--dry-run] [FIXTURES]        # list cases (default; free)
+ *   node run-activation-cases.js [--dry-run] [FIXTURES]        # list cases, and on the default
+ *                                                               # corpus check skill coverage (default; free)
  *   node run-activation-cases.js --precheck [SKILLS_DIR]       # static router-signal lint (free)
  *   node run-activation-cases.js --precheck-agents [AGENTS_DIR] [INSTALLED_HOME]
  *                                                               # agent schema/render lint (free)
@@ -23,6 +24,19 @@
  *   node run-activation-cases.js --run [FIXTURES]              # invoke claude -p per case (COSTS money)
  *
  * FIXTURES defaults to the sibling fixtures/activation-cases.jsonl.
+ *
+ * --dry-run on the default corpus also checks coverage and exits 1 (one FAIL
+ * line per problem on stderr) when a directory under the repo's skills/ has
+ * no case whose expect_skill is that skill and no entry in the sibling
+ * fixtures/activation-exemptions.json, a JSON object mapping a skill name to a
+ * non-empty string reason it cannot be routing-tested. An entry for a skill
+ * that has a case, or for a name with no skills/ directory, is stale and also
+ * fails, so no exemption outlives its reason. A missing exemptions file
+ * means no exemptions; unparseable JSON or a non-object top level fails. A
+ * custom FIXTURES path is a scratch subset and skips the check. So does an
+ * installed copy: the check runs only when install.sh sits beside the skills
+ * directory (install targets never contain it, and hold other skills too), and
+ * otherwise one stderr line says it was skipped and why.
  * SKILLS_DIR defaults to ~/.claude/skills (the installed set the agent routes on).
  *
  * --check reads one trace per case at TRACE_DIR/<id>.jsonl (id = each case's
@@ -83,6 +97,11 @@ const { spawn, spawnSync } = require('child_process');
 
 const SCRIPT_DIR = __dirname;
 const DEFAULT_FIXTURES = path.join(SCRIPT_DIR, '..', 'fixtures', 'activation-cases.jsonl');
+const EXEMPTIONS_FILE = path.join(SCRIPT_DIR, '..', 'fixtures', 'activation-exemptions.json');
+const REPO_SKILLS_DIR = path.join(SCRIPT_DIR, '..', '..');
+// install.sh is never copied into an install target, so its presence beside
+// skills/ marks a source checkout (an installed skills dir holds other skills).
+const SOURCE_MARKER = path.join(REPO_SKILLS_DIR, '..', 'install.sh');
 const DESC_TOKEN_FLOOR = intEnv('DESC_TOKEN_FLOOR', 12);
 const DESC_CHAR_CEILING = intEnv('DESC_CHAR_CEILING', 500);
 // This repo's skill frontmatter convention is exactly `name` + `description`, nothing else.
@@ -910,6 +929,74 @@ function modeDryRun(args) {
     })),
   });
   process.stderr.write('# dry-run: no claude -p runs, no cost. Use --check TRACE_DIR or --run.\n');
+  if (path.resolve(fixtures) === path.resolve(DEFAULT_FIXTURES)) {
+    if (!isFile(SOURCE_MARKER)) {
+      process.stderr.write(
+        `# coverage check skipped: ${REPO_SKILLS_DIR} is not a source checkout (no install.sh beside it)\n`
+      );
+      return;
+    }
+    const failures = coverageFailures(cases);
+    if (failures.length > 0) {
+      process.stderr.write(failures.join('\n') + '\n');
+      process.exit(1);
+    }
+  }
+}
+
+// Every skill directory under the repo's skills/ needs a case or a reasoned
+// exemption, and an exemption that no longer applies is stale. Returns one
+// FAIL line per problem (empty when clean).
+function coverageFailures(cases) {
+  const skills = fs
+    .readdirSync(REPO_SKILLS_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+    .map((e) => e.name);
+  const covered = new Set(cases.map((c) => c.expect_skill));
+  const exemptions = readExemptions();
+  if (typeof exemptions === 'string') return [exemptions];
+  const failures = [];
+  for (const skill of skills) {
+    if (covered.has(skill) || Object.hasOwn(exemptions, skill)) continue;
+    failures.push(
+      `FAIL: skill ${skill} has no activation case and no exemption in ${EXEMPTIONS_FILE}; ` +
+        `fix: add a case with expect_skill "${skill}" to ${DEFAULT_FIXTURES}, or add a "${skill}" reason to the exemptions file`
+    );
+  }
+  for (const [name, reason] of Object.entries(exemptions)) {
+    if (typeof reason !== 'string' || reason.trim() === '') {
+      failures.push(
+        `FAIL: exemption ${name} in ${EXEMPTIONS_FILE} has no reason; ` +
+          'fix: give it a non-empty string reason, or remove the entry'
+      );
+    }
+    if (covered.has(name)) {
+      failures.push(
+        `FAIL: exemption ${name} in ${EXEMPTIONS_FILE} is stale, the skill has an activation case; fix: remove the entry`
+      );
+    } else if (!skills.includes(name)) {
+      failures.push(
+        `FAIL: exemption ${name} in ${EXEMPTIONS_FILE} is stale, no skills/${name} directory exists; fix: remove the entry`
+      );
+    }
+  }
+  return failures;
+}
+
+// The exemptions object, {} when the file is absent, or a FAIL line string
+// when the file is not a JSON object.
+function readExemptions() {
+  if (!isFile(EXEMPTIONS_FILE)) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(EXEMPTIONS_FILE, 'utf8'));
+  } catch (err) {
+    return `FAIL: ${EXEMPTIONS_FILE} is not valid JSON (${err.message}); fix: make it a JSON object of skill name to reason string`;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return `FAIL: ${EXEMPTIONS_FILE} must be a JSON object keyed by skill name; fix: make it a JSON object of skill name to reason string`;
+  }
+  return parsed;
 }
 
 function isFile(p) {

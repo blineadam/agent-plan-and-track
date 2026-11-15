@@ -9,8 +9,8 @@ Applies to shared rule files, skill docs, agent docs, `docs/` reference pages,
 the README, `AGENTS.md`, and the Copilot review-instruction files. Conventions
 come from `.ai-style-rules.md`, `AGENTS.md`, `rules/agent-guidelines.md`,
 `skills/inherit-legacy-style/SKILL.md`, `README.md`, and the `docs/` pages
-`skills.md`, `installers.md`, `models.md`, `out-of-scope.md`, and
-`credits.md`.
+`skills.md`, `installers.md`, `models.md`, `out-of-scope.md`, `credits.md`,
+`rule-delivery.md`, and `style-enforcement.md`.
 
 ## Shared rule files
 

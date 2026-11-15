@@ -38,8 +38,9 @@ portable guidance, one Claude-specific mechanism):
 > up in the trace and is eligible for the corpus. `delivery-gate` is hook-only
 > (no SKILL.md): it fires from the harness Stop event, never via the Skill tool,
 > so it never appears; exercise its hook instead. gateguard is hook-*enforced*
-> too, but it also ships as a skill, so its *routing* is testable here even though
-> its *enforcement* isn't.
+> too, but it also ships as a skill, so its *routing* is testable in principle
+> even though its *enforcement* isn't; it is exempted in
+> `fixtures/activation-exemptions.json`, which records the reason.
 
 Also use it when re-describing a skill, and as a periodic regression check that
 the installed corpus still routes correctly.
@@ -110,6 +111,13 @@ List without spending (default):
 ```bash
 node skills/skill-activation/scripts/run-activation-cases.js --dry-run
 ```
+
+On the default corpus, `--dry-run` also exits 1 when a skill directory has no
+case and no reasoned entry in `fixtures/activation-exemptions.json`, and when an
+exemption is stale (the skill has a case, or no such directory exists), so no
+exemption outlives its reason. A custom FIXTURES path skips that check, and so
+does an installed copy (no `install.sh` beside its skills directory), with one
+stderr line saying so.
 
 Then either capture traces yourself and verify them (free, reproducible), or let
 the script drive the runs:
