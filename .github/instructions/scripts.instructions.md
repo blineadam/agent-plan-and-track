@@ -101,6 +101,15 @@ installers, hook wiring JSON, and CI workflows. Conventions come from
   `pr-body-lint.yml` workflow are its own convention, not required of every
   guard. `check-digest-preview.js` and `check-doc-links.js` describe their
   HARD findings in prose and run in `install.yml`.
+- `lint-pr-body.js`'s graded `{ severity, message }` findings are its own
+  model too. The simpler guards (`check-digest-preview.js`,
+  `check-split-shell-segments-parity.js`, `check-doc-links.js`, and
+  `run-activation-cases.js`'s `--dry-run` coverage check) instead write one
+  `FAIL: <offending item> <problem>` line per problem to stderr and exit 1;
+  `check-doc-links.js` and the coverage check append `; fix: <hint>` when the
+  remedy is a specific edit (`check-doc-links.js`'s header documents the exact
+  shape). Flag a new guard of this kind that prints its failures to stdout or
+  omits the offending item from the line.
 - Each guard ships a same-directory `run-<name>-fixtures.js`. Flag a new
   guard with no fixture runner.
 - Every free fixture runner (hook, guard, or skill) runs in both the bash job
